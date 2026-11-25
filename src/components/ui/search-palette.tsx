@@ -76,6 +76,8 @@ interface SearchAnswer {
 
 /** A person result, as select mode hands it over (M09). */
 export type PersonHit = SearchAnswer['people'][number];
+/** A school result, as select mode for schools hands it over (role replay 2026-11-25, P2-4). */
+export type SchoolHit = SearchAnswer['schools'][number];
 
 type Item =
   | { kind: 'person'; key: string; label: string; href: string; explore: string; hit: PersonHit }
@@ -158,11 +160,14 @@ function Name({ name, className }: { name: SearchName; className?: string }) {
   );
 }
 
-function groupsOf(answer: SearchAnswer | null, query: string, select = false): Group[] {
+type SelectKind = 'person' | 'school' | null;
+
+function groupsOf(answer: SearchAnswer | null, query: string, selecting: SelectKind = null): Group[] {
+  const select = selecting !== null;
   const groups: Group[] = [];
   const pages = select ? [] : pagesFor(query);
   if (!answer) return pages.length > 0 ? [{ value: 'Pages', items: pages }] : [];
-  if (answer.people.length > 0) {
+  if (selecting !== 'school' && answer.people.length > 0) {
     groups.push({
       value: 'People',
       items: answer.people.map((hit) => ({
@@ -173,6 +178,12 @@ function groupsOf(answer: SearchAnswer | null, query: string, select = false): G
         explore: `/explore?focus=${hit.id}`,
         hit,
       })),
+    });
+  }
+  if (selecting === 'school' && answer.schools.length > 0) {
+    groups.push({
+      value: 'Schools',
+      items: answer.schools.map((hit) => ({ kind: 'school' as const, key: `school:${hit.id}`, label: hit.name, href: `/schools/${hit.slug}`, hit })),
     });
   }
   if (!select && answer.schools.length > 0) {
@@ -301,8 +312,12 @@ export interface SearchPaletteProps {
   onOpenChange: (open: boolean) => void;
   /** M09: select mode. People only; choosing one calls this instead of opening its profile. */
   onSelect?: (person: PersonHit) => void;
+  /** Role replay 2026-11-25 (P2-4): select mode for schools. Schools only; choosing one calls this. */
+  onSelectSchool?: (school: SchoolHit) => void;
   /** The dialog's name and the field's label in select mode. */
   selectLabel?: string;
+  /** What select mode says before anything is typed (the default speaks of a teacher). */
+  selectHint?: string;
   /** Text the palette opens with, searched at once (the home page's search). Empty: an empty field. */
   initialQuery?: string;
   /**
@@ -326,8 +341,9 @@ export default function SearchPalette(props: SearchPaletteProps) {
   return built ? <Palette {...props} /> : null;
 }
 
-function Palette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person', initialQuery = '', keepMounted = false }: SearchPaletteProps) {
-  const select = onSelect !== undefined;
+function Palette({ open, onOpenChange, onSelect, onSelectSchool, selectLabel = 'Choose a person', selectHint, initialQuery = '', keepMounted = false }: SearchPaletteProps) {
+  const selecting: SelectKind = onSelectSchool !== undefined ? 'school' : onSelect !== undefined ? 'person' : null;
+  const select = selecting !== null;
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
   const [answer, setAnswer] = useState<SearchAnswer | null>(null);
@@ -473,9 +489,13 @@ function Palette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person'
   const choose = (item: Item, explore = false) => {
     if (select) {
       // Select mode: the person goes to the form; the palette closes where it was opened.
-      if (item.kind !== 'person') return;
-      close();
-      onSelect(item.hit);
+      if (item.kind === 'school' && onSelectSchool) {
+        close();
+        onSelectSchool(item.hit);
+      } else if (item.kind === 'person' && onSelect) {
+        close();
+        onSelect(item.hit);
+      }
       return;
     }
     if (item.kind === 'recent') {
@@ -488,7 +508,7 @@ function Palette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person'
 
   const trimmed = query.trim();
   const groups: Group[] = trimmed
-    ? groupsOf(answer, trimmed, select)
+    ? groupsOf(answer, trimmed, selecting)
     : recent.length > 0
       ? [{ value: 'Recent searches', items: recent.map((r) => ({ kind: 'recent' as const, key: `recent:${r}`, label: r })) }]
       : [];
@@ -523,7 +543,7 @@ function Palette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person'
       void run(query).then((fresh) => {
         if (!fresh || opening.current !== wait) return;
         opening.current = null;
-        const first = groupsOf(fresh, trimmed, select)[0]?.items[0];
+        const first = groupsOf(fresh, trimmed, selecting)[0]?.items[0];
         if (first) choose(first, explore);
       });
       return;
@@ -643,8 +663,8 @@ function Palette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person'
                 ) : null}
                 {!trimmed && recent.length === 0 && select ? (
                   <p className="px-4 py-4 text-sm text-fg-muted">
-                    Type your teacher&apos;s name in any spelling. Only public profiles are found; a teacher appears here once their
-                    profile is public.
+                    {selectHint ??
+                      "Type your teacher's name in any spelling. Only public profiles are found; a teacher appears here once their profile is public."}
                   </p>
                 ) : null}
                 {!trimmed && recent.length === 0 && !select ? (

@@ -10,6 +10,7 @@ import { useActionState } from 'react';
 import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { TextAreaField } from '@/components/account/textarea-field';
 import { EvidenceUploader, type UploadedEvidenceItem } from '@/components/evidence/uploader';
+import { SearchPick } from '@/components/ui/search-pick';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import { discardEvidenceAction } from '../teachers/historical/actions';
 import {
@@ -235,7 +236,12 @@ export function AddMemberForm({ organizationId, roles, initial }: { organization
     <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-4" data-testid="organization-add-member">
       <FormMessage form={formId} state={state} labels={{ personSlug: 'Public profile', role: 'Role', startsOn: 'Member since' }} />
       <input type="hidden" name="organizationId" value={organizationId} />
-      <TextField form={formId} name="personSlug" label="Public profile" state={state} autoComplete="off" maxLength={300} translate="no" placeholder="/people/…" hint="The address of the person’s public profile. Only public people are listed." className="max-w-[32rem]" />
+      <TextField form={formId} name="personSlug" label="Public profile" state={state} autoComplete="off" maxLength={300} translate="no" placeholder="/people/…" hint="Find them by name, or paste the address of their public profile. Only public people are listed." className="max-w-[32rem]" />
+      {/* Role replay 2026-11-25 (P2-4): choose the person by name instead of typing an address. */}
+      <SearchPick
+        inputId={fieldId(formId, 'personSlug')}
+        words={{ find: 'Find by name', dialog: 'Choose a member', hint: 'Type the person’s name in any spelling. Only public profiles are found.', chosen: 'Chosen: {name}' }}
+      />
       <SelectField form={formId} name="role" label="Role" state={state} autoComplete="off" defaultValue={state.values?.role ?? 'member'} className="max-w-[16rem]">
         {roles.map((r) => (
           <option key={r.value} value={r.value}>
@@ -262,7 +268,12 @@ export function RequestSchoolForm({ organizationId, initial }: { organizationId:
     <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-4" data-testid="organization-request-school">
       <FormMessage form={formId} state={state} single />
       <input type="hidden" name="organizationId" value={organizationId} />
-      <TextField form={formId} name="schoolSlug" label="School’s public page" state={state} autoComplete="off" maxLength={300} translate="no" placeholder="/schools/…" hint="The school’s account accepts or refuses. The school and its pin do not change either way." className="max-w-[32rem]" />
+      <TextField form={formId} name="schoolSlug" label="School’s public page" state={state} autoComplete="off" maxLength={300} translate="no" placeholder="/schools/…" hint="Find it by name or city, or paste the address of its page. The school’s account accepts or refuses. The school and its pin do not change either way." className="max-w-[32rem]" />
+      <SearchPick
+        inputId={fieldId(formId, 'schoolSlug')}
+        kind="school"
+        words={{ find: 'Find the school', dialog: 'Choose a school', hint: 'Type the school’s name or its city. Only listed schools are found.', chosen: 'Chosen: {name}' }}
+      />
       <div>
         <SubmitButton pending={pending} pendingLabel="Asking…" variant="secondary">
           Ask the school
