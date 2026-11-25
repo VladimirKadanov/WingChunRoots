@@ -20,12 +20,12 @@ export const instant = false;
 
 export const metadata: Metadata = {
   title: 'Create an account',
-  description: 'Join the WingChunRoots pilot: record who taught you and whom you teach.',
+  description: 'Join WingChunRoots: record who taught you and whom you teach.',
 };
 
 const ADULTS = {
   title: 'Adults only',
-  text: 'The pilot is open to people aged 18 or older. A tick confirms it; we never ask for a birth date.',
+  text: 'WingChunRoots is open to people aged 18 or older. A tick confirms it; we never ask for a birth date.',
 };
 const CONFIRM = {
   title: 'Confirm your address',

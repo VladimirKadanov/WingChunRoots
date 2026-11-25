@@ -126,7 +126,7 @@ export const LINK_STATUS_LABELS: Record<SchoolLinkStatus, string> = {
 
 /** What the dashboard says when the administration needs the Federation plan (no urgency, plan §5.6). */
 export const FEDERATION_NEEDED =
-  'Member and school administration is part of the Federation plan. In the pilot an administrator of WingChunRoots can give it as a test plan; nothing is charged.';
+  'Member and school administration is part of the Federation plan. For now an administrator of WingChunRoots can give it as a test plan; nothing is charged.';
 
 // --- Limits --------------------------------------------------------------------------------------
 

@@ -596,7 +596,7 @@ export function ProfileEditor({
           >
             <option value="">Not given</option>
             {pilotCountries.length > 0 ? (
-              <optgroup label="Pilot countries">
+              <optgroup label="Countries with cities">
                 {pilotCountries.map((country) => (
                   <option key={country.code} value={country.code}>
                     {country.name}
@@ -618,7 +618,7 @@ export function ProfileEditor({
             label="City"
             optional
             autoComplete="off"
-            hint={filtered && places.length === 0 ? 'The pilot lists no cities in this country yet. Leave it empty.' : 'The pilot lists a small set of cities.'}
+            hint={filtered && places.length === 0 ? 'No cities are listed for this country yet. Leave it empty.' : 'Only some cities are listed so far.'}
             value={values.placeId}
             onValue={(id) => {
               form.setFieldValue('placeId', id);

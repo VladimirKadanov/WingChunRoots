@@ -119,7 +119,7 @@ export default async function PlanSettingsPage({ searchParams }: { searchParams:
               <dt className="pt-3 text-sm text-fg-muted sm:border-y sm:border-border-subtle sm:pb-3">Test plans</dt>
               <dd className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:pt-3">
                 {mine.grants.filter((grant) => !grant.paid).length === 0 ? (
-                  <span className="text-fg-muted">None. During the pilot, an administrator can give a test plan; nothing is charged.</span>
+                  <span className="text-fg-muted">None. An administrator can give a test plan; nothing is charged.</span>
                 ) : (
                   <ul className="grid gap-1.5">
                     {mine.grants.filter((grant) => !grant.paid).map((grant) => (

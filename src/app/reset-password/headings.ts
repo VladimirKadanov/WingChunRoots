@@ -17,7 +17,7 @@ export const NEW_PASSWORD: FrameHeading = {
 };
 
 export const FINISH: FrameHeading = {
-  eyebrow: 'Join the pilot',
+  eyebrow: 'Join WingChunRoots',
   title: 'Finish signing up',
   lede: 'Choose the password for your account. Saving it also confirms your address.',
 };
