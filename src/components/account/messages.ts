@@ -23,7 +23,7 @@ export const AUTH_MESSAGES: Record<string, string> = {
   TOTP_NOT_ENABLED: 'Two-factor authentication is not set up for this account.',
   CONSENT_REQUIRED: 'Confirm that you are 18 or older and accept the terms and the authenticity declaration.',
   STAFF_NEEDS_TWO_FACTOR: 'A staff account keeps two-factor authentication on.',
-  BANNED_USER: 'This account is suspended. Write to the pilot team if you think this is a mistake.',
+  BANNED_USER: 'This account is suspended. Write to the WingChunRoots team if you think this is a mistake.',
   HTTP_429: 'Too many attempts from this connection. Wait a minute, then try again.',
 };
 

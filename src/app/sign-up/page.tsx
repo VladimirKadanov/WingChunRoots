@@ -10,7 +10,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { AuthFrame, FormFooter } from '@/components/account/auth-frame';
-import { isInvitationPath } from '@/lib/invitation-path';
+import { isClaimPath, isInvitationPath } from '@/lib/invitation-path';
 import { safeNextPath } from '@/server/auth/guards';
 import { readFormResult } from '@/server/forms/flash';
 import { LEGAL_DOCUMENTS, REQUIRED_SIGN_UP_CONSENTS } from '@/server/legal/documents';
@@ -20,12 +20,12 @@ export const instant = false;
 
 export const metadata: Metadata = {
   title: 'Create an account',
-  description: 'Join the WingChunRoots pilot: record who taught you and whom you teach.',
+  description: 'Join WingChunRoots: record who taught you and whom you teach.',
 };
 
 const ADULTS = {
   title: 'Adults only',
-  text: 'The pilot is open to people aged 18 or older. A tick confirms it; we never ask for a birth date.',
+  text: 'WingChunRoots is open to people aged 18 or older. A tick confirms it; we never ask for a birth date.',
 };
 const CONFIRM = {
   title: 'Confirm your address',
@@ -48,6 +48,15 @@ const INVITED_NOTES = [
     text: 'After signing in you go back to the invitation and claim the profile the student started for you. You do not set up another one.',
   },
 ] as const;
+/** On the way to the claim page of a profile on record: the claimed profile is the account's own. */
+const CLAIM_NOTES = [
+  ADULTS,
+  CONFIRM,
+  {
+    title: 'Then your claim',
+    text: 'After signing in you go back to the profile you found and ask to claim it. You do not set up another one: the profile on record becomes yours once a reviewer approves the claim.',
+  },
+] as const;
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
@@ -58,7 +67,7 @@ export default async function SignUpPage({ searchParams }: { searchParams: Searc
   const next = safeNextPath(query.next, '');
   const initial = await readFormResult('sign-up', query.outcome);
   return (
-    <AuthFrame notes={isInvitationPath(next) ? INVITED_NOTES : NOTES} notesLabel="How joining works">
+    <AuthFrame notes={isInvitationPath(next) ? INVITED_NOTES : isClaimPath(next) ? CLAIM_NOTES : NOTES} notesLabel="How joining works">
       <SignUpForm
         required={REQUIRED_SIGN_UP_CONSENTS}
         terms={doc(LEGAL_DOCUMENTS.terms)}

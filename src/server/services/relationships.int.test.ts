@@ -426,7 +426,7 @@ describe('requests: checks and idempotency', () => {
     await getDb().update(person).set({ claimedByUserId: null, stewardship: 'unclaimed' }).where(eq(person.id, unclaimed.teacher.personId));
     expect(await resubmitFields(unclaimed.student, unclaimed.id)).toEqual({
       code: 'BAD_REQUEST',
-      fields: { teacherId: 'This teacher has no account yet. Requests to teachers without an account open later in the pilot.' },
+      fields: { teacherId: 'This teacher is not on WingChunRoots yet. Send your request with an invitation instead: the form offers it when you choose them.' },
     });
     expect(await statusOf(unclaimed.id)).toEqual({ status: 'rejected', visibility: 'involved_only' });
     // The teacher's profile was removed.

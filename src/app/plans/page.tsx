@@ -31,7 +31,7 @@ import { type PlanCatalog, planCatalog, type PlanSummary } from '@/server/servic
 
 export const metadata: Metadata = {
   title: 'Plans',
-  description: 'The plans of the WingChunRoots pilot: what each includes, which features are planned, and proposed prices that are not final.',
+  description: 'The plans of WingChunRoots: what each includes, which features are planned, and proposed prices that are not final.',
 };
 
 type Feature = PlanCatalog['features'][number];
@@ -40,7 +40,7 @@ const GROUPS: readonly { id: string; title: string; lead: string; codes: readonl
   {
     id: 'students',
     title: 'For students',
-    lead: 'In the pilot both student plans give the same: your profile, your teachers and your place in the lineage. What Premium Student adds is planned.',
+    lead: 'Both student plans give you your profile, your teachers and your place in the lineage. Premium Student adds a photo gallery, videos, your lineage card, a featured profile, your kung fu family page, a supporter badge and the full training passport.',
     codes: ['free_student', 'premium_student'],
   },
   {
@@ -194,7 +194,7 @@ function Head({ plans }: { plans: PlanSummary[] }) {
  */
 function CompareTable({ catalog, plans, caption }: { catalog: PlanCatalog; plans: PlanSummary[]; caption: string }) {
   const groups = [
-    { id: 'now', title: 'In the pilot', features: catalog.features.filter((f) => f.availability === 'now') },
+    { id: 'now', title: 'Available now', features: catalog.features.filter((f) => f.availability === 'now') },
     { id: 'planned', title: catalog.plannedLabel, features: catalog.features.filter((f) => f.availability === 'planned') },
   ];
   return (
@@ -316,10 +316,10 @@ export default function PlansPage() {
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <div className="max-w-[60rem]">
         <p className="eyebrow">Plans</p>
-        <h1 className="mt-2 font-display text-feature">Plans of the pilot</h1>
+        <h1 className="mt-2 font-display text-feature">Plans and what they include</h1>
         <p className="mt-3 max-w-[60ch] text-fg-muted">
-          Every account starts on a free plan: Free Student, or Free Sifu for instructors. During the pilot, an administrator can give a
-          test plan instead of a payment.
+          Every account starts on a free plan: Free Student, or Free Sifu for instructors. Payments run in test mode for now, and an
+          administrator can also give a test plan.
         </p>
         <p data-testid="plans-banner" className="mt-6 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-ui font-semibold">
           {catalog.banner}
@@ -355,7 +355,7 @@ export default function PlansPage() {
               <h2 id="organizations-heading" className="font-display text-2xl sm:text-3xl">
                 For organizations
               </h2>
-              <p className="max-w-[60ch] text-ui">For associations and federations with affiliated schools. Most of it is planned.</p>
+              <p className="max-w-[60ch] text-ui">For associations and federations with affiliated schools.</p>
               {/* M23 (docs/adr/0026-federation-billing.md; DEFAULT M23, question 1): the owner of an
                   approved federation subscribes, in test mode, from the organization's billing page,
                   for what the plan gives now. The link is the same for every visitor. */}

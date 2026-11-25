@@ -17,7 +17,7 @@ export function accountSuspended(user: { banned?: boolean | null; banExpires?: M
 }
 
 /** The message a suspended account is shown (components/account/messages.ts has the same words). */
-export const SUSPENDED_MESSAGE = 'This account is suspended. Write to the pilot team if you think this is a mistake.';
+export const SUSPENDED_MESSAGE = 'This account is suspended. Write to the WingChunRoots team if you think this is a mistake.';
 
 /**
  * The address of an erased account (privacy.ts): its row stays as a tombstone, because other records

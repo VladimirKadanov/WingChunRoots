@@ -423,7 +423,7 @@ test('@M08 the upgrade prompt lists only features available in the current relea
 
 test('@M08 /plans labels planned features as not yet available and states that prices are proposals and payments are unavailable', async ({ page }) => {
   await page.goto('/plans');
-  await expect(page.getByRole('heading', { level: 1, name: 'Plans of the pilot' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Plans and what they include' })).toBeVisible();
   await expect(page.getByTestId('plans-banner')).toHaveText(BANNER);
 
   // A comparison per audience (students, instructors); in each, every feature of the matrix in its

@@ -122,6 +122,8 @@ export default async function ReportProfilePage({ params, searchParams }: { para
             reasons={Object.entries(REPORT_REASON_LABELS).map(([value, label]) => ({ value, label }))}
             idempotencyKey={randomUUID()}
             initial={initial}
+            // ADR 0056: "Report it as a second profile of you" from the claim page starts on its reason.
+            reason={query.reason === 'misleading' ? 'misleading' : undefined}
           />
         </>
       )}

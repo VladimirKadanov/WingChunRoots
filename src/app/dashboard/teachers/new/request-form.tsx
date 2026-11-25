@@ -16,6 +16,11 @@
 // relationships.request or relationships.resubmit with an idempotency key the page made for it, so
 // a double press or a retried post sends one request.
 //
+// A teacher whose record nobody has claimed yet (they are not on WingChunRoots themselves, ADR 0056)
+// is not a dead end: the form says so as soon as they are chosen, asks for their e-mail address
+// (optional), and the same button sends the request with an invitation (relationships.invite with
+// the record's id). The request waits for them to join and claim their profile.
+//
 // Without JavaScript the palette cannot open: the page offers a search form of its own above this
 // one (`<noscript>`), whose results choose the teacher through the address (?teacher=<slug>).
 
@@ -56,11 +61,13 @@ interface ChosenTeacher {
   lang: string;
   where: string;
   hasLineage: boolean;
+  /** ADR 0056: nobody has claimed the record yet; the request goes with an invitation. */
+  invitable: boolean;
 }
 
 function teacherFrom(values: Record<string, string> | undefined): ChosenTeacher | null {
   if (!values?.teacherId || !values.teacherName) return null;
-  return { id: values.teacherId, name: values.teacherName, lang: values.teacherLang || 'und', where: values.teacherWhere ?? '', hasLineage: values.teacherHasLineage !== 'no' };
+  return { id: values.teacherId, name: values.teacherName, lang: values.teacherLang || 'und', where: values.teacherWhere ?? '', hasLineage: values.teacherHasLineage !== 'no', invitable: values.teacherInvitable === 'yes' };
 }
 
 const SELECTS = ['fromMonth', 'toMonth', 'schoolId'] as const;
@@ -140,6 +147,7 @@ export function RequestForm({
       lang: hit.displayName.lang,
       where: placeLine({ city: hit.city, countryCode: hit.countryCode, lineage: hit.lineageName }),
       hasLineage: hit.lineageName !== null,
+      invitable: hit.invitable === true,
     });
     setAnnounce(`Chosen: ${hit.displayName.value}.`);
     // The palette gives the focus back to where it was opened from: the chooser, now "Choose another teacher".
@@ -168,7 +176,10 @@ export function RequestForm({
   // A teacher with no confirmed link has no lineage of their own: the request must name one.
   const lineageNeeded = !resubmit && teacher !== null && !teacher.hasLineage;
 
-  const labels: Record<string, string> = { teacherId: 'Teacher', lineageId: 'Lineage' };
+  // ADR 0056: a teacher who is not on WingChunRoots yet gets the request with an invitation.
+  const inviting = !resubmit && teacher !== null && teacher.invitable;
+
+  const labels: Record<string, string> = { teacherId: 'Teacher', lineageId: 'Lineage', email: 'Teacher’s e-mail address' };
   for (let i = 0; i < count; i += 1) {
     const n = count > 1 ? ` ${i + 1}` : '';
     labels[`periods.${i}.fromYear`] = `Period${n}, started`;
@@ -202,6 +213,7 @@ export function RequestForm({
                 <input type="hidden" name="teacherLang" value={teacher.lang} />
                 <input type="hidden" name="teacherWhere" value={teacher.where} />
                 <input type="hidden" name="teacherHasLineage" value={teacher.hasLineage ? 'yes' : 'no'} />
+                <input type="hidden" name="teacherInvitable" value={teacher.invitable ? 'yes' : 'no'} />
                 <p data-testid="chosen-teacher" className="grid gap-0.5">
                   <NameText name={{ value: teacher.name, lang: teacher.lang }} className="font-display text-xl" />
                   {teacher.where ? <span className="text-sm text-fg-muted">{teacher.where}</span> : null}
@@ -209,7 +221,7 @@ export function RequestForm({
               </>
             ) : (
               <p className="max-w-[56ch] text-ui text-fg-muted">
-                Find your teacher by name, in any spelling. Only teachers with a public profile on WingChunRoots can confirm a request.
+                Find your teacher by name, in any spelling. If they are not on WingChunRoots yet, you can invite them with the request.
               </p>
             )}
             {teacherError ? (
@@ -245,6 +257,31 @@ export function RequestForm({
           </div>
         )}
       </section>
+
+      {inviting && teacher ? (
+        <section aria-labelledby={`${formId}-invitation`} className="grid gap-3" data-testid="teacher-not-joined">
+          <h2 id={`${formId}-invitation`} className="font-display text-2xl">
+            Invite them
+          </h2>
+          <p className="max-w-[60ch] text-ui">
+            <NameText name={{ value: teacher.name, lang: teacher.lang }} /> is not on WingChunRoots yet. Your request is kept for them: it reaches them when they join
+            and claim their profile, and reviewers check that claim first.
+          </p>
+          <TextField
+            form={formId}
+            name="email"
+            type="email"
+            label="Teacher’s e-mail address"
+            optional
+            autoComplete="off"
+            inputMode="email"
+            maxLength={320}
+            hint="We send one e-mail with a link to join and claim the profile. The link works for 14 days and only once. The address is used for nothing else and is deleted 30 days after the invitation ends. You can also send the invitation later from Your teachers."
+            state={state}
+            className="max-w-[34rem]"
+          />
+        </section>
+      ) : null}
 
       {/* The lineage. */}
       <section aria-labelledby={`${formId}-lineage`} className="grid gap-3">
@@ -384,7 +421,7 @@ export function RequestForm({
         </p>
         <div>
           <SubmitButton pending={pending} pendingLabel="Sending…">
-            {resubmit ? 'Send the request again' : 'Send the request'}
+            {resubmit ? 'Send the request again' : inviting ? 'Send the request and invite' : 'Send the request'}
           </SubmitButton>
         </div>
       </div>

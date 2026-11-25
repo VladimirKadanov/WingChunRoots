@@ -87,8 +87,8 @@ function requestInput(form: FormData) {
   const displayPrimary = ticked(form, 'displayPrimary');
   const key = textValue(form, 'idempotencyKey', 64);
   // The chosen teacher's name, as the form showed it: shown again after an error.
-  for (const name of ['teacherId', 'teacherName', 'teacherLang', 'teacherWhere', 'teacherHasLineage', 'lineageId', 'idempotencyKey'] as const) {
-    const value = textValue(form, name, 300);
+  for (const name of ['teacherId', 'teacherName', 'teacherLang', 'teacherWhere', 'teacherHasLineage', 'teacherInvitable', 'lineageId', 'email', 'idempotencyKey'] as const) {
+    const value = textValue(form, name, name === 'email' ? 400 : 300);
     if (value) values[name] = value;
   }
   if (displayPrimary) values.displayPrimary = 'on';
@@ -105,20 +105,32 @@ function requestInput(form: FormData) {
   };
 }
 
-/** "Send the request" of /dashboard/teachers/new (relationships.request). */
+/**
+ * "Send the request" of /dashboard/teachers/new (relationships.request), or "Send the request and
+ * invite" when the chosen teacher is not on WingChunRoots yet (relationships.invite with the
+ * record's id, ADR 0056). The procedure checks the record either way: a teacher who joined since
+ * the search comes back as a field error that says so.
+ */
 export async function requestTeacherAction(_previous: FormState, form: FormData): Promise<FormState> {
   const { input, values } = requestInput(form);
-  let sent: string;
+  const inviting = values.teacherInvitable === 'yes';
+  let target: string;
   try {
-    const result = await serverClient(await headers(), await getRequestPrincipal()).relationships.request(input);
-    sent = result.relationship.id;
+    const client = serverClient(await headers(), await getRequestPrincipal());
+    if (inviting) {
+      const result = await client.relationships.invite({ ...input, email: values.email ?? null, evidenceIds: [] });
+      target = `${TEACHERS}?invited=${result.relationship.id}`;
+    } else {
+      const result = await client.relationships.request(input);
+      target = `${TEACHERS}?sent=${result.relationship.id}`;
+    }
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(NEW);
     const state = formFields(formStateFromFailure(error, values));
     return formResult({ form: REQUEST_FORM, page: NEW, anchor: outcomeTarget(REQUEST_FORM, state, false) }, state);
   }
-  redirect(atOutcome(`${TEACHERS}?sent=${sent}`));
+  redirect(atOutcome(target));
 }
 
 /** "Send it again" of /dashboard/teachers/new?resubmit=<id> (relationships.resubmit). */

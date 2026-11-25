@@ -18,7 +18,8 @@ import { sql } from 'drizzle-orm';
 
 import { getDb } from '../src/server/db';
 import { uuidv7 } from '../src/server/db/ids';
-import { BASE_URL, closeHelpers, createConfirmedAccount, giveOwnAddress, loadTestEnv, NEW_ACCOUNT_PASSWORD, signInAs, userIdOf } from './helpers/auth';
+import { writePersonKeys } from '../src/server/search/store';
+import { BASE_URL, closeHelpers, createConfirmedAccount, emailLinkFromOutbox, giveOwnAddress, loadTestEnv, NEW_ACCOUNT_PASSWORD, signInAs, uniqueEmail, userIdOf } from './helpers/auth';
 import { letters } from './helpers/evidence';
 import { apiPost } from './helpers/plans';
 import { expectNoAxeViolations, switchColorScheme } from './helpers/ui';
@@ -57,6 +58,8 @@ async function claimableRecord(opts: RecordOptions = {}): Promise<{ id: string; 
     VALUES (${id}::uuid, ${slug}, ${opts.kind ?? 'living'}, ${opts.lifeStatus ?? 'living'}, ${opts.stewardship ?? 'unclaimed'}, 'public')`);
   await getDb().execute(sql`
     INSERT INTO person_name (person_id, value, script, lang, is_primary) VALUES (${id}::uuid, ${name}, 'Latn', 'en', true)`);
+  // Searchable, as a saved record is (ADR 0056: the request form and onboarding find it).
+  await writePersonKeys(getDb(), id);
   return { id, slug, name };
 }
 
@@ -143,6 +146,11 @@ test('@claim refusals in plain words: an account with a profile, a claimed profi
   await signInAs(member.page, 'demo-pending');
   await member.page.goto(`/people/${target.slug}/claim`);
   await expect(visible(member.page.getByTestId('claim-refusal'))).toContainText('already has its own profile');
+  // ADR 0056: not a dead end: the record can be reported as a second profile of them.
+  await visible(member.page.getByTestId('claim-report-duplicate')).click();
+  await member.page.waitForURL((u) => u.pathname === `/people/${target.slug}/report` && u.searchParams.get('reason') === 'misleading');
+  await expect(visible(member.page.getByLabel('Reason'))).toHaveValue('misleading');
+  await member.page.goto(`/people/${target.slug}/claim`);
   await expect(member.page.getByTestId('claim-form')).toHaveCount(0);
   // A claimed profile offers no claim, and its claim page says why.
   await member.page.goto('/people/demo-two-lineages');
@@ -170,4 +178,112 @@ test('@claim refusals in plain words: an account with a profile, a claimed profi
   const userId = (await userIdOf(account.email))!;
   expect((await claimRows(userId)).map((r) => [r.status, r.person_id, r.relationship_id])).toEqual([['pending', target.id, null]]);
   await Promise.all([member.context.close(), noScript.context.close()]);
+});
+
+test('@claim "Create an account" on the way to a claim keeps it through sign-up and the e-mail confirmation: no profile is set up on the way (ADR 0056)', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const target = await claimableRecord();
+  const { context, page } = await newClient(browser);
+  const claimPath = `/people/${target.slug}/claim`;
+  await page.goto(claimPath);
+  await page.waitForURL((u) => u.pathname === '/sign-in' && u.searchParams.get('next') === claimPath, { timeout: 15_000 });
+  await visible(page.getByRole('link', { name: 'Create an account' })).click();
+  await page.waitForURL((u) => u.pathname === '/sign-up' && u.searchParams.get('next') === claimPath, { timeout: 15_000 });
+  // The page says what comes after: the claim, not a new profile.
+  await expect(visible(page.getByText('Then your claim'))).toBeVisible();
+  const email = uniqueEmail('claim-sign-up');
+  await visible(page.getByLabel('E-mail address')).fill(email);
+  await visible(page.getByLabel('Password', { exact: true })).fill(NEW_ACCOUNT_PASSWORD);
+  for (const label of ['I am 18 or older.', 'I accept the terms of use.', /I will record only what I believe to be true/, /I have read the privacy notice\./]) {
+    await visible(page.getByLabel(label)).check();
+  }
+  await visible(page.getByRole('button', { name: 'Create account' })).click();
+  await expect(visible(page.getByRole('heading', { level: 1, name: 'Check your inbox' }))).toBeVisible();
+
+  // The confirmation link carries the claim page, and so does the sign-in it leads to.
+  const link = new URL(await emailLinkFromOutbox('verify-email', email));
+  expect(link.searchParams.get('next')).toBe(claimPath);
+  await page.goto(`${link.pathname}${link.search}`);
+  await visible(page.getByRole('button', { name: 'Confirm my address' })).click();
+  await page.waitForURL((u) => u.pathname === '/sign-in' && u.searchParams.get('next') === claimPath, { timeout: 15_000 });
+  await visible(page.getByLabel('Password', { exact: true })).fill(NEW_ACCOUNT_PASSWORD);
+  await visible(page.getByRole('button', { name: 'Sign in' })).click();
+  await page.waitForURL((u) => u.pathname === claimPath, { timeout: 15_000 });
+  await expect(visible(page.getByTestId('claim-explainer'))).toBeVisible();
+  const userId = (await userIdOf(email))!;
+  const own = await getDb().execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM person WHERE claimed_by_user_id = ${userId}::uuid`);
+  expect(own.rows[0]!.n, 'the account made no profile of its own').toBe(0);
+  await context.close();
+});
+
+test('@claim onboarding finds a profile nobody has claimed and leads to its claim, without JavaScript too (ADR 0056)', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const target = await claimableRecord();
+  for (const javaScriptEnabled of [true, false]) {
+    const { context, page } = await newClient(browser, { javaScriptEnabled });
+    await signInAs(page, 'new');
+    await page.goto('/onboarding');
+    const box = visible(page.getByTestId('onboarding-find-yourself'));
+    await box.getByText('Is there a profile of you already?').click();
+    await box.getByLabel('Your name').fill(target.name);
+    await box.getByRole('button', { name: 'Look for my profile' }).click();
+    await page.waitForURL((u) => u.pathname === '/onboarding' && u.searchParams.get('find') === target.name);
+    const found = visible(page.getByRole('list', { name: 'Profiles nobody has claimed yet' })).getByRole('listitem').filter({ hasText: target.name });
+    await expect(found).toHaveCount(1);
+    await found.getByRole('link', { name: 'This is me: ask to claim it' }).click();
+    await page.waitForURL((u) => u.pathname === `/people/${target.slug}/claim`);
+    await expect(visible(page.getByTestId('claim-explainer'))).toBeVisible();
+    // A name nobody waits under says so, and the set-up form stays below.
+    await page.goto(`/onboarding?find=${encodeURIComponent('Demo Nobody Zzqx')}`);
+    await expect(visible(page.getByTestId('onboarding-find-yourself')).getByRole('status')).toContainText('No profile waiting to be claimed');
+    await context.close();
+  }
+});
+
+test('@claim a student names a teacher who is not on WingChunRoots yet: the form says so and sends the request with an invitation to that record (ADR 0056)', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const target = await claimableRecord();
+  const { context, page } = await newClient(browser);
+  const account = await signInAs(page, 'new');
+  const onboard = await apiPost(page, '/account/onboard', { primaryName: `Demo Student ${capital(letters())}`, showPublicly: false });
+  expect(onboard.status(), await onboard.text()).toBe(200);
+
+  await page.goto('/dashboard/teachers/new');
+  const input = page.getByRole('combobox', { name: 'Choose your teacher' });
+  await expect(async () => {
+    await visible(page.getByRole('button', { name: 'Find your teacher' })).click();
+    await expect(input).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  const answered = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/rpc/search/query');
+  await input.fill(target.name);
+  expect((await answered).status()).toBe(200);
+  const option = page.getByTestId('search-palette').getByRole('option').filter({ hasText: target.name });
+  await expect(option.getByTestId('search-person-not-joined')).toHaveText('Not on WingChunRoots yet');
+  await option.click();
+  await expect(input).toBeHidden();
+
+  const panel = visible(page.getByTestId('teacher-not-joined'));
+  await expect(panel).toContainText(`${target.name} is not on WingChunRoots yet`);
+  const teacherEmail = uniqueEmail('not-joined-teacher');
+  await panel.getByLabel(/Teacher’s e-mail address/).fill(teacherEmail);
+  await visible(page.getByLabel(/^Lineage of this training/)).selectOption({ label: 'Demo Lineage A' });
+  await visible(page.getByLabel('Started (year)')).fill('2018');
+  await visible(page.getByLabel('I still train with this teacher')).check();
+  for (const theme of THEMES) {
+    await switchColorScheme(page, theme);
+    await expectNoAxeViolations(page, `request form, teacher not on WingChunRoots yet (${theme})`);
+  }
+  await visible(page.getByRole('button', { name: 'Send the request and invite' })).click();
+  await page.waitForURL((u) => u.pathname === '/dashboard/teachers' && u.searchParams.has('invited'), { timeout: 15_000 });
+  await expect(visible(page.getByTestId('teacher-invited'))).toContainText('The invitation was sent');
+
+  // The request waits on the record that was found: no second record of the teacher.
+  const userId = (await userIdOf(account.email))!;
+  const rows = await getDb().execute<{ teacher: string; status: string }>(sql`
+    SELECT r.teacher_person_id::text AS teacher, r.status FROM teaching_relationship r
+      JOIN person s ON s.id = r.student_person_id WHERE s.claimed_by_user_id = ${userId}::uuid`);
+  expect(rows.rows).toEqual([{ teacher: target.id, status: 'awaiting_claim' }]);
+  const invitation = new URL(await emailLinkFromOutbox('invitation', teacherEmail));
+  expect(invitation.pathname).toMatch(/^\/invite\//);
+  await context.close();
 });

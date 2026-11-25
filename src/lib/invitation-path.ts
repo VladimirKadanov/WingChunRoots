@@ -4,11 +4,16 @@
 // its `next` through the confirmation e-mail and the sign-in that follows (src/app/sign-up,
 // src/server/auth/emails.ts), so a teacher invited without an account comes back to the claim
 // instead of setting up a profile of their own, and a visitor who asked a school for a trial lesson
-// comes back to that request after onboarding.
+// comes back to that request after onboarding. The claim page of a public profile,
+// /people/<slug>/claim (ADR 0040), rides too (all-roles replay 2026-11-25): without it a visitor who
+// pressed "Is this you?" lost the claim at sign-up, set up a profile of their own in onboarding, and
+// then could claim nothing.
 
 const INVITATION_PATH = /^\/invite\/[A-Za-z0-9_-]{43}$/;
 /** The slug rule of /schools/[slug]/trial (its page refuses any other slug). */
 const TRIAL_PATH = /^\/schools\/[a-z0-9-]{1,120}\/trial$/;
+/** The slug rule of /people/[slug]/claim (the claim page refuses any other slug). */
+const CLAIM_PATH = /^\/people\/[a-z0-9]+(?:-[a-z0-9]+)*\/claim$/;
 
 /** Whether `path` is the local path of an invitation link. */
 export function isInvitationPath(path: unknown): path is string {
@@ -20,7 +25,12 @@ export function isTrialPath(path: unknown): path is string {
   return typeof path === 'string' && TRIAL_PATH.test(path);
 }
 
+/** Whether `path` is the local path of a public profile's claim page. */
+export function isClaimPath(path: unknown): path is string {
+  return typeof path === 'string' && path.length <= 140 && CLAIM_PATH.test(path);
+}
+
 /** Whether `path` rides in the confirmation e-mail's link (nothing else does). */
 export function ridesInConfirmationLink(path: unknown): path is string {
-  return isInvitationPath(path) || isTrialPath(path);
+  return isInvitationPath(path) || isTrialPath(path) || isClaimPath(path);
 }

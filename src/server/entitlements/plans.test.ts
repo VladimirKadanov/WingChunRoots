@@ -173,7 +173,7 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
     const digest = createHash('sha256')
       .update(JSON.stringify({ PLANS, FEATURES, GRANTABLE_PLANS, FEDERATION_EXTRAS, DOWNGRADE_RULES }))
       .digest('hex');
-    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-19.4', digest: '13134c9f50d79d8ed21fee926cb3131aa5557065a73221d16021c0c2c7d398ae' });
+    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-25.1', digest: '6ad68faf5fe14eae77559601fd7842ebba6b86f6e571a81c1c7f2c7eec0d8611' });
   });
 });
 

@@ -4,7 +4,7 @@
 import type { FrameHeading } from '@/components/account/auth-frame';
 import type { FormState } from '@/lib/form-state';
 
-const EYEBROW = 'Join the pilot';
+const EYEBROW = 'Join WingChunRoots';
 
 /** "e-mail" never breaks at its hyphen in a heading. */
 const TITLE = (

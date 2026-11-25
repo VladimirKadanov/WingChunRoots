@@ -182,7 +182,7 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Sear
             <div className="grid gap-5">
               {privacy.deletionRequest ? null : (
                 <div className="grid max-w-[62ch] gap-2 text-ui text-fg-muted">
-                  <p>Asking for deletion sends your request to the administrators, who carry it out by hand during the pilot.</p>
+                  <p>Asking for deletion sends your request to the administrators, who carry it out by hand.</p>
                   <ul className="grid list-disc gap-1 pl-5 text-sm">
                     <li>Your sign-in, consents and profile details (names in their own script, biography, city, year) are deleted.</li>
                     <li>

@@ -846,7 +846,7 @@ export async function writePeriods(tx: Transaction, relationshipId: string, rows
 
 export async function recordEvent(
   tx: Transaction,
-  event: { relationshipId: string; from: RelationshipStatus | null; to: RelationshipStatus; actor: Principal; role: string; reason?: string | null; key: string },
+  event: { relationshipId: string; from: RelationshipStatus | null; to: RelationshipStatus; actor: Principal; role: string; reason?: string | null; key: string | null },
 ): Promise<string> {
   const id = uuidv7();
   await tx.insert(relationshipEvent).values({
@@ -1097,7 +1097,9 @@ async function withFormChecks(error: ServiceError, raw: unknown): Promise<Servic
   return new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
 }
 
-const NO_ACCOUNT_MESSAGE = 'This teacher has no account yet. Requests to teachers without an account open later in the pilot.';
+const NO_ACCOUNT_MESSAGE = 'This teacher is not on WingChunRoots yet. Send your request with an invitation instead: the form offers it when you choose them.';
+/** A living person's record the archive keeps (stewardship platform): nobody can answer for it. */
+const ARCHIVE_KEPT_MESSAGE = 'The archive keeps this record, so nobody can answer a request for it. Report the record if it is about your teacher and should be theirs.';
 /** M10a: the field error of a historical or deceased teacher in the request form (they are confirmed by review). */
 export const HISTORICAL_TEACHER_MESSAGE =
   'This teacher is a historical record: the review committee confirms training with them, from your evidence. Use “Name a historical teacher” instead.';
@@ -1113,14 +1115,15 @@ const LINEAGE_UNKNOWN = 'Choose a lineage from the list.';
  */
 async function teacherRefusal(db: Executor, teacherId: string, studentId: string, options: { mustBePublic: boolean }): Promise<string | null> {
   const [teacher] = await db
-    .select({ id: person.id, claimedBy: person.claimedByUserId, kind: person.kind, lifeStatus: person.lifeStatus, isPublic: sql<boolean>`EXISTS (SELECT 1 FROM v_public_person vp WHERE vp.id = ${teacherId}::uuid)` })
+    .select({ id: person.id, claimedBy: person.claimedByUserId, stewardship: person.stewardship, kind: person.kind, lifeStatus: person.lifeStatus, isPublic: sql<boolean>`EXISTS (SELECT 1 FROM v_public_person vp WHERE vp.id = ${teacherId}::uuid)` })
     .from(person)
     .where(and(eq(person.id, teacherId), isNull(person.deletedAt)));
   if (!teacher || (options.mustBePublic && !teacher.isPublic)) return 'Choose your teacher from the search.';
   if (teacher.id === studentId) return 'You can’t name yourself as your teacher.';
   // M10a: a historical or deceased teacher is confirmed by the review committee, with evidence.
   if (teacher.kind === 'historical' || teacher.lifeStatus === 'deceased') return HISTORICAL_TEACHER_MESSAGE;
-  if (!teacher.claimedBy || teacher.kind !== 'living') return NO_ACCOUNT_MESSAGE;
+  // ADR 0056: an unclaimed record goes with an invitation (relationships.invite with teacherId).
+  if (!teacher.claimedBy || teacher.kind !== 'living') return teacher.stewardship === 'platform' ? ARCHIVE_KEPT_MESSAGE : NO_ACCOUNT_MESSAGE;
   return null;
 }
 
