@@ -721,8 +721,8 @@ test('@M08 student and Sifu dashboards render empty states with a next action', 
   await expect(page.getByRole('heading', { level: 2, name: 'Student requests' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 2, name: 'My schools' })).toBeVisible();
   await expect(page.getByTestId('empty-student-requests')).toContainText('No student requests waiting.');
-  await expect(link('empty-student-requests')).toHaveText('See how your name reads');
-  await expect(link('empty-student-requests')).toHaveAttribute('href', '/account');
+  await expect(link('empty-student-requests')).toHaveText('Invite your students');
+  await expect(link('empty-student-requests')).toHaveAttribute('href', '/dashboard/students/invite');
   await expect(page.getByTestId('empty-schools')).toContainText('No school lists you as an instructor yet. List your school, or ask its head instructor to add you');
   // Help, not a price table: the schools empty state links nowhere.
   await expect(link('empty-schools')).toHaveCount(0);

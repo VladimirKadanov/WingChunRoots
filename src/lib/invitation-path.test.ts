@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isClaimPath, isInvitationPath, isTrialPath, ridesInConfirmationLink } from './invitation-path';
+import { isClaimPath, isInvitationPath, isTeacherRequestPath, isTrialPath, ridesInConfirmationLink, teacherRequestPath } from './invitation-path';
 
 const TOKEN = 'A'.repeat(43);
 
@@ -31,11 +31,21 @@ describe('the paths that ride in the confirmation link', () => {
     expect(isClaimPath('//evil.example/people/demo/claim')).toBe(false);
   });
 
-  it('carries only those three, never another local page or an address elsewhere', () => {
+  it("knows the request form with a teacher chosen (a Sifu's invite link)", () => {
+    expect(isTeacherRequestPath(teacherRequestPath('demo-root-a'))).toBe(true);
+    expect(isTeacherRequestPath('/dashboard/teachers/new')).toBe(false);
+    expect(isTeacherRequestPath('/dashboard/teachers/new?teacher=demo-a&q=x')).toBe(false);
+    expect(isTeacherRequestPath('/dashboard/teachers/new?resubmit=1')).toBe(false);
+    expect(isTeacherRequestPath('/dashboard/teachers/new?teacher=Demo')).toBe(false);
+    expect(isTeacherRequestPath(`/dashboard/teachers/new?teacher=${'a'.repeat(200)}`)).toBe(false);
+  });
+
+  it('carries only those four, never another local page or an address elsewhere', () => {
+    expect(ridesInConfirmationLink('/dashboard/teachers/new?teacher=demo-a')).toBe(true);
     expect(ridesInConfirmationLink(`/invite/${TOKEN}`)).toBe(true);
     expect(ridesInConfirmationLink('/schools/demo-a/trial')).toBe(true);
     expect(ridesInConfirmationLink('/people/demo-a-005/claim')).toBe(true);
-    for (const other of ['/', '/dashboard', '/account', '/admin', 'https://evil.example/', '', null, 42]) {
+    for (const other of ['/', '/dashboard', '/dashboard/teachers/new', '/account', '/admin', 'https://evil.example/', '', null, 42]) {
       expect(ridesInConfirmationLink(other)).toBe(false);
     }
   });

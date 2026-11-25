@@ -32,5 +32,19 @@ export function afterOnboarding(next: string): string {
 export function chosenAccountType(form: FormData): AccountType | null {
   const value = form.get('accountType');
   if (typeof value !== 'string' || value === '') return null;
+  // "I'm new to Wing Chun" is a Student account (beginnerChoice() sends it on to the schools).
+  if (value === BEGINNER) return 'student';
   return value.slice(0, 16) as AccountType;
+}
+
+/** The value of "I'm new to Wing Chun" on the onboarding form. */
+export const BEGINNER = 'new';
+
+/** Where a beginner goes after onboarding without a `next` of their own: the school finder. */
+export const BEGINNER_NEXT = '/schools';
+
+/** Where onboarding ends for this form: a beginner without a `next` of their own finds a school. */
+export function afterOnboardingFor(form: FormData, next: string): string {
+  const after = afterOnboarding(next);
+  return form.get('accountType') === BEGINNER && after === ONBOARDING_DEFAULT_NEXT ? BEGINNER_NEXT : after;
 }

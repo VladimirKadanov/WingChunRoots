@@ -64,9 +64,14 @@ export interface OnboardingFormOptions {
   latestStartYear: number;
 }
 
-/** The two ways to take part: the account type account.setType sets (DEFAULT D04: verifies nothing). */
+/**
+ * The ways to take part: the account type account.setType sets (DEFAULT D04: verifies nothing).
+ * "I'm new to Wing Chun" is a Student account that goes on to the school finder (role replay
+ * 2026-11-25, P1-6: a beginner has no teacher to name yet).
+ */
 const ROLES = [
   { value: 'student', title: 'I train', hint: 'You train with one or more teachers. You can change this later in your settings.' },
+  { value: 'new', title: 'I’m new to Wing Chun', hint: 'You are looking for a school to start. Next we show you schools near you; you can name a teacher later.' },
   {
     value: 'sifu',
     title: 'I teach',

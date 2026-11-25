@@ -82,6 +82,8 @@ function Empty({ testId, children, action }: { testId: string; children: ReactNo
 
 /** The one real step for a teacher's account with a profile before anyone names them. */
 const NAME_CHECK = { href: '/account', label: 'See how your name reads' };
+/** A Sifu's invite link and QR code for their students (role replay 2026-11-25, P1-3). */
+const INVITE_STUDENTS = { href: '/dashboard/students/invite', label: 'Invite your students' };
 /** The student's next step: a request to a teacher (M09). */
 const NAME_TEACHER = { href: '/dashboard/teachers/new', label: 'Name a teacher' };
 
@@ -172,9 +174,9 @@ function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade
       >
         {upgrade}
         {requests.length === 0 ? (
-          <Empty testId="empty-student-requests" action={overview.hasProfile ? NAME_CHECK : undefined}>
+          <Empty testId="empty-student-requests" action={overview.hasProfile ? INVITE_STUDENTS : undefined}>
             {overview.hasProfile
-              ? 'No student requests waiting. Students find you by your name in the lineage and send you a request; it appears here.'
+              ? 'No student requests waiting. Students find you by your name in the lineage, or open your invite link, and send you a request; it appears here.'
               : 'Student requests appear here once your profile is set up, so your students can find you by your name.'}
           </Empty>
         ) : (
