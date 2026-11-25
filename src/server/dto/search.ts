@@ -33,6 +33,12 @@ export const personHitSchema = z.object({
   lineageName: z.string().nullable(),
   /** At least one verified public relationship. */
   verified: z.boolean(),
+  /**
+   * A living person's record that no account has claimed yet: they are not on WingChunRoots
+   * themselves, so a request to them goes with an invitation (relationships.invite with teacherId).
+   * Public already: the profile page offers "claim" on the same records.
+   */
+  invitable: z.boolean(),
   /** M14: the public profile photo (the 96 px thumbnail and the 512 px image), or null. */
   photo: photoSchema.nullable().optional(),
   /**

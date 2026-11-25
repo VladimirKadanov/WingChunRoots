@@ -16,12 +16,15 @@ export function ReportForm({
   personId,
   slug,
   reasons,
+  reason: startReason,
   idempotencyKey,
   initial,
 }: {
   personId: string;
   slug: string;
   reasons: { value: string; label: string }[];
+  /** The reason the form starts on (?reason=), when no earlier post says otherwise. */
+  reason?: string;
   idempotencyKey: string;
   initial?: FormState | null;
 }) {
@@ -30,7 +33,7 @@ export function ReportForm({
   const formId = initial ? REPORT_FORM : generatedId;
   useFocusOnError(formId, state);
   // Controlled: React resets the form after its action (finding H2 of M02).
-  const [reason, setReason] = useState(initial?.values?.reason ?? '');
+  const [reason, setReason] = useState(initial?.values?.reason ?? startReason ?? '');
   return (
     <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-4" data-testid="report-form">
       <FormMessage form={formId} state={state} labels={{ reason: 'Reason', details: 'Details' }} />

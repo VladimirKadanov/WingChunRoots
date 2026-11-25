@@ -143,6 +143,12 @@ export interface ClaimOptionView {
     waitingCaseId: string | null;
     /** The waiting claim is of this record. */
     waitingHere: boolean;
+    /**
+     * ADR 0056: the account has a profile of its own. If the record is about them as well, the page
+     * offers to report it as a second profile of one person (the moderators correct or remove it);
+     * without one, on a record that cannot be claimed, it offers to set up their own.
+     */
+    ownProfile: boolean;
   };
 }
 
@@ -156,7 +162,10 @@ export async function getClaimOption(principal: Principal | null, raw: z.input<t
   if (!record || !record.isPublic) throw new ServiceError('NOT_FOUND', NOT_PUBLIC);
   const refusedRecord = recordRefusal(record, p.user.id);
   const here = await openClaimOf(db, p.user.id, record.id);
-  const account = refusedRecord ? null : await claimantRefusal(db, p, OWN_PROFILE);
+  // The account's own refusal is read for a record that cannot be claimed too: the page then offers
+  // a profile of its own only to an account that has none (ADR 0056); it is said only otherwise.
+  const accountCheck = await claimantRefusal(db, p, OWN_PROFILE);
+  const account = refusedRecord ? null : accountCheck;
   const limited = !refusedRecord && !account && (await recentSelfClaims(db, p.user.id)) >= SELF_CLAIMS_PER_DAY;
   const refusal = account?.message ?? (limited ? TOO_MANY : null);
   return {
@@ -168,6 +177,7 @@ export async function getClaimOption(principal: Principal | null, raw: z.input<t
       confirmDocuments: refusal === CONFIRM_DOCUMENTS,
       waitingCaseId: here ?? account?.waitingCaseId ?? null,
       waitingHere: here !== null,
+      ownProfile: accountCheck?.message === OWN_PROFILE,
     },
   };
 }

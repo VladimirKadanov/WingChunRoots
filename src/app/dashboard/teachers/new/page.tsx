@@ -190,6 +190,8 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
           teacherWhere: placeLine({ city: chosen.cityName, countryCode: chosen.countryCode, lineage: chosen.lineages[0]?.name }),
           // No confirmed link, no lineage of their own: the form asks for one (M09 review, screens-7).
           teacherHasLineage: chosen.lineages.length > 0 ? 'yes' : 'no',
+          // ADR 0056: not on WingChunRoots yet, so the request goes with an invitation.
+          teacherInvitable: !chosen.limited && chosen.claimState === 'unclaimed' && chosen.kind === 'living' && chosen.lifeStatus !== 'deceased' ? 'yes' : 'no',
         }
       : {};
 
@@ -202,9 +204,9 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
           <Link href="/dashboard/teachers/historical" className="link">
             name a historical teacher
           </Link>
-          . A living teacher who is not on WingChunRoots yet:{' '}
+          . A teacher who has no profile here at all:{' '}
           <Link href="/dashboard/teachers/invite" className="link">
-            invite your teacher
+            add and invite your teacher
           </Link>
           .
         </>
