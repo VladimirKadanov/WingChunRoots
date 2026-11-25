@@ -8,6 +8,11 @@
 //       approved: evidence.ts accessOfFiles opens it to the teacher only once the record is theirs);
 //     → relationship_event (null → awaiting_claim), audit relationship.request and person.create;
 //     → with an e-mail address, an invitation (below).
+//   relationships.invite with `teacherId` (all-roles replay 2026-11-25): the same request to a
+//     record already on the archive that nobody has claimed yet (a public, living, unclaimed
+//     person, as the request form finds it): no new record; the lineage may be left to the
+//     teacher's own. When that record's claim is approved, by whatever way, every awaiting_claim
+//     request to it moves to pending_teacher (review-kinds.ts decidePersonClaim).
 //   invitations.send (student): a new invitation for an awaiting_claim relationship (an address
 //     added later, or a new link after the old one expired); earlier links stop working.
 //   invitations.get (anyone with the link): what the invitation is about, never the evidence; a
@@ -56,8 +61,13 @@ import {
   checkPendingCap,
   checkPeriods,
   checkRequestWindow,
+  closesCycle,
+  CYCLE_MESSAGE,
+  DUPLICATE_MESSAGE,
   fieldErrors,
+  HISTORICAL_TEACHER_MESSAGE,
   idempotencyKey,
+  isActiveConflict,
   isKeyConflict,
   keyReused,
   lockStudentRequests,
@@ -113,6 +123,8 @@ const emailField = z
  */
 export const inviteInput = z
   .object({
+    /** A record already on the archive that nobody has claimed yet; without it a new record is made from the names. */
+    teacherId: z.uuid({ error: 'Choose your teacher from the search.' }).nullish(),
     teacherName: optionalName,
     originalName: optionalName,
     originalLang: z
@@ -133,6 +145,8 @@ export const inviteInput = z
   })
   .superRefine((input, ctx) => {
     const issue = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
+    // A record on the archive brings its own names, and its own lineage when it has one.
+    if (input.teacherId) return;
     if (!input.teacherName) issue('teacherName', 'Enter your teacher’s name in Latin letters.');
     else if (input.teacherName.length > NAME_MAX_LENGTH) issue('teacherName', `Use at most ${NAME_MAX_LENGTH} characters.`);
     else if (!isLatinName(input.teacherName)) issue('teacherName', 'Use Latin letters here. Add the name in its own script below.');
@@ -181,6 +195,35 @@ export interface InviteResult {
 }
 
 // --- relationships.invite ----------------------------------------------------------------------
+
+export const NOT_INVITABLE = 'Choose your teacher from the search.';
+const ALREADY_HERE = 'This teacher is on WingChunRoots already: send them a request instead.';
+
+/**
+ * Why the record `teacherId` cannot be named with an invitation, as the field error of `teacherId`,
+ * or null: it must be public (the student found it in search), not the student's own, a living
+ * person (a historical teacher is confirmed by review) and claimed by nobody yet.
+ */
+async function existingRecordRefusal(tx: Transaction, teacherId: string, studentId: string): Promise<string | null> {
+  const [t] = await tx
+    .select({
+      claimedBy: person.claimedByUserId,
+      stewardship: person.stewardship,
+      kind: person.kind,
+      lifeStatus: person.lifeStatus,
+      isPublic: sql<boolean>`EXISTS (SELECT 1 FROM v_public_person vp WHERE vp.id = ${teacherId}::uuid)`,
+    })
+    .from(person)
+    .where(and(eq(person.id, teacherId), isNull(person.deletedAt)))
+    // A claim approved meanwhile moves every awaiting_claim request of the record (review-kinds.ts);
+    // the share lock makes this request wait for it, so none is left behind on a claimed record.
+    .for('share');
+  if (!t || !t.isPublic) return NOT_INVITABLE;
+  if (teacherId === studentId) return 'You can’t name yourself as your teacher.';
+  if (t.kind === 'historical' || t.lifeStatus === 'deceased') return HISTORICAL_TEACHER_MESSAGE;
+  if (t.claimedBy || t.stewardship !== 'unclaimed' || t.kind !== 'living') return ALREADY_HERE;
+  return null;
+}
 
 /** The new record of an invited teacher: living, unclaimed, private until the claim and the approval. */
 async function createInvitedRecord(tx: Transaction, p: Principal, input: z.output<typeof inviteInput>, meta: RequestMeta): Promise<string> {
@@ -321,20 +364,34 @@ export async function inviteTeacher(principal: Principal | null, raw: InviteInpu
       const replay = await replayOf(tx, p.user.id, input.idempotencyKey);
       if (replay) {
         if (replay.fromStatus !== null || replay.toStatus !== 'awaiting_claim') throw keyReused();
+        // ADR 0056: a request to a record found in search replays only for the same record and
+        // lineage (the request form's key, brought back by Back with another teacher chosen).
+        if (input.teacherId) {
+          const [earlier] = await tx
+            .select({ teacherId: teachingRelationship.teacherPersonId, lineageId: teachingRelationship.lineageId })
+            .from(teachingRelationship)
+            .where(eq(teachingRelationship.id, replay.relationshipId));
+          if (!earlier || earlier.teacherId !== input.teacherId || (input.lineageId && earlier.lineageId !== input.lineageId)) throw keyReused();
+        }
         return { id: replay.relationshipId, invited: false, replayed: true };
       }
-      const { lineageId, fields: lineageFields } = await checkLineage(tx, input.lineageId ?? null, null);
+      const existing = input.teacherId ?? null;
+      const recordError = existing ? await existingRecordRefusal(tx, existing, studentId) : null;
+      const { lineageId, fields: lineageFields } = await checkLineage(tx, input.lineageId ?? null, existing && !recordError ? existing : null);
       const { rows, fields: periodFields } = await checkPeriods(tx, input.periods);
-      const fields: Record<string, string> = { ...lineageFields, ...periodFields };
+      const fields: Record<string, string> = { ...lineageFields, ...periodFields, ...(recordError ? { teacherId: recordError } : {}) };
       if (input.email && (await ownAddress(tx, p.user.id, input.email))) fields.email = 'Enter your teacher’s address, not your own.';
       if (Object.keys(fields).length > 0 || !lineageId) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
 
       await checkPendingCap(tx, studentId);
       // A new record has no requests yet: only the account's own window counts for it.
-      await checkRequestWindow(tx, p.user.id, uuidv7());
+      await checkRequestWindow(tx, p.user.id, existing ?? uuidv7());
+      // A record on the archive may already sit below the student: said now, as relationships.request
+      // does, not only when the teacher answers (the approval checks it again under the global lock).
+      if (existing && (await closesCycle(tx, existing, studentId))) throw new ServiceError('CONFLICT', CYCLE_MESSAGE, { teacherId: CYCLE_MESSAGE });
       if (input.email) await checkInvitationLimits(tx, p.user.id, null);
 
-      const teacherId = await createInvitedRecord(tx, p, input, meta);
+      const teacherId = existing ?? (await createInvitedRecord(tx, p, input, meta));
       const id = uuidv7();
       // DEFAULT D03: pending requests are involved_only; awaiting_claim is one until verified.
       await tx.insert(teachingRelationship).values({
@@ -363,7 +420,7 @@ export async function inviteTeacher(principal: Principal | null, raw: InviteInpu
           visibility: 'involved_only',
           verificationPath: 'teacher_approval',
           teacherPersonId: teacherId,
-          newTeacherRecord: true,
+          newTeacherRecord: existing === null,
           studentPersonId: studentId,
           lineageId,
           periods: periodShape(rows),
@@ -384,6 +441,7 @@ export async function inviteTeacher(principal: Principal | null, raw: InviteInpu
     return { relationship: await viewOf(db, outcome.id, viewer), invited: outcome.invited, replayed: outcome.replayed };
   } catch (error) {
     if (isKeyConflict(error) || isInvitationKeyConflict(error)) throw keyReused();
+    if (isActiveConflict(error)) throw new ServiceError('CONFLICT', DUPLICATE_MESSAGE, { teacherId: DUPLICATE_MESSAGE });
     throw error;
   }
 }

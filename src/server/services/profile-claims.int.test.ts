@@ -19,16 +19,17 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { auditLog, consentRecord, notification, person, personClaim, personName, reviewCase, reviewEvent, reviewNote } from '../db/schema';
+import { auditLog, consentRecord, notification, person, personClaim, personName, relationshipEvent, reviewCase, reviewEvent, reviewNote, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { jobTemplateData } from '../jobs/outbox';
 import type { EmailSendJob } from '../jobs/queues';
 import { landingPath } from './account';
 import { getPartyCase } from './cases';
 import { grantConsents, REQUIRED_SIGN_UP_CONSENTS } from './consent';
+import { acceptInvitation, inviteTeacher } from './invitations';
 import { getClaimOption, requestProfileClaim, SELF_CLAIMS_PER_DAY } from './profile-claims';
 import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
-import { key, member, meta, staff } from './relationships.test-support';
+import { key, member, meta, newLineage, ongoingFrom, staff } from './relationships.test-support';
 
 const cache = vi.hoisted(() => ({ revalidated: [] as string[] }));
 vi.mock('next/cache', () => ({
@@ -212,6 +213,8 @@ describe('claims.request: a claim from the profile page', () => {
     const withProfile = await member('self-claim-with-profile');
     const own = await refusal(requestProfileClaim(withProfile.principal, { personId: target.id, note: NOTE, idempotencyKey: key() }, meta));
     expect(own).toMatchObject({ code: 'CONFLICT', message: expect.stringContaining('already has its own profile') });
+    // ADR 0056: the page offers to report the record as a second profile of them instead.
+    expect((await getClaimOption(withProfile.principal, { slug: target.slug })).viewer).toMatchObject({ ownProfile: true });
 
     const waiting = await newcomer('waiting');
     const first = await claim(waiting, target.id);
@@ -263,6 +266,102 @@ describe('claims.request: a claim from the profile page', () => {
     const refused = await refusal(decide(archivist, c.caseId, 'verify'));
     expect(refused).toMatchObject({ code: 'CONFLICT', message: expect.stringContaining('no longer of a living person') });
     expect((await getDb().select({ stewardship: person.stewardship }).from(person).where(eq(person.id, gone.id)))[0]!.stewardship).toBe('unclaimed');
+  });
+});
+
+describe('requests to a teacher who is not on WingChunRoots yet (ADR 0056)', () => {
+  it('go with an invitation to the public record found in search, and all move to the teacher once one claim of it is approved', async () => {
+    const target = await record('waited-for');
+    const lineageId = await newLineage('m-waited');
+    const first = await member('waiting-student-1');
+    const second = await member('waiting-student-2');
+    const archivist = await staff('self-claim-archivist-waiting', 'archivist');
+
+    const a = await inviteTeacher(first.principal, { teacherId: target.id, lineageId, periods: ongoingFrom('2016-03'), email: null, idempotencyKey: key() }, meta);
+    const b = await inviteTeacher(second.principal, { teacherId: target.id, lineageId, periods: ongoingFrom('2019'), email: 'demo-teacher-waited@example.test', idempotencyKey: key() }, meta);
+    expect(b.invited).toBe(true);
+    const rows = await getDb().select({ id: teachingRelationship.id, status: teachingRelationship.status, teacher: teachingRelationship.teacherPersonId }).from(teachingRelationship).where(eq(teachingRelationship.teacherPersonId, target.id));
+    expect(rows.map((r) => r.status).sort()).toEqual(['awaiting_claim', 'awaiting_claim']);
+    // No second record of the teacher was made.
+    const audits = await getDb().select({ after: auditLog.after }).from(auditLog).where(and(eq(auditLog.action, 'relationship.request'), eq(auditLog.subjectId, a.relationship.id)));
+    expect(audits[0]!.after).toMatchObject({ teacherPersonId: target.id, newTeacherRecord: false });
+    // The same student cannot send a second request to the same teacher in the same lineage.
+    const again = await refusal(inviteTeacher(first.principal, { teacherId: target.id, lineageId, periods: ongoingFrom('2016-03'), email: null, idempotencyKey: key() }, meta));
+    expect(again.code).toBe('CONFLICT');
+
+    // Someone accepts the second student's invitation, but the teacher claims the record from its
+    // page first (no invitation used), and that claim is approved.
+    const mail = await getDb().execute<{ data: EmailSendJob }>(sql`
+      SELECT j.data FROM pgboss.job j JOIN email_delivery d ON d.id::text = j.data ->> 'deliveryId'
+       WHERE j.name = 'email.send' AND d.template = 'invitation' AND d.to_email = 'demo-teacher-waited@example.test'`);
+    const token = new URL(String((jobTemplateData(mail.rows[0]!.data) as { url: string }).url)).pathname.replace('/invite/', '');
+    const other = await newcomer('waited-for-other');
+    const otherClaim = await acceptInvitation(other.principal, { token, idempotencyKey: key() }, meta);
+    const teacher = await newcomer('waited-for-teacher');
+    const claimed = await claim(teacher, target.id);
+    cache.revalidated.length = 0;
+    await decide(archivist, claimed.caseId, 'verify');
+    expect(cache.revalidated).toContain(`person:${target.id}`);
+    const after = await getDb().select({ id: teachingRelationship.id, status: teachingRelationship.status }).from(teachingRelationship).where(eq(teachingRelationship.teacherPersonId, target.id));
+    expect(after.map((r) => r.status)).toEqual(['pending_teacher', 'pending_teacher']);
+    for (const id of [a.relationship.id, b.relationship.id]) {
+      const events = await getDb().select({ from: relationshipEvent.fromStatus, to: relationshipEvent.toStatus, reason: relationshipEvent.reason }).from(relationshipEvent).where(eq(relationshipEvent.relationshipId, id)).orderBy(asc(relationshipEvent.createdAt));
+      expect(events.at(-1)).toEqual({ from: 'awaiting_claim', to: 'pending_teacher', reason: 'person_claim_approved' });
+    }
+    // The teacher has both requests in their queue; each student hears that the teacher joined.
+    const requested = (await notices(teacher.account.id, 'relationship.requested')).map((n) => (n.payload as { relationshipId: string }).relationshipId);
+    expect(requested.sort()).toEqual([a.relationship.id, b.relationship.id].sort());
+    for (const [student, id] of [[first, a.relationship.id], [second, b.relationship.id]] as const) {
+      expect((await notices(student.account.id, 'invitation.claimed')).map((n) => n.payload)).toContainEqual({ relationshipId: id, stage: 'approved' });
+    }
+    // The other claim, whose request moved on with the approved one, can still be refused, and the
+    // student is not told their teacher was refused.
+    await decide(archivist, otherClaim.caseId, 'reject', 'Fictional: the record has been claimed by its person.');
+    const [closed] = await getDb().select({ status: reviewCase.status }).from(reviewCase).where(eq(reviewCase.id, otherClaim.caseId));
+    expect(closed!.status).not.toBe('open');
+    expect((await notices(second.account.id, 'invitation.claimed')).map((n) => (n.payload as { stage: string }).stage)).not.toContain('refused');
+  });
+
+  it('replays a key only for the same record, and refuses a request that would close a cycle', async () => {
+    const lineageId = await newLineage('m-replay-cycle');
+    const student = await member('replay-cycle-student');
+    const one = await record('replay-one');
+    const two = await record('replay-two');
+    const k = key();
+    const sent = await inviteTeacher(student.principal, { teacherId: one.id, lineageId, periods: ongoingFrom('2017'), email: null, idempotencyKey: k }, meta);
+    expect((await inviteTeacher(student.principal, { teacherId: one.id, lineageId, periods: ongoingFrom('2017'), email: null, idempotencyKey: k }, meta)).relationship.id).toBe(sent.relationship.id);
+    // The form brought back by Back, with another teacher chosen: refused, not replayed.
+    expect((await refusal(inviteTeacher(student.principal, { teacherId: two.id, lineageId, periods: ongoingFrom('2017'), email: null, idempotencyKey: k }, meta))).code).toBe('CONFLICT');
+    // A record already below the student in the lineage.
+    const below = await record('replay-below');
+    await getDb().insert(teachingRelationship).values({ id: uuidv7(), teacherPersonId: student.personId, studentPersonId: below.id, lineageId, status: 'verified', visibility: 'public' });
+    const cycle = await refusal(inviteTeacher(student.principal, { teacherId: below.id, lineageId, periods: ongoingFrom('2017'), email: null, idempotencyKey: key() }, meta));
+    expect(cycle).toMatchObject({ code: 'CONFLICT', message: expect.stringContaining('cycle') });
+  });
+
+  it('refuses a record that someone has claimed, the student’s own record, a historical record and one that is not public', async () => {
+    const lineageId = await newLineage('m-not-invitable');
+    const student = await member('not-invitable-student');
+    const joined = await member('not-invitable-teacher');
+    const historical = await record('not-invitable-historical', { kind: 'historical', lifeStatus: 'deceased' });
+    const hidden = await record('not-invitable-hidden', { visibility: 'involved_only' });
+    const ask = (teacherId: string) => refusal(inviteTeacher(student.principal, { teacherId, lineageId, periods: ongoingFrom('2018'), email: null, idempotencyKey: key() }, meta));
+    await getDb().update(person).set({ visibility: 'public' }).where(eq(person.id, joined.personId));
+    expect(await ask(joined.personId)).toMatchObject({ code: 'BAD_REQUEST' });
+    const fields = async (teacherId: string) => {
+      const error = (await inviteTeacher(student.principal, { teacherId, lineageId, periods: ongoingFrom('2018'), email: null, idempotencyKey: key() }, meta).then(
+        () => null,
+        (e: unknown) => e,
+      )) as { fields?: Record<string, string> } | null;
+      return error?.fields?.teacherId;
+    };
+    expect(await fields(joined.personId)).toBe('This teacher is on WingChunRoots already: send them a request instead.');
+    await getDb().update(person).set({ visibility: 'public' }).where(eq(person.id, student.personId));
+    expect(await fields(student.personId)).toMatch(/can’t name yourself|on WingChunRoots already/);
+    expect(await fields(historical.id)).toContain('historical record');
+    expect(await fields(hidden.id)).toBe('Choose your teacher from the search.');
+    const none = await getDb().select({ id: teachingRelationship.id }).from(teachingRelationship).where(eq(teachingRelationship.studentPersonId, student.personId));
+    expect(none).toEqual([]);
   });
 });
 

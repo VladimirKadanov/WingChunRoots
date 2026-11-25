@@ -82,6 +82,7 @@ interface PersonRow extends Record<string, unknown> {
   country_code: string | null;
   lineage_name: string | null;
   verified: boolean;
+  invitable: boolean;
 }
 
 /**
@@ -132,6 +133,7 @@ export async function searchPeople(tx: Executor, forms: readonly QueryForm[], fi
              n.value AS name_value, n.lang AS name_lang, n.script AS name_script, n.is_primary AS name_is_primary,
              EXISTS (SELECT 1 FROM v_public_edge e
                       WHERE e.status = 'verified' AND (e.student_person_id = p.id OR e.teacher_person_id = p.id)) AS verified,
+             (p.stewardship = 'unclaimed' AND p.kind = 'living' AND p.life_status <> 'deceased') AS invitable,
              h.score + CASE WHEN n.is_primary THEN ${num(RANK.primary)} ELSE 0 END AS score
         FROM hits h
         JOIN v_public_person p ON p.id = h.person_id
@@ -162,6 +164,7 @@ export async function searchPeople(tx: Executor, forms: readonly QueryForm[], fi
       countryCode: row.country_code,
       lineageName: row.lineage_name,
       verified: row.verified,
+      invitable: row.invitable,
     };
   });
   return { people, more: result.rows.length > LIMITS.people };

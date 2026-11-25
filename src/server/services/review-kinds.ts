@@ -136,7 +136,9 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
   // A claim asked from the profile page (ADR 0040) has no relationship; one of an invitation does.
   const self = c.relationshipId === null;
   if ((!self && !row) || !c.personId || !c.openedByUserId) throw new ServiceError('CONFLICT', 'This claim can no longer be decided: its request or its record is gone.');
-  if (row && row.status !== 'awaiting_claim') {
+  // A claim whose request moved on without it (another claim of the record was approved and took
+  // every waiting request along, ADR 0056) can still be refused, so it never stays open for good.
+  if (row && row.status !== 'awaiting_claim' && !(input.decision === 'reject' && row.status !== 'withdrawn')) {
     throw new ServiceError('CONFLICT', row.status === 'withdrawn' ? 'The student has withdrawn the request this claim answers.' : 'The request this claim answers no longer waits for the teacher to join.');
   }
   if (input.decision === 'needs_info') {
@@ -160,7 +162,8 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
       ipHmac: meta.ipHmac,
     });
     await tellClaimant(tx, c, 'rejected', eventId);
-    if (!row) return NONE;
+    // The student hears of it only while their request still waits for this claim.
+    if (!row || row.status !== 'awaiting_claim') return NONE;
     const student = await accountOf(tx, row.studentPersonId);
     if (student) await notify(tx, student.id, 'invitation.claimed', { relationshipId: row.id, stage: 'refused' });
     return NONE;
@@ -196,31 +199,40 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
     requestId: meta.requestId,
     ipHmac: meta.ipHmac,
   });
-  if (!row) {
-    await tellClaimant(tx, c, 'approved', eventId);
-    // The public profile says "claimed" now, and the pages beside it as well (cached).
-    return { tags: await neighbourTags(tx, c.personId) };
-  }
-  // awaiting_claim → pending_teacher: only now, after the approved claim (plan §6.7).
-  await tx.update(teachingRelationship).set({ status: 'pending_teacher', statusReason: null, updatedAt: now }).where(eq(teachingRelationship.id, row.id));
-  await recordEvent(tx, { relationshipId: row.id, from: 'awaiting_claim', to: 'pending_teacher', actor: p, role: p.user.role, reason: 'person_claim_approved', key: input.idempotencyKey });
-  await writeAudit(tx, {
-    action: 'relationship.claimed',
-    actorUserId: p.user.id,
-    actorRole: p.user.role,
-    subjectType: 'teaching_relationship',
-    subjectId: row.id,
-    before: { status: 'awaiting_claim', visibility: row.visibility },
-    after: { status: 'pending_teacher', visibility: row.visibility, caseId: c.id },
-    requestId: meta.requestId,
-    ipHmac: meta.ipHmac,
-  });
   await tellClaimant(tx, c, 'approved', eventId);
-  // The teacher now answers the request as in M09: it waits in their queue.
-  await notify(tx, claimant.id, 'relationship.requested', { relationshipId: row.id, resubmitted: false });
-  const student = await accountOf(tx, row.studentPersonId);
-  if (student) await notify(tx, student.id, 'invitation.claimed', { relationshipId: row.id, stage: 'approved' });
-  return NONE;
+  // awaiting_claim → pending_teacher: only now, after the approved claim (plan §6.7). Every
+  // request that waits for this record moves, not only the one of this case: other students may
+  // have asked the same teacher before they joined, and a claim from the profile page has no
+  // request of its own.
+  const waiting = await tx
+    .select({ id: teachingRelationship.id, studentPersonId: teachingRelationship.studentPersonId, visibility: teachingRelationship.visibility })
+    .from(teachingRelationship)
+    .where(and(eq(teachingRelationship.teacherPersonId, c.personId), eq(teachingRelationship.status, 'awaiting_claim')))
+    .orderBy(teachingRelationship.createdAt)
+    .for('update');
+  // The idempotency key is unique per actor, so one event carries it (the case's own request).
+  for (const w of waiting) {
+    await tx.update(teachingRelationship).set({ status: 'pending_teacher', statusReason: null, updatedAt: now }).where(eq(teachingRelationship.id, w.id));
+    await recordEvent(tx, { relationshipId: w.id, from: 'awaiting_claim', to: 'pending_teacher', actor: p, role: p.user.role, reason: 'person_claim_approved', key: w.id === row?.id || (row === null && w === waiting[0]) ? input.idempotencyKey : null });
+    await writeAudit(tx, {
+      action: 'relationship.claimed',
+      actorUserId: p.user.id,
+      actorRole: p.user.role,
+      subjectType: 'teaching_relationship',
+      subjectId: w.id,
+      before: { status: 'awaiting_claim', visibility: w.visibility },
+      after: { status: 'pending_teacher', visibility: w.visibility, caseId: c.id },
+      requestId: meta.requestId,
+      ipHmac: meta.ipHmac,
+    });
+    // The teacher now answers the request as in M09: it waits in their queue.
+    await notify(tx, claimant.id, 'relationship.requested', { relationshipId: w.id, resubmitted: false });
+    const student = await accountOf(tx, w.studentPersonId);
+    if (student) await notify(tx, student.id, 'invitation.claimed', { relationshipId: w.id, stage: 'approved' });
+  }
+  // A public profile says "claimed" now, and the pages beside it as well (cached): a claim from the
+  // profile page, and an invitation to a public record found in search (ADR 0056).
+  return self || record.visibility === 'public' ? { tags: await neighbourTags(tx, c.personId) } : NONE;
 }
 
 // --- instructor_verification -------------------------------------------------------------------

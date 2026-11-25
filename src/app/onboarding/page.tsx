@@ -6,6 +6,9 @@
 // confirmed a new version of the documents gets only the confirmations here (In scope 4).
 // "How do you take part?" sets the account type through account.setType (from plans.mine, so an
 // account that is already a Sifu starts on "I teach"). Afterwards: `next`, else /dashboard.
+// ADR 0056: above the form, "Is there a profile of you already?" finds a public record nobody has
+// claimed (?find=) and links to its claim page; an account on its way to a claim page confirms the
+// documents only, like an invited teacher.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -13,11 +16,13 @@ import { headers } from 'next/headers';
 import { AuthFrame } from '@/components/account/auth-frame';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { guardRoute } from '@/server/auth/web';
+import { isClaimPath } from '@/lib/invitation-path';
 import { readFormResult } from '@/server/forms/flash';
 import { documentsFor } from '@/server/legal/documents';
 import { serverClient } from '@/server/rpc/server';
 import { ConfirmConsentsForm } from './confirm-consents-form';
-import { afterOnboarding, onboardingNext } from './destination';
+import { afterOnboarding, ONBOARDING_DEFAULT_NEXT, onboardingNext } from './destination';
+import { FindYourself } from './find-yourself';
 import { OnboardingForm } from './onboarding-form';
 
 export const instant = false;
@@ -56,7 +61,9 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
   const documents = documentsFor(me.missingConsents);
   // M10b: an invited teacher gets the profile made for them, so an account on its way to an
   // invitation, or whose claim waits for the reviewers, confirms the documents only.
-  const claiming = !me.person && (me.pendingClaim || next.startsWith('/invite/'));
+  // ADR 0056: so does an account on its way to a claim page, while it has documents to confirm
+  // (with them confirmed, sign-in goes straight to the claim page; a refused claim offers this page).
+  const claiming = !me.person && (me.pendingClaim || next.startsWith('/invite/') || (isClaimPath(next) && me.missingConsents.length > 0));
   if (me.person || claiming) {
     const after = afterOnboarding(next);
     if (me.missingConsents.length === 0) return <PageRedirect to={after} title={me.person ? 'Your profile is already set up' : 'Nothing to confirm'} />;
@@ -79,7 +86,15 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
       </AuthFrame>
     );
   }
-  const [options, mine, initial] = await Promise.all([client.account.onboardingOptions(), client.plans.mine(), readFormResult('onboarding', query.outcome)]);
+  const find = (typeof query.find === 'string' ? query.find : '').trim().slice(0, 100);
+  const [options, mine, initial, found] = await Promise.all([
+    client.account.onboardingOptions(),
+    client.plans.mine(),
+    readFormResult('onboarding', query.outcome),
+    find ? client.search.query({ q: find }).catch(() => null) : Promise.resolve(null),
+  ]);
+  // Only the records nobody has claimed: a claimed one is someone else's account.
+  const hits = find ? (found?.people ?? []).filter((hit) => hit.invitable) : null;
   return (
     <AuthFrame
       eyebrow="Welcome · your profile"
@@ -88,6 +103,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
       notes={NOTES}
       notesLabel="How profiles work"
     >
+      <FindYourself action="/onboarding" next={next === ONBOARDING_DEFAULT_NEXT ? null : next} find={find} hits={hits} />
       <OnboardingForm
         options={options}
         accountType={mine.accountType}

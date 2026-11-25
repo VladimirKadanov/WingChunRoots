@@ -233,6 +233,16 @@ describe('search.query', () => {
     ]);
   });
 
+  it('says which people are not on WingChunRoots yet: an unclaimed living record, not one the archive keeps nor a historical one (ADR 0056)', async () => {
+    const waiting = await insertPublicPerson('demo-invitable-waiting', [latin('Demo Invitable Waiting')]);
+    const kept = await insertPublicPerson('demo-invitable-kept', [latin('Demo Invitable Kept')]);
+    const past = await insertPublicPerson('demo-invitable-historical', [latin('Demo Invitable Historical')]);
+    await getDb().update(person).set({ stewardship: 'platform' }).where(eq(person.id, kept));
+    await getDb().update(person).set({ kind: 'historical', lifeStatus: 'deceased' }).where(eq(person.id, past));
+    const hits = (await searchQuery(null, { q: 'Demo Invitable' })).people.filter((h) => h.slug.startsWith('demo-invitable-'));
+    expect(Object.fromEntries(hits.map((h) => [h.id, h.invitable]))).toEqual({ [waiting]: true, [kept]: false, [past]: false });
+  });
+
   it('a two-letter surname finds a name that ends with it', async () => {
     await insertPublicPerson('demo-short-surname', [latin('Demo Siu Ming Ng')]);
     expect(await peopleSlugs('Ng')).toContain('demo-short-surname');

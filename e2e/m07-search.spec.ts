@@ -237,7 +237,8 @@ test('@M07 search results contain only public persons and no private fields', as
     expect(publicSlugs.has(person.slug as string)).toBe(true);
     // M14: `photo` is public (the app's own addresses of a public person's photo, or null). ADR 0047:
     // `rank` and `school` are public too (a featured profile's latest public rank and a public school, or null).
-    expect(Object.keys(person).sort()).toEqual(['city', 'countryCode', 'displayName', 'id', 'lineageName', 'matched', 'photo', 'rank', 'school', 'slug', 'verified']);
+    // ADR 0056: `invitable` is public (an unclaimed living record, which its profile page offers to claim).
+    expect(Object.keys(person).sort()).toEqual(['city', 'countryCode', 'displayName', 'id', 'invitable', 'lineageName', 'matched', 'photo', 'rank', 'school', 'slug', 'verified']);
   }
   const text = JSON.stringify({ people: answer.people, schools: answer.schools, lineages: answer.lineages });
   expect(text).not.toMatch(/claimedBy|claimed_by|birth|email|public_point|exact_point|"key"|source|keyKind/i);

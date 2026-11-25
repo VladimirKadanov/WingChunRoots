@@ -5,8 +5,10 @@
 // can be claimed and whether this account can claim it now, in plain words. A visitor is sent to
 // sign in first and comes back here (landingPath skips onboarding for this page, which would make
 // the account a profile of its own). Reads the session; no client module (claim-form.tsx). An
-// account that has not confirmed the current documents is told so, without a link: /onboarding
-// treats only an invitation as a claim, and would offer to make a profile instead (ADR 0040).
+// account that has not confirmed the current documents is told so, with a link to /onboarding,
+// which asks for the documents alone on the way to a claim page and comes back here (ADR 0056).
+// An account with a profile of its own may report the record as a second profile of them; an
+// account without one, on a record that can no longer be claimed, is offered its own profile.
 
 import { randomUUID } from 'node:crypto';
 
@@ -118,6 +120,13 @@ export default async function ClaimProfilePage({ params, searchParams }: { param
       {!option.claimable ? (
         <Note testId="claim-not-claimable">
           <p>{option.recordRefusal}</p>
+          {option.viewer.ownProfile || profile.isOwn ? null : (
+          <p>
+            <Link href="/onboarding" prefetch={false} className="link inline-flex min-h-11 items-center">
+              Set up a profile of your own instead
+            </Link>
+          </p>
+          )}
         </Note>
       ) : option.viewer.waitingHere && option.viewer.waitingCaseId ? (
         <Note testId="claim-waiting-here">
@@ -128,6 +137,20 @@ export default async function ClaimProfilePage({ params, searchParams }: { param
         <Note testId="claim-refusal">
           <p>{option.viewer.refusal}</p>
           {option.viewer.waitingCaseId ? <p>{caseLink(option.viewer.waitingCaseId, 'Follow that claim')}</p> : null}
+          {option.viewer.confirmDocuments ? (
+            <p>
+              <Link href={`/onboarding?${new URLSearchParams({ next: `/people/${profile.slug}/claim` })}`} prefetch={false} className="link inline-flex min-h-11 items-center">
+                Confirm the documents
+              </Link>
+            </p>
+          ) : null}
+          {option.viewer.ownProfile ? (
+            <p>
+              <Link href={`/people/${profile.slug}/report?reason=misleading`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="claim-report-duplicate">
+                Report it as a second profile of you
+              </Link>
+            </p>
+          ) : null}
         </Note>
       ) : (
         <>

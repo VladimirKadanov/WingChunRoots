@@ -753,7 +753,8 @@ export const router = {
       .route({
         method: 'POST',
         path: '/relationships/invite',
-        summary: 'List a living teacher who is not here yet: an unclaimed record and a request awaiting their claim, with an optional e-mail invitation; visible only to you, them and the reviewers',
+        summary:
+          'Name a living teacher who is not here yet, with a request awaiting their claim and an optional e-mail invitation: a public unclaimed record found in search (teacherId), or a new unclaimed record from the names; visible only to you, them and the reviewers',
       })
       .input(inviteInput)
       .handler(({ context, input }) => inviteTeacher(context.principal, input, context.meta)),

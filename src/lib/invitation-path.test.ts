@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isInvitationPath, isTrialPath, ridesInConfirmationLink } from './invitation-path';
+import { isClaimPath, isInvitationPath, isTrialPath, ridesInConfirmationLink } from './invitation-path';
 
 const TOKEN = 'A'.repeat(43);
 
@@ -21,9 +21,20 @@ describe('the paths that ride in the confirmation link', () => {
     expect(isTrialPath('//evil.example/schools/demo/trial')).toBe(false);
   });
 
-  it('carries only those two, never another local page or an address elsewhere', () => {
+  it("knows a public profile's claim page", () => {
+    expect(isClaimPath('/people/demo-a-005/claim')).toBe(true);
+    expect(isClaimPath('/people/demo-a-005')).toBe(false);
+    expect(isClaimPath('/people/Demo/claim')).toBe(false);
+    expect(isClaimPath('/people/demo--a/claim')).toBe(false);
+    expect(isClaimPath('/people/demo/claim?x=1')).toBe(false);
+    expect(isClaimPath('/people/demo/claim/../../admin')).toBe(false);
+    expect(isClaimPath('//evil.example/people/demo/claim')).toBe(false);
+  });
+
+  it('carries only those three, never another local page or an address elsewhere', () => {
     expect(ridesInConfirmationLink(`/invite/${TOKEN}`)).toBe(true);
     expect(ridesInConfirmationLink('/schools/demo-a/trial')).toBe(true);
+    expect(ridesInConfirmationLink('/people/demo-a-005/claim')).toBe(true);
     for (const other of ['/', '/dashboard', '/account', '/admin', 'https://evil.example/', '', null, 42]) {
       expect(ridesInConfirmationLink(other)).toBe(false);
     }

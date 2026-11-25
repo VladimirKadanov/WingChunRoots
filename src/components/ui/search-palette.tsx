@@ -60,6 +60,8 @@ interface SearchAnswer {
     countryCode: string | null;
     lineageName: string | null;
     verified: boolean;
+    /** ADR 0056: an unclaimed living record (not on WingChunRoots yet). Optional: an older cached answer lacks it. */
+    invitable?: boolean;
     /** M14: the profile photo (a public person only; null without one). */
     photo?: { small: string; large: string } | null;
     /** ADR 0047: the latest public rank and a public school of a featured profile; null otherwise. */
@@ -198,7 +200,7 @@ function groupsOf(answer: SearchAnswer | null, query: string, select = false): G
   return groups.filter((g) => g.items.length > 0);
 }
 
-function ItemBody({ item }: { item: Item }) {
+function ItemBody({ item, select = false }: { item: Item; select?: boolean }) {
   if (item.kind === 'recent') {
     return (
       <span className="flex min-w-0 items-center gap-3">
@@ -241,6 +243,12 @@ function ItemBody({ item }: { item: Item }) {
             ) : null}
             {where ? <span className="[overflow-wrap:anywhere]">{where}</span> : null}
           </span>
+          {/* ADR 0056: choosing a teacher, a record nobody has claimed is said in words before it is chosen. */}
+          {select && hit.invitable ? (
+            <span className="text-sm text-fg-muted" data-testid="search-person-not-joined">
+              Not on WingChunRoots yet
+            </span>
+          ) : null}
           {/* ADR 0047: the rank and school of a featured profile, in words. */}
           {hit.rank || hit.school ? (
             <span className="text-sm text-fg-muted [overflow-wrap:anywhere]" data-testid="search-person-card">
@@ -709,7 +717,7 @@ function Palette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person'
                             // as well as the tint, at least 3:1 in both themes (WCAG 1.4.11).
                             className="group mx-2 grid min-h-14 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-sm px-3 py-2 outline-none select-none data-highlighted:bg-surface-3 data-highlighted:shadow-[inset_3px_0_0_var(--focus),inset_0_0_0_1px_var(--focus)] active:bg-surface-pressed"
                           >
-                            <ItemBody item={item} />
+                            <ItemBody item={item} select={select} />
                             <ArrowRightIcon size={16} className="invisible text-fg-muted group-data-highlighted:visible" />
                           </Autocomplete.Item>
                         )}
