@@ -271,6 +271,10 @@ jobs:
         run: scripts/check-env.sh compose
       - name: Build the image and start the profile app
         run: docker compose --profile app up -d --build
+      - name: Free the build cache (the smoke run's traces filled the runner's disk, 2026-11-24)
+        run: |
+          docker builder prune -af
+          df -h /
       - name: Wait for /healthz
         run: |
           for attempt in $(seq 1 90); do
