@@ -29,6 +29,7 @@ import { ScheduleAndFees, TrialAction } from '@/components/schools/school-schedu
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
 import { formatDay } from '@/lib/dates';
+import { mapsDirectionsHref } from '@/lib/directions';
 import { schoolMotif } from '@/lib/ink-art';
 import { finderHref, SCHOOL_ZOOM } from '@/lib/school-finder';
 import { appUrl } from '@/server/auth/env';
@@ -179,6 +180,12 @@ export default async function SchoolPage({ params }: Props) {
           <Link href={mapHref} className="link inline-flex min-h-11 items-center text-sm" data-testid="school-map-link">
             {exact ? 'Show on the map' : 'Show the city on the map'}
           </Link>
+          {/* P2-9 (ADR 0062): the maps app, only to a point the owner chose to publish exactly. */}
+          {exact ? (
+            <a href={mapsDirectionsHref(school.point)} rel="nofollow noopener" className="link inline-flex min-h-11 items-center text-sm" data-testid="school-directions">
+              Directions
+            </a>
+          ) : null}
         </div>
         {/* ADR 0051: the approved organizations whose link the school accepted. A link names a
             membership; it verifies no teacher or relationship (DEFAULT D04). */}

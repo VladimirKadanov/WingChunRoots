@@ -1512,6 +1512,10 @@ function demoEvents(seed: number, r: DemoEventRefs): Pick<Fixtures, 'events' | '
     posterWidth: null,
     posterHeight: null,
     posterSizeBytes: null,
+    priceNote: null,
+    openTo: null,
+    registrationUrl: null,
+    registrationEmail: null,
     revision: 0,
     createdAt: at,
     updatedAt: at,
@@ -1528,6 +1532,10 @@ function demoEvents(seed: number, r: DemoEventRefs): Pick<Fixtures, 'events' | '
       slug: 'demo-seminar-chum-kiu-sofia',
       title: 'Demo seminar: Chum Kiu footwork',
       kind: 'seminar',
+      // P2-9 (ADR 0062): how to join, for the demo page.
+      priceNote: 'EUR 30, members of the hall EUR 20',
+      openTo: 'all_levels',
+      registrationEmail: 'demo-seminar@example.test',
       description: `${FICTIONAL_MARK}. A one-day seminar on the footwork of the second form, for every level.`,
       // 10:00–17:00 in Sofia (UTC+2 in March).
       startsAt: new Date('2027-03-13T08:00:00Z'),
