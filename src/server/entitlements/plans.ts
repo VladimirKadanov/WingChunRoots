@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-19.4';
+export const PLAN_MATRIX_VERSION = '2026-11-25.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -215,7 +215,10 @@ export const FEATURES: readonly FeatureDefinition[] = [
     availability: 'planned',
     phase: 2,
     enforced: false,
-    note: 'The pilot shows no advertising on any plan.',
+    // Role replay 2026-11-25 (P1-5, ADR 0059): off /plans, so no plan reads as "Ads shown" while
+    // the site shows no advertising at all. The row of specification §3.1 stays.
+    hidden: true,
+    note: 'WingChunRoots shows no advertising on any plan.',
     // The row offers no ads: "Ads shown" is the lack (a dash), "No ads" the benefit (a check).
     values: {
       free_student: { source: 'Yes', label: 'Ads shown', included: false },

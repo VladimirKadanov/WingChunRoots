@@ -329,9 +329,9 @@ test('@M02 sign-up is refused unless "I am 18 or older", terms and the authentic
   await expect(summary).toBeFocused();
   const adult = field(page, CONSENT_LABELS.age_18_plus);
   await expect(adult).toHaveAttribute('aria-invalid', 'true');
-  await summary.getByRole('link', { name: /^Age: The pilot is open to adults only/ }).click();
+  await summary.getByRole('link', { name: /^Age: WingChunRoots is open to adults only/ }).click();
   await expect(adult).toBeFocused();
-  await expect(page.getByText('The pilot is open to adults only.').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByText('WingChunRoots is open to adults only.').filter({ visible: true }).first()).toBeVisible();
   await expect(field(page, CONSENT_LABELS.terms)).toHaveAttribute('aria-invalid', 'true');
   await expect(field(page, CONSENT_LABELS.authenticity_declaration)).toHaveAttribute('aria-invalid', 'true');
   // The ticked box and the address stay as they were.

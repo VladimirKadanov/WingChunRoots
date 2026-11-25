@@ -19,7 +19,7 @@ export const CONSENT_LABELS: Record<ConsentName, string> = {
 
 /** The message under a required tick that was left empty. */
 export const CONSENT_REQUIRED_MESSAGES: Record<ConsentName, string> = {
-  age_18_plus: 'The pilot is open to adults only. Tick this box if you are 18 or older.',
+  age_18_plus: 'WingChunRoots is open to adults only. Tick this box if you are 18 or older.',
   terms: 'Accept the terms of use to create an account.',
   authenticity_declaration: 'Agree to record only what you believe to be true to create an account.',
   privacy_ack: 'Tick this box to confirm that you have read the privacy notice.',

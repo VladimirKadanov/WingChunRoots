@@ -26,7 +26,7 @@ import { IDLE, type FormState } from '@/lib/form-state';
 import { signUpAction } from './actions';
 
 const FORM_NAME = 'sign-up';
-const EYEBROW = 'Join the pilot';
+const EYEBROW = 'Join WingChunRoots';
 
 export interface SignUpDocument {
   title: string;

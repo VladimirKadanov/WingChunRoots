@@ -116,7 +116,7 @@ const notFound = () => new ServiceError('NOT_FOUND', NO_EVENT);
 const NO_PROFILE = 'You have no profile yet. Finish setting up your profile first: you are the organizer of the events you publish.';
 export const STUDENT_CANNOT_PUBLISH = 'Events are published from a Sifu account. Your account is a Student account.';
 export const ORGANIZATION_NEEDS_FEDERATION =
-  'Publishing as an organization is part of its Federation plan. In the pilot an administrator of WingChunRoots can give it as a test plan; nothing is charged.';
+  'Publishing as an organization is part of its Federation plan. For now an administrator of WingChunRoots can give it as a test plan; nothing is charged.';
 const CANCELLED_NO_CHANGE = 'This event is cancelled: it can no longer be changed.';
 
 /** The address of one rendition of an event's poster: GET /api/event-posters/<id>/<hash>/<size>.webp. */

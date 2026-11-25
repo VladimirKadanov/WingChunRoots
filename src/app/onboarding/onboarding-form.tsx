@@ -356,7 +356,7 @@ export function OnboardingForm({
           >
             <option value="">Not given</option>
             {pilotCountries.length > 0 ? (
-              <optgroup label="Pilot countries">
+              <optgroup label="Countries with cities">
                 {pilotCountries.map((country) => (
                   <option key={country.code} value={country.code}>
                     {country.name}
@@ -380,8 +380,8 @@ export function OnboardingForm({
             autoComplete="off"
             hint={
               filtered && places.length === 0
-                ? 'The pilot lists no cities in this country yet. Leave it empty.'
-                : 'The pilot lists a small set of cities. Leave it empty if yours is not there.'
+                ? 'No cities are listed for this country yet. Leave it empty.'
+                : 'Only some cities are listed so far. Leave it empty if yours is not there.'
             }
             value={placeId}
             onValue={choosePlace}
