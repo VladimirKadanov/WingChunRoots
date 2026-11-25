@@ -34,7 +34,8 @@ test('@nav a student sees learning and their own pages, never teaching or organi
   for (const name of ['My teachers', 'Training passport', 'Trial lessons', 'Profile', 'Plan and billing', 'Settings']) {
     await expect(shown(nav.getByRole('link', { name, exact: true }))).toHaveCount(1);
   }
-  for (const name of ['Student requests', 'My schools', 'Instructor verification']) {
+  // Role replay 2026-11-25 (P2-7): Digital successor is a Sifu's page (or one's own nomination).
+  for (const name of ['Student requests', 'My schools', 'Instructor verification', 'Digital successor']) {
     await expect(nav.getByRole('link', { name, exact: true })).toHaveCount(0);
   }
   // The menu follows the page: the passport is current there.
@@ -67,6 +68,9 @@ test('@nav a Sifu gets teaching tools, and a new member gets next steps that sta
   for (const name of ['Student requests', 'My schools', 'Events']) {
     await expect(shown(menu(page).getByRole('link', { name, exact: true }))).toHaveCount(1);
   }
+  // P2-7: Teaching first, then Schools and events, then the Sifu's own training.
+  const groupOrder = await shown(menu(page).locator('p.uppercase')).allTextContents();
+  expect(groupOrder.slice(0, 4).map((t) => t.toLowerCase())).toEqual(['overview', 'teaching', 'schools and events', 'my training']);
 
   const context = await browser.newContext();
   try {
