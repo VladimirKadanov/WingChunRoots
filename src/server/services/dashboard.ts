@@ -8,7 +8,7 @@
 // cached (no 'use cache': the page reads the session).
 
 import { allowanceSentence } from '@/lib/allowance-text';
-import { and, asc, count, desc, eq, inArray, isNull, notInArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
 
 import { hasStaff2FA, requireUser } from '../auth/guards';
 import { isStaffRole, type Principal, type StaffRole } from '../auth/principal';
@@ -31,6 +31,8 @@ import { feature, type Benefit, type FeatureKey, upgradeBenefits } from '../enti
 import type { NameData } from '../templates/email/types';
 import { listNotifications, type NotificationList } from './notifications';
 import { type NextStep, nextSteps } from './next-steps';
+import { listingLabel } from './school-activity';
+import { openTrialCounts } from './trial-lessons';
 import { INSTRUCTOR_LABELS, instructorStatus, openPilotRequest, type PilotRequestView, type PlanSummary, planSummary } from './plans';
 
 export interface PersonRef {
@@ -79,6 +81,12 @@ export interface SchoolItem {
   status: (typeof SCHOOL_STATUSES)[number];
   statusLabel: string;
   roleLabel: string;
+  /** The account listed it (schools.mine): its open trial requests and the confirm step are theirs. */
+  owned: boolean;
+  /** Open trial lesson requests of an owned school (0 otherwise). */
+  openTrialRequests: number;
+  /** M20: an owned, listed school the activity check waits on or has hidden: "This listing is current". */
+  needsConfirmation: boolean;
 }
 
 /**
@@ -146,8 +154,7 @@ const REQUEST_LABELS = {
   under_review: 'Under review',
   rejected: 'Not confirmed: correct it and send it again',
 } as const;
-/** M11: the listing's status in the owner's words; the public pin is a separate question (schools.ts). */
-export const SCHOOL_STATUS_LABELS = { draft: 'Draft', pending_review: 'Waiting for review', active: 'Listed', hidden: 'Hidden by a moderator', archived: 'Archived' } as const;
+/** M11: the account's role at a school it is an instructor of; a school it only listed says "Listed by you". */
 const SCHOOL_ROLE_LABELS = { head_instructor: 'Head instructor', instructor: 'Instructor', assistant: 'Assistant' } as const;
 
 /**
@@ -349,6 +356,8 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
     waiting = await waitingRequests(db, own.id);
     const refs = await peopleRefs(rows.map((r) => r.studentId));
     requests = rows.map((r) => ({ relationshipId: r.id, student: refs.get(r.studentId)!, lineage: r.lineage, createdAt: r.createdAt.toISOString() }));
+    // The schools the account listed and the schools that list its person as an instructor, once
+    // each (role replay 2026-11-25, P1-4): the same schools as Your schools, and more.
     const schoolRows = await db
       .select({
         id: school.id,
@@ -357,13 +366,19 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
         city: place.name,
         countryCode: place.countryCode,
         status: school.status,
+        activityStage: school.activityStage,
+        owned: sql<boolean>`${school.createdByUserId} = ${p.user.id}::uuid`,
         role: schoolInstructor.role,
       })
-      .from(schoolInstructor)
-      .innerJoin(school, eq(school.id, schoolInstructor.schoolId))
+      .from(school)
       .innerJoin(place, eq(place.id, school.placeId))
-      .where(and(eq(schoolInstructor.personId, own.id), isNull(school.deletedAt)))
-      .orderBy(asc(school.name));
+      .leftJoin(schoolInstructor, and(eq(schoolInstructor.schoolId, school.id), eq(schoolInstructor.personId, own.id)))
+      .where(and(isNull(school.deletedAt), or(eq(school.createdByUserId, p.user.id), eq(schoolInstructor.personId, own.id))))
+      .orderBy(asc(school.name), asc(school.id));
+    const trials = await openTrialCounts(
+      db,
+      schoolRows.filter((s) => s.owned).map((s) => s.id),
+    );
     schools = schoolRows.map((s) => ({
       id: s.id,
       slug: s.slug,
@@ -371,8 +386,11 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       city: s.city,
       countryCode: s.countryCode,
       status: s.status,
-      statusLabel: SCHOOL_STATUS_LABELS[s.status],
-      roleLabel: SCHOOL_ROLE_LABELS[s.role],
+      statusLabel: listingLabel(s.status, s.activityStage),
+      roleLabel: s.role ? SCHOOL_ROLE_LABELS[s.role] : 'Listed by you',
+      owned: s.owned,
+      openTrialRequests: s.owned ? (trials.get(s.id) ?? 0) : 0,
+      needsConfirmation: s.owned && s.status === 'active' && s.activityStage !== 'current',
     }));
   }
 
