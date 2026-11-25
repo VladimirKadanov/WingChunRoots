@@ -55,6 +55,8 @@ async function apiSearch(page: Page, query: Record<string, string>) {
     people: Record<string, unknown>[];
     schools: Record<string, unknown>[];
     lineages: Record<string, unknown>[];
+    events: Record<string, unknown>[];
+    place: Record<string, unknown> | null;
   };
 }
 
