@@ -375,6 +375,23 @@ describe('review decisions write relationship_event and audit_log', () => {
     expect(fallback.group ?? null).toBeNull();
     expect(fallback.age).toBe('any');
   });
+
+  it('counts and lists only the kinds a role decides under "Yours to decide" (role replay 2026-11-25, P2-11)', async () => {
+    const moderator = await staff('rv-decide-mod', 'moderator');
+    const archivist = await staff('rv-decide-arch', 'archivist');
+    const { caseId } = await claim('rv-decide');
+    // A historical claim is an archivist's decision, not a moderator's.
+    const forArchivist = await listReviewCases(archivist.principal, { decide: 'me', sort: 'newest' });
+    expect(forArchivist.rows.map((r) => r.id)).toContain(caseId);
+    expect(forArchivist.rows.every((r) => ['historical_claim', 'person_claim', 'instructor_verification', 'organization_application', 'decision_appeal', 'record_proposal'].includes(r.kind))).toBe(true);
+    expect(forArchivist.counts.decide).toBe(forArchivist.total);
+    const forModerator = await listReviewCases(moderator.principal, { decide: 'me', sort: 'newest' });
+    expect(forModerator.rows.map((r) => r.id)).not.toContain(caseId);
+    expect(forModerator.rows.every((r) => !['historical_claim', 'person_claim', 'instructor_verification'].includes(r.kind))).toBe(true);
+    expect(forModerator.counts.decide).toBe(forModerator.total);
+    // The whole queue still shows every case to every reviewer.
+    expect(forModerator.counts.decide).toBeLessThan(forModerator.counts.all);
+  });
 });
 
 describe('the archival edit (plan §6.6)', () => {
