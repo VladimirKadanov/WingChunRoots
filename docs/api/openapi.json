@@ -18774,6 +18774,45 @@
                         "null"
                       ]
                     },
+                    "priceNote": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "openTo": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "all_levels",
+                            "members_only",
+                            "instructors_only"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openToLabel": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "registrationUrl": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "registrationEmail": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "cancelledAt": {
                       "type": [
                         "string",
@@ -18900,6 +18939,11 @@
                     "description",
                     "venue",
                     "externalUrl",
+                    "priceNote",
+                    "openTo",
+                    "openToLabel",
+                    "registrationUrl",
+                    "registrationEmail",
                     "cancelledAt",
                     "cancellationNote",
                     "school",
@@ -19023,6 +19067,54 @@
                       {
                         "type": "string",
                         "maxLength": 1200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "priceNote": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 240
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "openTo": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "all_levels",
+                          "members_only",
+                          "instructors_only"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "registrationUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 1200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "registrationEmail": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 508
                       },
                       {
                         "type": "null"
@@ -19189,6 +19281,54 @@
                       {
                         "type": "string",
                         "maxLength": 1200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "priceNote": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 240
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "openTo": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "all_levels",
+                          "members_only",
+                          "instructors_only"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "registrationUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 1200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "registrationEmail": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 508
                       },
                       {
                         "type": "null"
