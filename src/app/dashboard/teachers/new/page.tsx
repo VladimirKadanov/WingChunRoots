@@ -72,6 +72,7 @@ function resubmitValues(view: RelationshipView): Record<string, string> {
     if (period.school) values[`periods.${i}.schoolId`] = period.school.id;
   });
   if (view.prefersDisplayPrimary) values.displayPrimary = 'on';
+  if (view.note) values.note = view.note;
   return values;
 }
 

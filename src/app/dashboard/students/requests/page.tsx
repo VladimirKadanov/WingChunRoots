@@ -25,7 +25,7 @@ import { PageRedirect } from '@/components/account/page-redirect';
 import { NameText } from '@/components/account/person-names';
 import { UPGRADE_CLOSED_PARAM, UPGRADE_OPEN_PARAM, UPGRADE_SUMMARY_ID } from '@/components/plans/form-ids';
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
-import { ApproveForm, DeclineForm, EndTrainingForm } from '@/components/relationships/forms';
+import { ApproveForm, DeclineForm, EndTrainingForm, PublishProfileForm } from '@/components/relationships/forms';
 import { NotPublicNote, OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { allowanceShort } from '@/lib/allowance-text';
@@ -36,7 +36,7 @@ import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { REJECTION_REASON_CODES, REJECTION_REASONS } from '@/server/templates/relationships';
 import { requestPilotAccessAction } from '../../actions';
-import { endTrainingAction } from '../../teachers/actions';
+import { endTrainingAction, showProfilePubliclyAction } from '../../teachers/actions';
 import { END_FORM, endForm } from '../../teachers/form-ids';
 import { approveRequestAction, rejectRequestAction } from './actions';
 import { APPROVE_FORM, approveForm, REJECT_FORM, rejectForm } from './form-ids';
@@ -129,6 +129,11 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
         </p>
 
         <div className="mt-8 grid gap-10">
+          {one(query.published) === '1' ? (
+            <OutcomeNote testId="profile-published">
+              Your profile is public now. Each confirmed link appears in the public lineage once the other person&rsquo;s profile is public too.
+            </OutcomeNote>
+          ) : null}
           {approved ? (
             <OutcomeNote testId="request-approved">
               You confirmed <NameText name={approved.student.name} /> as your student.{' '}
@@ -205,8 +210,14 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
                       >
                         <td role="cell" className={cell}>
                           <span className="grid gap-0.5">
-                            <PersonName person={view.student} />
-                            <span className="text-sm text-fg-muted">Sent {formatDay(view.createdAt)}</span>
+                            {/* P2-3 (ADR 0060): the teacher of a request may open the student's page, private or not. */}
+                            <PersonName person={view.student} link />
+                            <span className="text-sm text-fg-muted">
+                              Sent {formatDay(view.createdAt)}
+                              {view.waitingDays !== null && view.waitingDays > 0 ? (
+                                <span data-testid="waiting-days">{` · waiting ${view.waitingDays === 1 ? '1 day' : `${view.waitingDays} days`}`}</span>
+                              ) : null}
+                            </span>
                             <span className="mt-1">
                               {/* The teacher's side of "Waiting for the teacher", as on the dashboard. */}
                               <StatusBadge state="unconfirmed" label="Sent to you" />
@@ -217,6 +228,13 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
                           <span className="grid gap-1">
                             <span className="text-fg-muted">{view.lineage.name}</span>
                             <PeriodLines periods={view.periods} />
+                            {/* P2-3 (ADR 0060): the student's own words, as they wrote them. */}
+                            {view.note ? (
+                              <span className="grid gap-0.5" data-testid="request-note">
+                                <span className="font-semibold">Note from the student</span>
+                                <span className="max-w-[48ch] whitespace-pre-line [overflow-wrap:anywhere]">{view.note}</span>
+                              </span>
+                            ) : null}
                             {/* M10b: the files a student sent with an invitation, once the profile is yours. */}
                             {view.evidence.length > 0 ? (
                               <span className="grid gap-0.5" data-testid="request-evidence">
@@ -303,7 +321,7 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
                         />
                       ) : null}
                     </div>
-                    <NotPublicNote view={view} />
+                    <NotPublicNote view={view} publish={<PublishProfileForm action={showProfilePubliclyAction} page="students" />} />
                   </li>
                 ))}
               </ul>

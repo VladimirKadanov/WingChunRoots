@@ -9,11 +9,20 @@
 
 import * as z from 'zod';
 
-import { EVENT_KINDS, PUBLIC_EVENT_STATUSES } from '../db/schema/common';
+import { EVENT_AUDIENCES, EVENT_KINDS, PUBLIC_EVENT_STATUSES } from '../db/schema/common';
 import { photoSchema } from './public';
 import { searchNameSchema } from './search';
 
 export const eventKindSchema = z.enum(EVENT_KINDS);
+
+export type EventAudience = (typeof EVENT_AUDIENCES)[number];
+
+/** P2-9 (ADR 0062): who an event is open to, in words. */
+export const EVENT_AUDIENCE_LABELS: Record<EventAudience, string> = {
+  all_levels: 'Open to all levels',
+  members_only: 'Members only',
+  instructors_only: 'Instructors only',
+};
 export type EventKind = z.infer<typeof eventKindSchema>;
 
 export const EVENT_KIND_LABELS: Record<EventKind, string> = {
@@ -85,6 +94,12 @@ export const eventPageSchema = eventSummarySchema.extend({
   venue: z.string().nullable(),
   /** An https link the organizer gave. */
   externalUrl: z.string().nullable(),
+  /** P2-9 (ADR 0062): how to join, as the organizer published it; each null when not given. */
+  priceNote: z.string().nullable(),
+  openTo: z.enum(EVENT_AUDIENCES).nullable(),
+  openToLabel: z.string().nullable(),
+  registrationUrl: z.string().nullable(),
+  registrationEmail: z.string().nullable(),
   cancelledAt: z.string().nullable(),
   cancellationNote: z.string().nullable(),
   /** A public school, by name and city. */

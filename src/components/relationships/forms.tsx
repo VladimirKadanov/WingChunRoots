@@ -178,6 +178,57 @@ export function WithdrawForm({
   );
 }
 
+/** "Show my profile publicly" in one tap, beside a confirmed link that is not public yet (role replay 2026-11-25, P2-2). */
+export function PublishProfileForm({ action, page }: { action: Action; page: 'teachers' | 'students' | 'dashboard' }) {
+  const [state, formAction, pending] = useActionState(action, IDLE);
+  const formId = useFormId('publish-profile');
+  useFocusOnError(formId, state);
+  return (
+    <form id={formId} action={formAction} noValidate aria-busy={pending || undefined} className="grid gap-2">
+      <FormMessage form={formId} state={state} single />
+      <input type="hidden" name="page" value={page} />
+      <div>
+        <button type="submit" disabled={pending} data-testid="publish-profile" className={cx(buttonVariants({ variant: 'secondary' }), 'w-full sm:w-auto')}>
+          {pending ? 'Saving…' : 'Show my profile publicly'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** "Send a reminder" of a request that has waited 14 days or more (role replay 2026-11-25, P2-1). */
+export function RemindForm({
+  action,
+  relationshipId,
+  idempotencyKey,
+  who,
+  fixedId,
+  initial,
+}: {
+  action: Action;
+  relationshipId: string;
+  idempotencyKey: string;
+  /** The teacher's name, for the button's accessible name. */
+  who: string;
+  fixedId: string;
+  initial?: FormState | null;
+}) {
+  const [state, formAction, pending] = useActionState(action, initial ?? IDLE);
+  const generatedId = useFormId('remind');
+  const formId = initial ? fixedId : generatedId;
+  useFocusOnError(formId, state);
+  return (
+    <form id={formId} action={formAction} noValidate aria-busy={pending || undefined} className="grid gap-2">
+      <FormMessage form={formId} state={state} single />
+      <input type="hidden" name="relationshipId" value={relationshipId} />
+      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+      <div>
+        <RowButton pending={pending} label="Send a reminder" pendingLabel="Sending…" who={who} variant="secondary" />
+      </div>
+    </form>
+  );
+}
+
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 /**

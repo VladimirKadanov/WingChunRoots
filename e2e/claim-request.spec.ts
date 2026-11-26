@@ -200,14 +200,12 @@ test('@claim "Create an account" on the way to a claim keeps it through sign-up 
   await visible(page.getByRole('button', { name: 'Create account' })).click();
   await expect(visible(page.getByRole('heading', { level: 1, name: 'Check your inbox' }))).toBeVisible();
 
-  // The confirmation link carries the claim page, and so does the sign-in it leads to.
+  // The confirmation link carries the claim page; it signs in the browser that signed up and goes
+  // back to it (ADR 0069).
   const link = new URL(await emailLinkFromOutbox('verify-email', email));
   expect(link.searchParams.get('next')).toBe(claimPath);
   await page.goto(`${link.pathname}${link.search}`);
   await visible(page.getByRole('button', { name: 'Confirm my address' })).click();
-  await page.waitForURL((u) => u.pathname === '/sign-in' && u.searchParams.get('next') === claimPath, { timeout: 15_000 });
-  await visible(page.getByLabel('Password', { exact: true })).fill(NEW_ACCOUNT_PASSWORD);
-  await visible(page.getByRole('button', { name: 'Sign in' })).click();
   await page.waitForURL((u) => u.pathname === claimPath, { timeout: 15_000 });
   await expect(visible(page.getByTestId('claim-explainer'))).toBeVisible();
   const userId = (await userIdOf(email))!;

@@ -90,7 +90,11 @@ interface Member {
  * A new confirmed account in a browser context of its own, with a public profile (through the API,
  * as onboarding does with "Show my profile publicly"), and a Sifu account when `sifu` is set.
  */
-async function member(browser: Browser, label: string, options: { sifu?: boolean; viewport?: { width: number; height: number } } = {}): Promise<Member> {
+async function member(
+  browser: Browser,
+  label: string,
+  options: { sifu?: boolean; viewport?: { width: number; height: number }; showPublicly?: boolean } = {},
+): Promise<Member> {
   const context = await browser.newContext({
     baseURL: BASE_URL,
     ...(options.viewport ? { viewport: options.viewport, isMobile: true, hasTouch: true } : {}),
@@ -100,7 +104,7 @@ async function member(browser: Browser, label: string, options: { sifu?: boolean
   const account = await signInAs(page, 'new');
   const find = token();
   const name = `Demo ${label} ${find.charAt(0).toUpperCase()}${find.slice(1)}`;
-  const onboard = await apiPost(page, '/account/onboard', { primaryName: name, showPublicly: true });
+  const onboard = await apiPost(page, '/account/onboard', { primaryName: name, showPublicly: options.showPublicly ?? true });
   expect(onboard.status(), await onboard.text()).toBe(200);
   if (options.sifu) {
     const type = await apiPost(page, '/account/type', { accountType: 'sifu' });
@@ -128,6 +132,7 @@ interface RequestOptions {
   fromMonth?: string;
   ongoing?: boolean;
   toYear?: string;
+  note?: string;
 }
 
 /** Chooses `teacher` in the request form with the palette in select mode. */
@@ -153,6 +158,7 @@ async function fillRequest(page: Page, options: RequestOptions) {
   if (options.fromMonth) await visible(page.getByRole('combobox', { name: 'Month' })).first().selectOption(options.fromMonth);
   if (options.ongoing ?? true) await visible(page.getByRole('checkbox', { name: 'I still train with this teacher' })).check();
   if (options.toYear) await field(page, 'Ended (year) (optional)').fill(options.toYear);
+  if (options.note) await field(page, 'Note to your teacher (optional)').fill(options.note);
 }
 
 /** Sends a request to `teacher` through /dashboard/teachers/new; returns the relationship's id. */
@@ -344,6 +350,30 @@ test('@M09 a new request creates a teacher dashboard notification and an email w
   // The queue link opens the request.
   await teacher.page.goto('/dashboard/students/requests');
   await expect(visible(teacher.page.getByTestId('student-request'))).toContainText(student.name);
+  await Promise.all([teacher.context.close(), student.context.close()]);
+});
+
+test('@M09 the teacher reads the note sent with a request, and a private student shows their profile in one tap after the approval', async ({ browser }) => {
+  // Role replay 2026-11-25 (P2-2, P2-3; ADR 0060).
+  const [teacher, student] = await Promise.all([member(browser, 'Sifu', { sifu: true }), member(browser, 'Student', { showPublicly: false })]);
+  const note = 'We trained together at the demo school in Demo City.';
+  const id = await requestTeacher(student, teacher, { lineage: LINEAGE_A, note });
+  await teacher.page.goto('/dashboard/students/requests');
+  await expect(requestRow(teacher.page, id).getByTestId('request-note')).toContainText(note);
+  // The student's page opens for the teacher of the request, though it is private.
+  await expect(requestRow(teacher.page, id).getByRole('link', { name: student.name })).toHaveAttribute('href', `/people/${student.slug}`);
+  expect((await teacher.page.request.get(`/people/${student.slug}`)).status()).toBe(200);
+  await approve(teacher, id);
+
+  await student.page.goto('/dashboard/teachers');
+  const pending = visible(student.page.getByTestId('link-not-public'));
+  await expect(pending).toHaveAttribute('data-private', 'you');
+  await expect(pending).toContainText(`You and ${teacher.name} are linked.`);
+  await visible(student.page.getByTestId('publish-profile')).click();
+  await student.page.waitForURL(/[?&]published=1/);
+  await expect(student.page.getByTestId('link-not-public')).toHaveCount(0);
+  const rows = await getDb().execute<{ visibility: string }>(sql`SELECT visibility FROM person WHERE id = ${student.personId}::uuid`);
+  expect(rows.rows[0]!.visibility).toBe('public');
   await Promise.all([teacher.context.close(), student.context.close()]);
 });
 

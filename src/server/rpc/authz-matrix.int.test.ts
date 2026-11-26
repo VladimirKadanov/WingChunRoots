@@ -671,6 +671,8 @@ const ROWS: Row[] = [
     },
     expect: { ...signedInOnly, owner: 'ok', member: 'FORBIDDEN', moderator: 'FORBIDDEN', archivist: 'FORBIDDEN', admin: 'FORBIDDEN', adminNo2fa: 'FORBIDDEN' },
   },
+  // Role replay 2026-11-25 (P2-2, ADR 0060): "Show my profile publicly" publishes the account's own profile only.
+  { path: 'profile.publish', make: async () => ({ owner: await actor('publishing'), input: undefined }), expect: { ...signedInOnly, owner: 'ok' } },
   // ADR 0047: the links of a featured profile. Own links for every account with a profile; saving
   // needs the plan (a member without it is refused at the plan); staff remove one with a reason.
   { path: 'profile.links', make: async () => ({ owner: await actor('links-own'), input: undefined }), expect: { ...signedInOnly, owner: 'ok', member: 'ok' } },
@@ -872,6 +874,19 @@ const ROWS: Row[] = [
     path: 'relationships.withdraw',
     make: async () => {
       const r = await pendingRequest();
+      return { owner: r.student, party: r.teacher, input: { relationshipId: r.relationshipId, idempotencyKey: key() } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'FORBIDDEN', member: 'NOT_FOUND', moderator: 'FORBIDDEN', archivist: 'FORBIDDEN', admin: 'FORBIDDEN', adminNo2fa: 'NOT_FOUND' },
+  },
+  // Role replay 2026-11-25 (P2-1, ADR 0060): a reminder of a request that has waited 14 days, by its student.
+  {
+    path: 'relationships.remind',
+    make: async () => {
+      const r = await pendingRequest();
+      await getDb()
+        .update(teachingRelationship)
+        .set({ createdAt: sql`now() - make_interval(days => 15)`, updatedAt: sql`now() - make_interval(days => 15)` })
+        .where(eq(teachingRelationship.id, r.relationshipId));
       return { owner: r.student, party: r.teacher, input: { relationshipId: r.relationshipId, idempotencyKey: key() } };
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'FORBIDDEN', member: 'NOT_FOUND', moderator: 'FORBIDDEN', archivist: 'FORBIDDEN', admin: 'FORBIDDEN', adminNo2fa: 'NOT_FOUND' },
@@ -2715,6 +2730,8 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/teachers/actions.ts#requestTeacherAction', row: 'relationships.request', form: (i) => ({ ...same(i), ...periodsForm }), roles: ['anonymous', 'member'] },
   { action: 'src/app/dashboard/teachers/actions.ts#resubmitRequestAction', row: 'relationships.resubmit', form: (i) => ({ ...same(i), ...periodsForm }), roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/teachers/actions.ts#withdrawRequestAction', row: 'relationships.withdraw', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/teachers/actions.ts#remindTeacherAction', row: 'relationships.remind', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/teachers/actions.ts#showProfilePubliclyAction', row: 'profile.publish', form: () => ({ page: 'teachers' }), roles: ['anonymous', 'owner'] },
   { action: 'src/app/dashboard/teachers/actions.ts#endTrainingAction', row: 'relationships.end', form: (i) => ({ ...same(i), endYear: '2024' }), roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/students/requests/actions.ts#approveRequestAction', row: 'relationships.approve', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/students/requests/actions.ts#rejectRequestAction', row: 'relationships.reject', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
