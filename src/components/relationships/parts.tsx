@@ -35,8 +35,38 @@ export function badgeOf(view: Pick<RelationshipView, 'status' | 'historical'>): 
  * publicly". Said in words, so a member is never left wondering where their link went. Calm: it
  * lists what is true and where to change it. Spans the whole row of the list it sits in.
  */
-export function NotPublicNote({ view }: { view: Pick<RelationshipView, 'status' | 'shown'> }) {
+export function NotPublicNote({
+  view,
+  publish,
+}: {
+  view: Pick<RelationshipView, 'status' | 'shown' | 'privateSide' | 'viewerRole' | 'teacher' | 'student'>;
+  /** Role replay 2026-11-25 (P2-2): the one-tap "Show my profile publicly", when the viewer's own profile is private. */
+  publish?: ReactNode;
+}) {
   if (view.shown || (view.status !== 'verified' && view.status !== 'in_arbitration')) return null;
+  const other = view.viewerRole === 'teacher' ? view.student : view.teacher;
+  if (view.privateSide?.you) {
+    return (
+      <div data-testid="link-not-public" data-private="you" className="grid justify-items-start gap-2 sm:col-span-2">
+        <p className="max-w-[62ch] text-sm text-fg-muted">
+          <span className="font-semibold text-fg">
+            You and <NameText name={other.name} /> are linked.
+          </span>{' '}
+          Make your profile public to appear in the lineage{view.privateSide.them ? '; the link is shown once they make theirs public too' : ''}. Your
+          names, city and confirmed links then appear in search and on your page.
+        </p>
+        {publish}
+      </div>
+    );
+  }
+  if (view.privateSide?.them) {
+    return (
+      <p data-testid="link-not-public" data-private="them" className="max-w-[62ch] text-sm text-fg-muted sm:col-span-2">
+        <span className="font-semibold text-fg">Confirmed, not public yet.</span> Waiting for <NameText name={other.name} /> to make their profile public.
+        The link stays here, on your dashboard, until then.
+      </p>
+    );
+  }
   return (
     <p data-testid="link-not-public" className="max-w-[62ch] text-sm text-fg-muted sm:col-span-2">
       <span className="font-semibold text-fg">Confirmed, not public yet.</span> This link stays here, on your dashboard. It appears in the public lineage once

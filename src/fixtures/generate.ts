@@ -467,6 +467,7 @@ class Builder {
       statusReason: opts.reason ?? null,
       // M26: the demo data enters no links through the archive editor, so none has a source note.
       sourceNote: null,
+      requestNote: null,
       createdAt: created,
       updatedAt: created,
     };
