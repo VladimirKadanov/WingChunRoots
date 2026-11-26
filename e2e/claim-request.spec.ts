@@ -285,3 +285,70 @@ test('@claim a student names a teacher who is not on WingChunRoots yet: the form
   expect(invitation.pathname).toMatch(/^\/invite\//);
   await context.close();
 });
+
+test('@claim the reviewer asks the record’s verified teacher, who answers from their notice; the case shows the answer (ADR 0067)', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const target = await claimableRecord();
+  // The record's teacher has an account and a verified link to it.
+  const teacher = await newClient(browser);
+  const teacherAccount = await signInAs(teacher.page, 'new');
+  const teacherUserId = (await userIdOf(teacherAccount.email))!;
+  const teacherId = uuidv7();
+  await getDb().execute(sql`
+    INSERT INTO person (id, slug, kind, life_status, stewardship, visibility, claimed_by_user_id)
+    VALUES (${teacherId}::uuid, ${`demo-asked-teacher-${letters()}`}, 'living', 'living', 'self', 'public', ${teacherUserId}::uuid)`);
+  await getDb().execute(sql`INSERT INTO person_name (person_id, value, script, lang, is_primary) VALUES (${teacherId}::uuid, 'Demo Asked Teacher', 'Latn', 'en', true)`);
+  const lineage = await getDb().execute<{ id: string }>(sql`SELECT id::text FROM lineage ORDER BY slug LIMIT 1`);
+  await getDb().execute(sql`
+    INSERT INTO teaching_relationship (id, teacher_person_id, student_person_id, lineage_id, status, visibility)
+    VALUES (${uuidv7()}::uuid, ${teacherId}::uuid, ${target.id}::uuid, ${lineage.rows[0]!.id}::uuid, 'verified', 'public')`);
+
+  // Someone without a profile asks to claim the record.
+  const claimant = await newClient(browser);
+  await signInAs(claimant.page, 'new');
+  const claimed = await apiPost(claimant.page, '/claims/request', { personId: target.id, note: NOTE, idempotencyKey: randomUUID() });
+  expect(claimed.status(), await claimed.text()).toBe(200);
+  const caseId = ((await claimed.json()) as { caseId: string }).caseId;
+
+  // The administrator's case card offers the teacher; asking marks the row as asked.
+  const admin = await newClient(browser);
+  await signInAs(admin.page, 'admin');
+  await admin.page.goto(`/admin/review/${caseId}`);
+  const row = visible(admin.page.getByTestId('case-confirmation'));
+  await expect(row).toHaveAttribute('data-state', 'not-asked');
+  await expect(row).toContainText('Demo Asked Teacher');
+  await row.getByTestId('ask-teacher-form').getByRole('button').click();
+  await expect(visible(admin.page.getByTestId('case-outcome'))).toBeVisible();
+  await expect(visible(admin.page.getByTestId('case-confirmation'))).toHaveAttribute('data-state', 'asked');
+
+  // The teacher's notice leads to the question; they see their student, answer once.
+  const notice = await getDb().execute<{ id: string }>(sql`
+    SELECT payload->>'confirmationId' AS id FROM notification WHERE user_id = ${teacherUserId}::uuid AND template = 'claim.confirmation_asked'`);
+  expect(notice.rows).toHaveLength(1);
+  const page = `/dashboard/confirmations/${notice.rows[0]!.id}`;
+  await teacher.page.goto(page);
+  await expect(visible(teacher.page.getByRole('heading', { level: 1 }))).toHaveText('A question from the reviewers');
+  await expect(visible(teacher.page.getByRole('main'))).toContainText(target.name);
+  for (const theme of THEMES) {
+    await switchColorScheme(teacher.page, theme);
+    await expectNoAxeViolations(teacher.page, `claim confirmation (${theme})`);
+  }
+  await visible(teacher.page.getByTestId('confirmation-answer-yes')).check();
+  await visible(teacher.page.getByLabel('Anything the reviewers should know')).fill('Fictional: they told me after the Tuesday class.');
+  await visible(teacher.page.getByRole('button', { name: 'Send the answer' })).click();
+  await expect(visible(teacher.page.getByTestId('confirmation-outcome'))).toBeVisible();
+  await expect(visible(teacher.page.getByTestId('confirmation-answered'))).toHaveAttribute('data-answer', 'yes');
+  await expect(teacher.page.getByTestId('confirmation-form')).toHaveCount(0);
+
+  // The claimant's own case page shows nothing of it; the reviewers read the answer and the note.
+  await claimant.page.goto(`/dashboard/cases/${caseId}`);
+  await expect(visible(claimant.page.getByRole('main'))).not.toContainText('Demo Asked Teacher');
+  await admin.page.goto(`/admin/review/${caseId}`);
+  await expect(visible(admin.page.getByTestId('case-confirmation'))).toHaveAttribute('data-state', 'yes');
+  await expect(visible(admin.page.getByTestId('case-confirmation'))).toContainText('Fictional: they told me after the Tuesday class.');
+
+  // Nobody else opens the question.
+  await claimant.page.goto(page);
+  await expect(visible(claimant.page.getByRole('heading', { level: 1 }))).toHaveText('No such question');
+  await Promise.all([teacher.context.close(), claimant.context.close(), admin.context.close()]);
+});
