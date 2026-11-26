@@ -68,6 +68,35 @@ function Section({ id, title, aside, children }: { id: string; title: string; as
   );
 }
 
+/**
+ * Role replay 2026-11-25 (P3-3): "Your Premium", one strip of what the paid plan adds, each a link
+ * to its page (only pages that exist now, CLAUDE.md §11).
+ */
+function YourPremium({ links, plan }: { links: { passportHref: string; familyHref: string; cardHref: string }; plan: string }) {
+  const items = [
+    { href: links.passportHref, title: 'Your passport timeline', text: 'Your training year by year, on one timeline.' },
+    { href: links.familyHref, title: 'Kung fu family', text: 'Your classmates and cousins, and the weekly digest of what is new.' },
+    { href: links.cardHref, title: 'Your lineage card', text: 'Your line from the roots, to share, print or save as a PDF.' },
+  ];
+  return (
+    <section aria-labelledby="your-premium-heading" className="mt-8 rounded-md border border-border-subtle bg-surface-1 p-5" data-testid="your-premium">
+      <h2 id="your-premium-heading" className="font-display text-xl">
+        Your {plan}
+      </h2>
+      <ul className="mt-3 grid gap-3 sm:grid-cols-3">
+        {items.map((item) => (
+          <li key={item.href}>
+            <Link href={item.href} className="group grid min-h-11 gap-1 rounded-sm p-2 -m-2 hover:bg-surface-2">
+              <span className="font-semibold underline-offset-4 group-hover:underline">{item.title}</span>
+              <span className="text-sm text-fg-muted">{item.text}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** Why the list is empty and what comes next; a link only where there is a real next step (plan §5.6). */
 function Empty({ testId, children, action }: { testId: string; children: ReactNode; action?: { href: string; label: string } }) {
   return (
@@ -473,6 +502,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
             <UnreadLink />
           </p>
         </header>
+
+        {overview.premium ? <YourPremium links={overview.premium} plan={overview.plan.name} /> : null}
 
         <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-x-14">
           <div className="grid content-start gap-10">

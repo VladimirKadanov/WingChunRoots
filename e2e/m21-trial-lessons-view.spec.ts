@@ -94,6 +94,9 @@ test('@M21 the request form, with what the school will see; 44 px targets on a p
   await expect(shown(page.getByTestId('trial-privacy-notice'))).toContainText('your profile name');
   // "By phone" shows the phone field; "By e-mail" hides it again.
   await expect(shown(page.getByTestId('trial-phone'))).toHaveCount(0);
+  // The timetable's classes, ticked instead of typed (role replay P3-2).
+  await expect(form.getByTestId('trial-classes').getByTestId('trial-class')).toHaveCount(4);
+  await expect(form.getByTestId('trial-class').first()).toContainText(/(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) \d{2}:\d{2}/);
   await form.getByTestId('trial-contact-phone').check();
   await expect(shown(page.getByTestId('trial-phone'))).toHaveCount(1);
   await axeBothThemes(page, `/schools/${SOFIA}/trial`);

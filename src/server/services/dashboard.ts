@@ -151,6 +151,12 @@ export interface DashboardOverview {
   notifications: NotificationList;
   /** The dashboard home's "Next steps" (docs/adr/0039-member-navigation.md); empty once all are done. */
   nextSteps: NextStep[];
+  /**
+   * Role replay 2026-11-25 (P3-3): "Your Premium", the paid plan's own pages (Premium Student,
+   * Professional Sifu): the passport timeline, the kung fu family digest and the lineage card. Null
+   * without a profile or on a plan without them.
+   */
+  premium: { passportHref: string; familyHref: string; cardHref: string } | null;
 }
 
 const REQUEST_LABELS = {
@@ -260,11 +266,15 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   const db = getDb();
   const subject = { kind: 'user' as const, userId: p.user.id };
   const [own] = await db
-    .select({ id: person.id, visibility: person.visibility, photoId: person.photoId })
+    .select({ id: person.id, slug: person.slug, visibility: person.visibility, photoId: person.photoId })
     .from(person)
     .where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)));
   const looks = { profilePublic: own?.visibility === 'public', hasPhoto: Boolean(own?.photoId) };
   const effective = await effectivePlan(subject, { db });
+  const premium =
+    own && feature('kung_fu_family').values[effective.plan].included && feature('lineage_card').values[effective.plan].included
+      ? { passportHref: '/dashboard/passport', familyHref: '/dashboard/family', cardHref: `/people/${own.slug}/card` }
+      : null;
   const status = await instructorStatus(db, p.user.id, effective.accountType);
   const notifications = await listNotifications(principal);
   let staff: DashboardOverview['staff'] = null;
@@ -296,6 +306,7 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
         )[0]?.caseId ?? null),
     staff,
     notifications,
+    premium,
   };
 
   if (effective.accountType === 'student') {
