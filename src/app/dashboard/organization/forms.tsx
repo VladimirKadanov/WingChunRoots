@@ -1,170 +1,28 @@
 'use client';
 
-// The forms of an organization's dashboard (milestone M15): the application, its details, the
-// admins, the members and the school links. Each posts to a thin Server Action (./actions.ts) and
+// The forms of an organization's dashboard (milestone M15): its details, the admins, the members
+// and the school links (the application is in ./apply/apply-form.tsx, the shared fields in
+// ./organization-fields.tsx, so each page loads only its own forms' script). Each posts to a thin Server Action (./actions.ts) and
 // works without JavaScript (src/server/forms/flash.ts). The services decide who may do what; these
 // forms only show what the page's view says the account can do.
 
-import dynamic from 'next/dynamic';
 import { useActionState } from 'react';
 
 import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { TextAreaField } from '@/components/account/textarea-field';
-import { EvidenceUploader, type UploadedEvidenceItem } from '@/components/evidence/uploader';
+import { SearchPick } from '@/components/ui/search-pick';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
-import { discardEvidenceAction } from '../teachers/historical/actions';
 import {
   addOrganizationAdminAction,
   addOrganizationMemberAction,
-  applyOrganizationAction,
   endOrganizationMemberAction,
   endOrganizationSchoolAction,
   removeOrganizationAdminAction,
   requestOrganizationSchoolAction,
   updateOrganizationAction,
 } from './actions';
-import { ADD_ADMIN_FORM, ADD_MEMBER_FORM, APPLY_FORM, DETAILS_FORM, REQUEST_SCHOOL_FORM } from './form-ids';
-
-// Role replay 2026-11-25 (P2-4): "Find by name" loads after the page (next/dynamic), so this form
-// module, shared with /dashboard/organization/apply, keeps its script budget. It renders nothing
-// before hydration anyway.
-const SearchPick = dynamic(() => import('@/components/ui/search-pick').then((m) => m.SearchPick), { ssr: false });
-
-type Option = { value: string; label: string };
-type Country = { code: string; name: string };
-
-const LABELS = {
-  name: 'Official name',
-  kind: 'Kind of organization',
-  leaderName: 'Leader’s name',
-  leaderTitle: 'Leader’s title',
-  websiteUrl: 'Website',
-  countryCode: 'Country of the headquarters',
-  schoolsEstimate: 'Approximate number of schools',
-  about: 'About the organization',
-  evidenceIds: 'Supporting document',
-  note: 'Note for the reviewers',
-};
-
-export interface OrganizationValues {
-  name: string;
-  kind: string;
-  leaderName: string;
-  leaderTitle: string;
-  websiteUrl: string;
-  countryCode: string;
-  schoolsEstimate: string;
-  /** ADR 0052: the details form only (the application has its note for the reviewers). */
-  about?: string;
-}
-
-/** The application's fields. `locked`: an approved organization keeps its name, kind and country (a new review would change them). */
-function OrganizationFields({
-  formId,
-  state,
-  defaults,
-  countries,
-  kinds,
-  locked,
-}: {
-  formId: string;
-  state: FormState;
-  defaults: OrganizationValues | null;
-  countries: readonly Country[];
-  kinds: readonly Option[];
-  locked: boolean;
-}) {
-  const value = (name: keyof OrganizationValues) => state.values?.[name] ?? defaults?.[name] ?? '';
-  return (
-    <>
-      {locked && defaults ? (
-        <div className="grid gap-1 text-ui" data-testid="organization-locked">
-          <input type="hidden" name="name" value={defaults.name} />
-          <input type="hidden" name="kind" value={defaults.kind} />
-          <input type="hidden" name="countryCode" value={defaults.countryCode} />
-          <p>
-            <span className="text-fg-muted">Official name: </span>
-            <span className="font-semibold">{defaults.name}</span>
-          </p>
-          <p className="max-w-[60ch] text-sm text-fg-muted">
-            The reviewers approved the name, kind and country. To change them, write to the administrators: a change is reviewed again.
-          </p>
-        </div>
-      ) : (
-        <>
-          <TextField form={formId} name="name" label={LABELS.name} state={state} autoComplete="organization" maxLength={160} defaultValue={value('name')} hint="In Latin letters, as the organization is registered." className="max-w-[40rem]" />
-          <SelectField form={formId} name="kind" label={LABELS.kind} state={state} autoComplete="off" defaultValue={value('kind')} className="max-w-[24rem]">
-            <option value="">Choose…</option>
-            {kinds.map((k) => (
-              <option key={k.value} value={k.value}>
-                {k.label}
-              </option>
-            ))}
-          </SelectField>
-          <SelectField form={formId} name="countryCode" label={LABELS.countryCode} state={state} autoComplete="country" defaultValue={value('countryCode')} className="max-w-[24rem]">
-            <option value="">Choose…</option>
-            {countries.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.name}
-              </option>
-            ))}
-          </SelectField>
-        </>
-      )}
-      <TextField form={formId} name="leaderName" label={LABELS.leaderName} state={state} autoComplete="off" maxLength={120} defaultValue={value('leaderName')} translate="no" hint="In Latin letters. For the reviewers and your admins; the public page shows a leader only as a listed member with a public profile." className="max-w-[40rem]" />
-      <TextField form={formId} name="leaderTitle" label={LABELS.leaderTitle} state={state} optional autoComplete="off" maxLength={80} defaultValue={value('leaderTitle')} hint="For example President or Chief instructor." className="max-w-[24rem]" />
-      <TextField form={formId} name="websiteUrl" label={LABELS.websiteUrl} state={state} optional autoComplete="url" maxLength={300} defaultValue={value('websiteUrl')} placeholder="https://" translate="no" className="max-w-[40rem]" />
-      <TextField form={formId} name="schoolsEstimate" label={LABELS.schoolsEstimate} state={state} autoComplete="off" inputMode="numeric" maxLength={6} defaultValue={value('schoolsEstimate')} hint="A whole number; 0 when the organization has none yet." className="max-w-[12rem]" />
-    </>
-  );
-}
-
-function filesFrom(values: Record<string, string> | undefined): UploadedEvidenceItem[] {
-  try {
-    const list = JSON.parse(values?.evidence ?? '[]') as UploadedEvidenceItem[];
-    return Array.isArray(list) ? list.filter((f) => typeof f?.id === 'string').slice(0, 20) : [];
-  } catch {
-    return [];
-  }
-}
-
-/** The application of /dashboard/organization/apply. */
-export function ApplyForm({ idempotencyKey, initial, countries, kinds }: { idempotencyKey: string; initial?: FormState | null; countries: readonly Country[]; kinds: readonly Option[] }) {
-  const [state, action, pending] = useActionState(applyOrganizationAction, initial ?? IDLE);
-  const generatedId = useFormId(APPLY_FORM);
-  const formId = initial ? APPLY_FORM : generatedId;
-  useFocusOnError(formId, state);
-  const files = filesFrom(state.status === 'error' ? state.values : initial?.values);
-  return (
-    <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-6" data-testid="organization-apply-form">
-      <FormMessage form={formId} state={state} labels={LABELS} />
-      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
-      <OrganizationFields formId={formId} state={state} defaults={null} countries={countries} kinds={kinds} locked={false} />
-      <div className="grid gap-2">
-        <p className="text-sm font-semibold">
-          {LABELS.evidenceIds} <span className="font-normal text-fg-muted">(optional)</span>
-        </p>
-        <p className="max-w-[60ch] text-sm text-fg-muted">
-          A registration, a charter or another document that shows the organization exists. Only you, the reviewers and the administrators can open it; it is never public.
-        </p>
-        <EvidenceUploader
-          label="Add files"
-          hint="JPEG, PNG, WebP or PDF, up to 20 MB each, at most 20 files."
-          initial={files}
-          discard={discardEvidenceAction}
-          inputId={fieldId(formId, 'evidenceIds')}
-          error={state.status === 'error' ? state.fields?.evidenceIds : undefined}
-        />
-      </div>
-      <TextAreaField form={formId} name="note" label={LABELS.note} optional maxLength={2000} hint="Anything that helps the reviewers. Never public." state={state} className="max-w-[40rem]" />
-      <div>
-        <SubmitButton pending={pending} pendingLabel="Sending…">
-          Send the application
-        </SubmitButton>
-      </div>
-    </form>
-  );
-}
+import { ADD_ADMIN_FORM, ADD_MEMBER_FORM, DETAILS_FORM, REQUEST_SCHOOL_FORM } from './form-ids';
+import { type Country, LABELS, type Option, OrganizationFields, type OrganizationValues } from './organization-fields';
 
 /** The details of /dashboard/organization/<id>: the whole application while it waits, the website, leader and number of schools once approved. */
 export function DetailsForm({
