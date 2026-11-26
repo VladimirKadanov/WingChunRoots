@@ -83,6 +83,10 @@ export const teachingRelationship = pgTable(
     // M26 (docs/adr/0034-archive-editor.md): where an archivist found the link they entered in the
     // archive editor (a book, an interview, a certificate), for staff only. Never in a public view.
     sourceNote: text('source_note'),
+    // Role replay 2026-11-25 (P2-3, ADR 0060): the student's optional note to the teacher, sent with
+    // the request ("We trained together in Varna, 2019"). Private: only the two people and the
+    // reviewers see it, like the request itself (DEFAULT D03); never in a public view.
+    requestNote: text('request_note'),
     ...timestamps(),
   },
   (t) => [
@@ -91,6 +95,7 @@ export const teachingRelationship = pgTable(
     check('teaching_relationship_verification_path_check', inList(t.verificationPath.name, VERIFICATION_PATHS)),
     check('teaching_relationship_visibility_check', inList(t.visibility.name, VISIBILITIES)),
     check('teaching_relationship_source_note_length', sql`${t.sourceNote} IS NULL OR char_length(${t.sourceNote}) BETWEEN 1 AND 2000`),
+    check('teaching_relationship_request_note_length', sql`${t.requestNote} IS NULL OR char_length(${t.requestNote}) BETWEEN 1 AND 280`),
     // DEFAULT D03: only a relationship that was verified can be public; requests never are.
     check(
       'teaching_relationship_public_only_after_verification',

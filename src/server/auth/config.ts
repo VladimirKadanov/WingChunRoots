@@ -117,7 +117,9 @@ export function createAuth() {
     emailVerification: {
       sendOnSignUp: true,
       sendOnSignIn: true,
-      autoSignInAfterVerification: false,
+      // P1-6 (ADR 0069): the first confirmation signs in, kept only in the browser that signed up
+      // (hooks.ts → confirm-browser.ts).
+      autoSignInAfterVerification: true,
       expiresIn: VERIFY_EMAIL_EXPIRES_IN_S,
       // M10b: the link keeps the invitation a sign-up started from (the request's callbackURL).
       sendVerificationEmail: ({ user, token, url }) => sendVerificationEmail(user, token, nextFromCallback(url)),

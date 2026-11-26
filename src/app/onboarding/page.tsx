@@ -9,6 +9,8 @@
 // ADR 0056: above the form, "Is there a profile of you already?" finds a public record nobody has
 // claimed (?find=) and links to its claim page; an account on its way to a claim page confirms the
 // documents only, like an invited teacher.
+// ADR 0069: an account on its way to a school's trial lesson form is asked only its Latin-script
+// name (and any confirmation it lacks); the rest of the profile can follow later.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -17,7 +19,7 @@ import Link from 'next/link';
 import { AuthFrame } from '@/components/account/auth-frame';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { guardRoute } from '@/server/auth/web';
-import { isClaimPath } from '@/lib/invitation-path';
+import { isClaimPath, isTrialPath } from '@/lib/invitation-path';
 import { readFormResult } from '@/server/forms/flash';
 import { documentsFor } from '@/server/legal/documents';
 import { serverClient } from '@/server/rpc/server';
@@ -96,6 +98,25 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
   ]);
   // Only the records nobody has claimed: a claimed one is someone else's account.
   const hits = find ? (found?.people ?? []).filter((hit) => hit.invitable) : null;
+  if (isTrialPath(next)) {
+    return (
+      <AuthFrame
+        eyebrow="Welcome · your trial lesson"
+        title="One thing first: your name"
+        lede="The school sees the name you give here with your request for a trial lesson."
+      >
+        <OnboardingForm
+          options={options}
+          accountType={mine.accountType}
+          missingConsents={me.missingConsents}
+          documents={documents}
+          next={next}
+          initial={initial}
+          short
+        />
+      </AuthFrame>
+    );
+  }
   return (
     <AuthFrame
       eyebrow="Welcome · your profile"

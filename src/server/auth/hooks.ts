@@ -34,7 +34,11 @@
 //   Each reservation stays open in the request's scope (request-scope.ts) until the after hook
 //   settles it, and is given back when the request ends without the after hook.
 // hooks.after
-//   /sign-up/email                 the same body for a new and an existing address (no enumeration).
+//   /sign-up/email                 the same body for a new and an existing address (no enumeration),
+//                                  and a signed cookie with the address for this browser (ADR 0069).
+//   /verify-email                  the session of an address's first confirmation stays only in the
+//                                  browser whose cookie names that address, which becomes a known
+//                                  one; anywhere else it is deleted unseen (confirm-browser.ts).
 //   /sign-in/email                 a wrong password keeps its reservation; a right one clears the key
 //                                  and makes this browser a known one; anything else gives it back.
 //                                  The right password of an unconfirmed account is answered and
@@ -72,6 +76,7 @@ import { authAccount, authSession, authTwoFactor, authUser, emailDelivery } from
 import { ConsentRequiredError, grantConsents, parseSignUpConsents } from '../services/consent';
 import { requestMeta } from '../services/context';
 import { type SecurityKind, sendSecurityNotice } from '../services/security-notices';
+import { keepConfirmationSessionInSignUpBrowser, markSignUpBrowser } from './confirm-browser';
 import { normalizeBackupCode } from './credentials';
 import { demoSignInAllowed } from './env';
 import { clientIp, ipHmac } from './ip';
@@ -403,7 +408,22 @@ export const afterHook = createAuthMiddleware(async (ctx) => {
   if (ctx.path === '/sign-up/email') {
     // Better Auth answers a duplicate address with a made-up user whose fields differ from a real
     // one (role, for one); one constant body for every accepted sign-up reveals nothing.
-    if (returned && !isAPIError(returned) && !(returned instanceof Response)) return ctx.json({ token: null, user: null });
+    if (returned && !isAPIError(returned) && !(returned instanceof Response)) {
+      const email = bodyOf(ctx).email;
+      // P1-6 (docs/adr/0069-sign-in-on-confirmation.md): this browser may be signed in by the
+      // address's first confirmation. Set for every accepted sign-up, a new address or not.
+      if (typeof email === 'string') await markSignUpBrowser(ctx, email);
+      return ctx.json({ token: null, user: null });
+    }
+    return;
+  }
+
+  if (ctx.path === '/verify-email') {
+    // The session of the first confirmation stays only in the browser that signed up.
+    if (succeeded(returned) && (await keepConfirmationSessionInSignUpBrowser(ctx)) === 'kept') {
+      const email = ctx.context.newSession?.user.email;
+      if (email) await rememberDevice(ctx, email);
+    }
     return;
   }
 

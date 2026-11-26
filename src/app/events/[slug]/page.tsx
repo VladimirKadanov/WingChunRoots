@@ -18,6 +18,7 @@ import { PersonAvatar } from '@/components/lineage/person-avatar';
 import { ErrorPanel } from '@/components/lineage/states';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
+import { mapsSearchHref } from '@/lib/directions';
 import { formatEventWhen, isoInZone } from '@/lib/event-time';
 import { eventMotif } from '@/lib/ink-art';
 import { countryName } from '@/lib/regions';
@@ -67,6 +68,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       ...(event.poster ? { images: [{ url: event.poster.large, width: 512, height: 512 }] } : {}),
     },
   };
+}
+
+/**
+ * P2-9 (ADR 0062): "Directions" opens the maps app of the phone (a maps site on a computer) with
+ * what the event's page already shows publicly: the venue line and the city. Never a point.
+ */
+function directionsHref(event: EventPageDto): string {
+  return mapsSearchHref([event.venue, event.city, countryName(event.countryCode) ?? event.countryCode].filter(Boolean).join(', '));
 }
 
 /** schema.org data of the event (JSON-LD), from the public DTO: the city only, never a venue or a point. */
@@ -265,6 +274,23 @@ export default async function EventPage({ params, searchParams }: Props) {
                   </dd>
                 </>
               ) : null}
+              {/* P2-9 (ADR 0062): how to join, as the organizer published it. */}
+              {event.priceNote ? (
+                <>
+                  <dt className="pt-0.5 text-sm text-fg-subtle">Price</dt>
+                  <dd className="min-w-0 [overflow-wrap:anywhere]" data-testid="event-price">
+                    {event.priceNote}
+                  </dd>
+                </>
+              ) : null}
+              {event.openToLabel ? (
+                <>
+                  <dt className="pt-0.5 text-sm text-fg-subtle">Who</dt>
+                  <dd className="min-w-0" data-testid="event-open-to">
+                    {event.openToLabel}
+                  </dd>
+                </>
+              ) : null}
               {event.school ? (
                 <>
                   <dt className="pt-3 text-sm text-fg-subtle">School</dt>
@@ -281,6 +307,24 @@ export default async function EventPage({ params, searchParams }: Props) {
                 <CalendarIcon />
                 Add to calendar
               </a>
+              {!cancelled && !past && event.registrationUrl ? (
+                <a href={event.registrationUrl} rel="nofollow noopener" className={buttonVariants({ variant: 'secondary' })} data-testid="event-register">
+                  Register on the organizer’s site
+                </a>
+              ) : null}
+              {!cancelled && !past && event.registrationEmail ? (
+                <p className="text-sm" data-testid="event-register-email">
+                  To register, write to{' '}
+                  <a href={`mailto:${event.registrationEmail}`} className="link inline-flex min-h-11 items-center [overflow-wrap:anywhere]" translate="no">
+                    {event.registrationEmail}
+                  </a>
+                </p>
+              ) : null}
+              {!event.online && !cancelled && !past ? (
+                <a href={directionsHref(event)} rel="nofollow noopener" className={buttonVariants({ variant: 'ghost' })} data-testid="event-directions">
+                  Directions
+                </a>
+              ) : null}
               {event.externalUrl ? (
                 <>
                   <a href={event.externalUrl} rel="nofollow noopener" className={buttonVariants({ variant: 'secondary' })} data-testid="event-external">

@@ -76,7 +76,7 @@ test('@nav a Sifu gets teaching tools, and a new member gets next steps that sta
     await fresh.goto('/dashboard');
     const steps = fresh.getByTestId('next-steps');
     await expect(steps.getByRole('heading', { level: 2, name: 'Get started' })).toBeVisible();
-    await expect(steps).toContainText('0 of 2 done');
+    await expect(steps).toContainText('0 of 4 done');
     await expect(fresh.getByTestId('next-step-profile')).toHaveAttribute('data-done', 'false');
     await expect(steps.getByRole('link', { name: 'Set up your profile' })).toHaveAttribute('href', '/onboarding?next=%2Fdashboard');
     // Role replay P2-6: someone who only manages an organization can leave onboarding for it.

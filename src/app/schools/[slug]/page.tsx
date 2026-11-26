@@ -29,6 +29,7 @@ import { ScheduleAndFees, TrialAction } from '@/components/schools/school-schedu
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
 import { formatDay } from '@/lib/dates';
+import { mapsDirectionsHref } from '@/lib/directions';
 import { schoolMotif } from '@/lib/ink-art';
 import { finderHref, SCHOOL_ZOOM } from '@/lib/school-finder';
 import { appUrl } from '@/server/auth/env';
@@ -179,6 +180,12 @@ export default async function SchoolPage({ params }: Props) {
           <Link href={mapHref} className="link inline-flex min-h-11 items-center text-sm" data-testid="school-map-link">
             {exact ? 'Show on the map' : 'Show the city on the map'}
           </Link>
+          {/* P2-9 (ADR 0062): the maps app, only to a point the owner chose to publish exactly. */}
+          {exact ? (
+            <a href={mapsDirectionsHref(school.point)} rel="nofollow noopener" className="link inline-flex min-h-11 items-center text-sm" data-testid="school-directions">
+              Directions
+            </a>
+          ) : null}
         </div>
         {/* ADR 0051: the approved organizations whose link the school accepted. A link names a
             membership; it verifies no teacher or relationship (DEFAULT D04). */}
@@ -206,7 +213,7 @@ export default async function SchoolPage({ params }: Props) {
             jump there. From 1024 px they sit beside the page. */}
         <nav aria-label="On this page" className="flex flex-wrap gap-2 lg:hidden" data-testid="school-quick-actions">
           <a href="#school-trial" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
-            Trial lesson
+            {exact ? 'Trial lesson' : 'Visit'}
           </a>
           <a href="#school-contact" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
             Contact
@@ -341,7 +348,7 @@ export default async function SchoolPage({ params }: Props) {
       {/* ADR 0052: what a visitor acts on, beside the page from 1024 px (under the header before). */}
       <aside aria-label="Visit the school" className="grid content-start gap-8 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1">
         <div className="grid gap-8 rounded-md border border-border-subtle bg-surface-1 p-5">
-          <TrialAction slug={school.slug} options={trial} />
+          <TrialAction slug={school.slug} options={trial} privateClub={!exact} />
           <section aria-labelledby="school-contact">
             <h2 id="school-contact" className="font-display text-xl">
               Contact

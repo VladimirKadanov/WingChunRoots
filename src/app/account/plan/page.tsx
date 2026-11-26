@@ -1,5 +1,7 @@
 // /account/plan, "Plan and billing" (milestone M08, In scope 2; plan §6.5): the account type,
-// Student or Sifu, and the plan in effect with the account's test plans. Changing the type sets the
+// Student or Sifu, and the plan in effect with the account's test plans; since the role replay
+// 2026-11-25 (P2-13, ADR 0068) also the subscription, the paid plans and the invoices of M22, which
+// had their own page, /dashboard/billing (it redirects here now; ./_billing/sections.tsx). Changing the type sets the
 // free plan of that type, is audited, and verifies nothing (DEFAULT D04): a Sifu without an approved instructor
 // verification shows as "Instructor (unverified)" (DEFAULT D04/D13). From Sifu to Student every
 // confirmed link stays confirmed (DEFAULT D06/D08). Reads the session: rendered per request.
@@ -26,6 +28,7 @@ import { FREE_SIFU_STUDENT_LIMIT } from '@/server/entitlements/plans';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
+import { BillingSections } from './_billing/sections';
 import { AccountTypeForm } from './forms';
 
 export const instant = false;
@@ -51,10 +54,12 @@ function Section({ id, title, children }: { id: string; title: string; children:
 export default async function PlanSettingsPage({ searchParams }: { searchParams: Search }) {
   const guard = await guardRoute('/account/plan');
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
-  if (guard.forbidden) return <PageRedirect to="/sign-in" />;
+  if (guard.forbidden || !guard.principal) return <PageRedirect to="/sign-in" />;
+  const principal = guard.principal;
   const query = await searchParams;
   // A failed read shows the error state in the app shell, with "Try again" (final check, requirements-2).
-  const client = serverClient(await headers(), guard.principal);
+  const requestHeaders = await headers();
+  const client = serverClient(requestHeaders, guard.principal);
   const mine = await pageRead(client.plans.mine());
   if (!mine) return <LoadError {...PLAN_LOAD_ERROR} retryHref="/account/plan" />;
   const badge = mine.instructor.status === 'verified' ? 'verified' : mine.instructor.status === 'unverified' ? 'unconfirmed' : null;
@@ -105,17 +110,7 @@ export default async function PlanSettingsPage({ searchParams }: { searchParams:
                 <span className="font-semibold">{mine.plan.name}</span>
                 {mine.until ? <span className="text-fg-muted"> {untilPlanEnd(mine.until)}</span> : null}
               </dd>
-              {/* M22: a paid plan in test mode is managed on /dashboard/billing, not listed as a test plan. */}
-              {mine.grants.some((grant) => grant.paid) ? (
-                <>
-                  <dt className="pt-3 text-sm text-fg-muted sm:border-t sm:border-border-subtle sm:pb-3">Paid plan</dt>
-                  <dd data-testid="settings-paid-plan" className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:border-b-0 sm:pt-3">
-                    <span className="font-semibold">{mine.grants.find((grant) => grant.paid)!.planName}</span>
-                    {/* Managed under "Billing and invoices" below: one link to billing on the page. */}
-                    <span className="text-fg-muted"> (test mode, no real charge).</span>
-                  </dd>
-                </>
-              ) : null}
+              {/* M22: a paid plan in test mode is not a test plan: it is the subscription, managed below. */}
               <dt className="pt-3 text-sm text-fg-muted sm:border-y sm:border-border-subtle sm:pb-3">Test plans</dt>
               <dd className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:pt-3">
                 {mine.grants.filter((grant) => !grant.paid).length === 0 ? (
@@ -149,11 +144,12 @@ export default async function PlanSettingsPage({ searchParams }: { searchParams:
               <Link href="/plans" className="link inline-flex min-h-11 items-center">
                 Compare plans
               </Link>
-              <Link href="/dashboard/billing" className="link inline-flex min-h-11 items-center" data-testid="billing-link">
-                Billing and invoices
-              </Link>
             </p>
           </Section>
+
+          {/* Role replay 2026-11-25, P2-13 (ADR 0068): the subscription, the paid plans and the
+              invoices are part of this page; /dashboard/billing redirects here. */}
+          <BillingSections principal={principal} requestHeaders={requestHeaders} query={query} />
 
           {/* The e-mail settings of the notices were a section here until the usability review of
               2026-11: an old /dashboard/settings#notifications-heading link (an e-mail, a bookmark)

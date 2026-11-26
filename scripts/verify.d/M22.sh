@@ -54,8 +54,8 @@ JOBS=src/server/jobs/billing.ts
 ROUTE=src/app/api/billing/webhook/route.ts
 COMMON=src/server/db/schema/common.ts
 CATALOG=src/server/templates/catalog.ts
-BILLING_PAGE=src/app/dashboard/billing/page.tsx
-BILLING_ACTIONS=src/app/dashboard/billing/actions.ts
+BILLING_PAGE=src/app/account/plan/_billing/sections.tsx
+BILLING_ACTIONS=src/app/account/plan/_billing/actions.ts
 CHECKOUT_PAGE='src/app/billing/test-checkout/[id]/page.tsx'
 CHECKOUT_FORM='src/app/billing/test-checkout/[id]/form.tsx'
 ADMIN_LIST=src/app/admin/billing/page.tsx
@@ -66,7 +66,7 @@ SPEC=e2e/m22-billing.spec.ts
 VIEW_SPEC=e2e/m22-billing-view.spec.ts
 INT=src/server/services/billing.int.test.ts
 UNIT=src/server/billing/billing.test.ts
-PAGES=("$BILLING_PAGE" src/app/dashboard/billing/forms.tsx "$CHECKOUT_PAGE" "$CHECKOUT_FORM" "$ADMIN_LIST" "$ADMIN_DETAIL" 'src/app/admin/billing/[id]/forms.tsx' "$STATUS_TAG")
+PAGES=("$BILLING_PAGE" src/app/account/plan/_billing/forms.tsx "$CHECKOUT_PAGE" "$CHECKOUT_FORM" "$ADMIN_LIST" "$ADMIN_DETAIL" 'src/app/admin/billing/[id]/forms.tsx' "$STATUS_TAG")
 mapfile -t M22_SQL < <(ls drizzle/*_m22_billing/migration.sql 2>/dev/null)
 TABLES=(billing_customer billing_checkout billing_subscription billing_event billing_invoice billing_test_subscription)
 
@@ -183,8 +183,8 @@ check "the test checkout takes no card number: one of the test cards only" bash 
 refute "no 'use cache' in the billing service, provider or pages" grep -n "'use cache'" "$SERVICE" "$WEBHOOK" "$STRIPE" "$TEST_PROVIDER" "${PAGES[@]}"
 refute "no window.open, no 100vh, no hover-only behaviour in the M22 pages" grep -nE "window\.open|100vh|group-hover:|onMouseEnter|target=\"_blank\"" "${PAGES[@]}"
 refute "no countdown, urgency or blame in the M22 pages and notices" grep -nEi "\b(hurry|urgent|last chance|don.t miss|act now)\b|spots? left|only [0-9]+ left" "${PAGES[@]}" src/app/plans/page.tsx
-check "the new pages are in e2e/routes.ts (axe in both themes); the billing page of both demo accounts are key screens" bash -c "
-  grep -q \"name: 'dashboard-billing', status: 200, milestone: 'M22', key: true\" e2e/routes.ts && grep -q \"name: 'dashboard-billing-ended', status: 200, milestone: 'M22', key: true\" e2e/routes.ts && grep -q \"name: 'admin-billing', status: 200, milestone: 'M22'\" e2e/routes.ts"
+check "the new pages are in e2e/routes.ts (axe in both themes); the billing of both demo accounts (on /account/plan since P2-13) are key screens" bash -c "
+  grep -q \"name: 'account-plan-subscribed', status: 200, milestone: 'M22', key: true\" e2e/routes.ts && grep -q \"path: '/account/plan', name: 'account-plan', status: 200, milestone: 'usability-2026-11', key: true, signInAs: 'demo-free-sifu-5'\" e2e/routes.ts && grep -q \"name: 'admin-billing', status: 200, milestone: 'M22'\" e2e/routes.ts"
 check "the test checkout and the page of a subscription are screen states" bash -c "f=e2e/screenshots.spec.ts; grep -qF \"name: 'billing-test-checkout'\" \$f && grep -qF \"name: 'admin-billing-subscription'\" \$f"
 check "the visual regression hides the demo dates, which follow the seed's day" bash -c "grep -qF '[data-visual-date]' e2e/visual.css && grep -q 'data-visual-date' $BILLING_PAGE"
 

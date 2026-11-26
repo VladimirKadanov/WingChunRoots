@@ -150,6 +150,45 @@ describe('sign-up', () => {
     expect(session!.twoFactorVerifiedAt).toBeNull();
   });
 
+  it('signs in on the first confirmation only in the browser that signed up (P1-6, ADR 0069)', async () => {
+    // The browser that signed up: the first press signs in, and the mark is used up.
+    const email = address('same-browser');
+    const browser = new TestBrowser();
+    expect((await authFetch(browser, '/sign-up/email', { body: { name: '', email, password: PASSWORD, consents: ALL_TICKS } })).status).toBe(200);
+    expect(browser.hasCookie('confirm_browser')).toBe(true);
+    const user = await userByEmail(email);
+    const token = await tokenFromOutbox('verify-email', email);
+    expect((await authFetch(browser, '/verify-email', { method: 'GET', query: { token } })).status).toBe(200);
+    expect(browser.hasCookie('wcr.session_token')).toBe(true);
+    expect(browser.hasCookie('confirm_browser')).toBe(false);
+    expect(await sessionCount(user!.id)).toBe(1);
+    // A second press of the same link, in another browser, signs nobody in.
+    const later = new TestBrowser();
+    expect((await authFetch(later, '/verify-email', { method: 'GET', query: { token } })).status).toBe(200);
+    expect(later.hasCookie('wcr.session_token')).toBe(false);
+    expect(await sessionCount(user!.id)).toBe(1);
+
+    // Another browser (a forwarded mail): confirmed, but no session is left and no cookie is sent.
+    const forwarded = address('other-browser');
+    const signedUpIn = new TestBrowser();
+    await authFetch(signedUpIn, '/sign-up/email', { body: { name: '', email: forwarded, password: PASSWORD, consents: ALL_TICKS } });
+    const other = new TestBrowser();
+    const response = await authFetch(other, '/verify-email', { method: 'GET', query: { token: await tokenFromOutbox('verify-email', forwarded) } });
+    expect(response.status).toBe(200);
+    expect((await userByEmail(forwarded))!.emailVerified).toBe(true);
+    expect(other.hasCookie('wcr.session_token')).toBe(false);
+    expect(await sessionCount((await userByEmail(forwarded))!.id)).toBe(0);
+
+    // A browser marked for another address, already signed in to the first account, stays as it was.
+    const third = address('marked-for-another');
+    await authFetch(browser, '/sign-up/email', { body: { name: '', email: address('unrelated'), password: PASSWORD, consents: ALL_TICKS } });
+    await authFetch(new TestBrowser(), '/sign-up/email', { body: { name: '', email: third, password: PASSWORD, consents: ALL_TICKS } });
+    const before = browser.cookies.get('wcr.session_token');
+    expect((await authFetch(browser, '/verify-email', { method: 'GET', query: { token: await tokenFromOutbox('verify-email', third) } })).status).toBe(200);
+    expect(browser.cookies.get('wcr.session_token')).toBe(before);
+    expect(await sessionCount((await userByEmail(third))!.id)).toBe(0);
+  });
+
   it('keeps the invitation a sign-up started from in the confirmation link, and nothing else (M10b review)', async () => {
     const link = async (email: string) => new URL(String((jobTemplateData((await outboxJob('verify-email', email))!) as { url: unknown }).url));
     // From an invitation: the link carries its path, for the sign-in after the confirmation.

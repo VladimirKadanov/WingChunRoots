@@ -5,8 +5,12 @@
 // (src/server/rpc/parity.ts). The link in the e-mail opens /verify-email, which asks for a button
 // press first, so a mail scanner that opens links cannot confirm an address. `next` (M10b review,
 // requirements-2): the invitation a sign-up started from; the confirmation hands it to the sign-in,
-// and a new link carries it again (callbackURL, src/server/auth/emails.ts).
+// and a new link carries it again (callbackURL, src/server/auth/emails.ts). P1-6
+// (docs/adr/0069-sign-in-on-confirmation.md): in the browser that signed up, the first press signs
+// the account in and goes where a sign-in would (account.landing); anywhere else, and on a second
+// press, the sign-in form follows as before.
 
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 import { authMessage } from '@/components/account/messages';
@@ -15,8 +19,9 @@ import type { FormState } from '@/lib/form-state';
 import { ridesInConfirmationLink } from '@/lib/invitation-path';
 import { safeNextPath } from '@/server/auth/guards';
 import { confirmationEmail } from '@/server/auth/tokens';
-import { authAction } from '@/server/auth/web';
+import { authAction, principalFromSetCookies } from '@/server/auth/web';
 import { formResult, rememberSignInEmail } from '@/server/forms/flash';
+import { serverClient } from '@/server/rpc/server';
 
 /** /verify-email with these parameters, and `next` when there is one. */
 function verifyPage(next: string, params: Record<string, string> = {}): string {
@@ -58,6 +63,12 @@ async function confirmEmail(form: FormData, next: string): Promise<FormState> {
       message: refused && result.code !== 'TOKEN_EXPIRED' ? LINK_REFUSED : authMessage(result.code),
       ...(refused ? { values: { link: 'refused' } } : {}),
     };
+  }
+  // The browser that signed up is signed in now: on to where a sign-in goes.
+  const principal = await principalFromSetCookies(result.setCookies);
+  if (principal) {
+    const { path } = await serverClient(await headers(), principal).account.landing({ next: next || undefined });
+    redirect(path);
   }
   // The endpoint has confirmed the address the token names: the sign-in form starts with it.
   const email = confirmationEmail(token);
