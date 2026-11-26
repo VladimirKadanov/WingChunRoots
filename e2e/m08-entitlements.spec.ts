@@ -723,7 +723,7 @@ test('@M08 student and Sifu dashboards render empty states with a next action', 
   await expect(page.getByTestId('empty-student-requests')).toContainText('No student requests waiting.');
   await expect(link('empty-student-requests')).toHaveText('Invite your students');
   await expect(link('empty-student-requests')).toHaveAttribute('href', '/dashboard/students/invite');
-  await expect(page.getByTestId('empty-schools')).toContainText('No school lists you as an instructor yet. List your school, or ask its head instructor to add you');
+  await expect(page.getByTestId('empty-schools')).toContainText('You have not listed a school, and no school lists you as an instructor yet. List your school, or ask its head instructor to add you');
   // Help, not a price table: the schools empty state links nowhere.
   await expect(link('empty-schools')).toHaveCount(0);
   await expect(page.getByTestId('upgrade-prompt')).toHaveCount(0);
