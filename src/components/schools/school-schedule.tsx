@@ -90,19 +90,22 @@ export function ScheduleAndFees({ school }: { school: Pick<SchoolPageDto, 'sched
 }
 
 /** The trial lesson action of a public school page, by what trial.options says of this viewer. */
-export function TrialAction({ slug, options }: { slug: string; options: TrialOptions | null }) {
+export function TrialAction({ slug, options, privateClub = false }: { slug: string; options: TrialOptions | null; privateClub?: boolean }) {
   const trialHref = `/schools/${slug}/trial`;
+  // Role replay 2026-11-25 (P3-7): a private club (city only, by invitation) is asked for a visit;
+  // the request is the same trial lesson request underneath.
+  const ask = privateClub ? 'Ask to visit' : 'Request a trial lesson';
   let body: React.ReactNode;
   if (!options || options.state === 'ready') {
     body = (
       <Link href={trialHref} className={buttonVariants({ variant: 'primary' })} data-testid="school-trial-request">
-        Request a trial lesson
+        {ask}
       </Link>
     );
   } else if (options.state === 'sign_in') {
     body = (
       <Link href={`/sign-in?next=${encodeURIComponent(trialHref)}`} className={buttonVariants({ variant: 'secondary' })} data-testid="school-trial-sign-in">
-        Sign in to request a trial lesson
+        {privateClub ? 'Sign in to ask to visit' : 'Sign in to request a trial lesson'}
       </Link>
     );
   } else if (options.state === 'open') {
@@ -124,9 +127,12 @@ export function TrialAction({ slug, options }: { slug: string; options: TrialOpt
   return (
     <section aria-labelledby="school-trial" data-testid="school-trial">
       <h2 id="school-trial" className="font-display text-xl">
-        Trial lesson
+        {privateClub ? 'Visit' : 'Trial lesson'}
       </h2>
-      <p className="mt-2 max-w-[56ch] text-fg-muted">Ask the school for a first lesson. The school sees your profile name and the contact you choose, and answers here.</p>
+      <p className="mt-2 max-w-[56ch] text-fg-muted">
+        {privateClub ? 'A private club takes visitors by invitation: ask the school for a visit and a first lesson.' : 'Ask the school for a first lesson.'} The school sees your profile name and the
+        contact you choose, and answers here.
+      </p>
       <div className="mt-3">{body}</div>
     </section>
   );
