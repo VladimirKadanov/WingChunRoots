@@ -394,6 +394,9 @@ export interface OrganizationBilling {
   offers: BillingOffer[];
   /** Why no checkout is offered, when none is (not a federation, not approved, not an owner). */
   offersNote: string | null;
+  /** Role replay 2026-11-25 (P2-6): Federation given by the WingChunRoots team (a grant, not a
+   * subscription or a running trial), said as such; the offers stay for when it ends. */
+  grantNote: string | null;
   /** What Federation gives now (CLAUDE.md §11: only benefits that exist). */
   benefits: readonly string[];
   checkout: MyBilling['checkout'];
@@ -462,13 +465,7 @@ export async function organizationBilling(principal: Principal | null, raw: unkn
         ? 'Federation can be chosen once the reviewers approve the organization.'
         : !canManage
           ? 'Only an owner of the organization can choose its plan.'
-          : // Role replay 2026-11-25 (P2-6): Federation given by the administrators (a grant, not a
-            // subscription or a running trial) is said as such, with no buy buttons beside it.
-            plan.plan && !live && trialRow?.status !== 'active'
-            ? plan.until
-              ? `Federation is active until ${formatDay(plan.until)}, given by the WingChunRoots team. There is nothing to buy now.`
-              : 'Federation is active, given by the WingChunRoots team. There is nothing to buy now.'
-            : null;
+          : null;
   const offers =
     live || offersNote
       ? []
@@ -495,6 +492,12 @@ export async function organizationBilling(principal: Principal | null, raw: unkn
     earlier: subs.filter((s) => s.id !== current?.id).slice(0, 10).map((s) => view(s, false)),
     offers,
     offersNote: live ? null : offersNote,
+    grantNote:
+      plan.plan && !live && trialRow?.status !== 'active'
+        ? plan.until
+          ? `Federation is active until ${formatDay(plan.until)}, given by the WingChunRoots team, so there is nothing you need to buy.`
+          : 'Federation is active, given by the WingChunRoots team, so there is nothing you need to buy.'
+        : null,
     benefits: FEDERATION_BENEFITS_NOW,
     checkout,
   };

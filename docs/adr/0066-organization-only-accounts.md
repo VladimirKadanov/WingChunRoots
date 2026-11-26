@@ -9,14 +9,14 @@
 ## Проблемът
 
 1. Секретар на федерация, който не тренира, след входа е задържан в `/onboarding`, докато не създаде профил на практикуващ, а таблото му предлага „Set up your profile“ и „Find your teacher“.
-2. Страницата **Billing** на федерация с план, даден от администратор, показва бутоните за плащане, сякаш планът липсва.
+2. Страницата **Billing** на федерация с план, даден от администратор, показва „Choose Federation“ с бутоните за плащане, сякаш планът липсва.
 
 ## Решение
 
 - `landingPath` пуска към целта потвърден акаунт без профил, ако целта е страница на организациите (`/dashboard/organization…`) или ако акаунтът администрира организация (ред в `organization_admin` без `revoked_at`).
 - Таблото (`DashboardOverview.organizationOnly`) на такъв акаунт не показва стъпки за профил и учител, а бележка с връзки към организациите и към onboarding, ако и тренира.
 - `/onboarding` показва **I only manage an organization** (към `/dashboard/organization`), щом съгласията са дадени.
-- `organizationBilling`: план Federation без абонамент и без текущ пробен период е даден от екипа; `offersNote` го казва („Federation is active until …, given by the WingChunRoots team. There is nothing to buy now.“) и `offers` е празен.
+- `organizationBilling`: план Federation без абонамент и без текущ пробен период е даден от екипа; новото поле `grantNote` го казва („Federation is active until …, given by the WingChunRoots team, so there is nothing you need to buy.“) над офертите, а заглавието им става **If you want to pay for it yourselves**. Офертите остават: M23 позволява на собственика да плати и докато държи даден план (тестван поток), а даденият план може да има край. Прегледът искаше да ги махнем; запазваме ги, но под ясна бележка.
 
 ## Не е направено тук
 
