@@ -82,6 +82,7 @@ import { establishDeceased, proposalFacts, recordRevisionRow } from './stewardsh
 import { appealFacts, appealOfCase, decidedBeforeAppeal, lineageReportFacts } from './disputes';
 import { decideGovernanceKind, GOVERNANCE_KINDS } from './governance-review';
 import { successionFacts } from './succession';
+import { type CaseConfirmation, confirmationsOfCase, mayAskTeacher } from './claim-confirmations';
 import { assignableRoles, caseById, caseColumns, type CaseRow, caseReplayOf, DECIDERS, isCaseKeyConflict, ownSide, partiesOf, recordCaseEvent } from './review-core';
 import { queueRecomputeForPerson } from './lineage-membership';
 import { ARCHIVE_EDITOR_ONLY, ARCHIVE_EDITOR_ROLES } from './archive-editor';
@@ -596,7 +597,12 @@ export interface ReviewCaseView {
   } | null;
   /** M10b: the words of the three decisions for this kind (verify, reject, needs_info). */
   decisions: Record<'verify' | 'reject' | 'needs_info', DecisionText>;
-  can: { assignSelf: boolean; unassign: boolean; assignOthers: boolean; verify: boolean; reject: boolean; needsInfo: boolean; note: boolean };
+  can: { assignSelf: boolean; unassign: boolean; assignOthers: boolean; verify: boolean; reject: boolean; needsInfo: boolean; note: boolean; askTeacher: boolean };
+  /**
+   * Role replay 2026-11-25 (P3-8, ADR 0067): a profile claim's verified teachers of the record who
+   * have an account, and what each was asked and answered. Empty for a party and for other kinds.
+   */
+  confirmations: CaseConfirmation[];
   /** Why this reviewer may not decide, when they may not (shown on the card). */
   decideNote: string | null;
   /** For an administrator: the reviewers a case can be given to. */
@@ -874,6 +880,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
       : facts?.takeDown
         ? { ...facts, takeDown: { ...facts.takeDown, allowed: !own && hasStaff2FA(p, TAKEDOWN_ROLES) } }
         : facts;
+  const confirmations = own ? [] : await confirmationsOfCase(db, c);
   const reviewers = can.assignOthers
     ? (
         await db
@@ -914,7 +921,8 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     })),
     subject,
     decisions: c.kind === 'person_claim' && c.relationshipId === null ? SELF_CLAIM_DECISIONS : DECISION_TEXT[c.kind as Exclude<ReviewCaseKind, 'deletion_request'>],
-    can,
+    can: { ...can, askTeacher: confirmations.length > 0 && mayAskTeacher(p, c, own) && !firstDecider },
+    confirmations,
     decideNote,
     reviewers,
   };
