@@ -303,6 +303,11 @@ describe('organizations.adminList (control panel)', () => {
     expect(found.organizations.map((o) => o.id)).toEqual([waiting.organizationId, approved.organizationId]);
     expect(found.total).toBe(2);
     expect(found.counts).toMatchObject({ all: 2, pending: 1, active: 1 });
+    // P2-6 (journey review 2026-11-26): each row counts its own admins (the applicant is the owner),
+    // and only the waiting organization links its open application.
+    const [waitingRow, approvedRow] = found.organizations;
+    expect(waitingRow).toMatchObject({ admins: 1, caseId: waiting.caseId });
+    expect(approvedRow).toMatchObject({ admins: 1, caseId: null });
     expect((await adminOrganizations(admin.principal, { q: tag, status: 'pending' })).organizations.map((o) => o.id)).toEqual([waiting.organizationId]);
     expect((await adminOrganizations(admin.principal, { q: tag, plan: 'federation' })).organizations.map((o) => o.id)).toEqual([approved.organizationId]);
     expect((await adminOrganizations(admin.principal, { q: tag, plan: 'none' })).organizations.map((o) => o.id)).toEqual([waiting.organizationId]);
