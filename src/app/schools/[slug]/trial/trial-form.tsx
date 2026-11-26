@@ -65,7 +65,7 @@ export function TrialForm({
             </p>
           ) : null}
           {classes.map((c, i) => (
-            <label key={c.id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-sm border border-border-subtle px-3 py-2.5 text-ui has-checked:border-fg">
+            <label key={c.id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-sm border border-border-subtle px-3 py-2.5 text-ui has-checked:border-fg" data-testid="trial-class">
               <span className="relative grid size-6 shrink-0 place-items-center">
                 <input
                   id={i === 0 ? fieldId(FORM, 'classes') : undefined}
@@ -74,7 +74,6 @@ export function TrialForm({
                   value={c.id}
                   defaultChecked={ticked.has(c.id)}
                   className="peer size-6 cursor-pointer appearance-none rounded-[3px] border-2 border-border-strong bg-surface-1 transition-colors duration-(--duration-fast) checked:border-fg checked:bg-fg hover:border-fg-muted"
-                  data-testid="trial-class"
                 />
                 <CheckIcon size={18} className="pointer-events-none absolute hidden text-fg-inverse peer-checked:block" />
               </span>
