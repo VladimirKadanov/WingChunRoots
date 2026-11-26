@@ -179,7 +179,7 @@ interface PlanGranted {
 
 /** The plan notifications lead to the account's plan, not to the dashboard they are shown on. */
 const SEE_YOUR_PLAN = { label: 'See your plan', href: '/account/plan' } as const;
-const SEE_YOUR_BILLING = { label: 'Open billing', href: '/dashboard/billing' } as const;
+const SEE_YOUR_BILLING = { label: 'Open your plan and billing', href: '/account/plan' } as const;
 
 /**
  * "plan.granted": to the account an admin gave a test or complimentary plan (M08). A grant that

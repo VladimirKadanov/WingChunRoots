@@ -1,6 +1,6 @@
 'use server';
 
-// The Server Actions of /dashboard/billing (milestone M22; docs/adr/0025-billing.md): thin wrappers
+// The Server Actions of the billing part of /account/plan (until P2-13 /dashboard/billing) (milestone M22; docs/adr/0025-billing.md): thin wrappers
 // over billing.checkout, billing.cancel and billing.resume (src/server/rpc/parity.ts). The
 // procedures check who may act on which subscription, whoever calls them. A refusal comes back as
 // the form's message; anything unexpected as one calm message, never rethrown (formStateFromFailure).
@@ -23,7 +23,7 @@ import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { CANCEL_CHANGE_FORM, CANCEL_FORM, CHECKOUT_FORM, changePlanFormId, RESUME_FORM } from './form-ids';
 
-const ACCOUNT_PAGE = '/dashboard/billing';
+const ACCOUNT_PAGE = '/account/plan';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The organization the form names (M23), or none; never an address taken from the form. */
