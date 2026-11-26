@@ -1,0 +1,1 @@
+ALTER TABLE "teaching_relationship" ADD COLUMN "via_invite_link" boolean DEFAULT false NOT NULL;

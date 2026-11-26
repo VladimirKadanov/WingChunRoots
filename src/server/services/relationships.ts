@@ -165,6 +165,8 @@ export const requestInput = z.object({
   /** DEFAULT D05: the student's wish that this teacher be drawn as the primary line; visual only. */
   displayPrimary: z.boolean().default(false),
   note: requestNote,
+  /** ADR 0073: the student came from the teacher's own invite link (/join/<slug>); a hint, never an approval. */
+  viaInviteLink: z.boolean().default(false),
   idempotencyKey,
 });
 export type RequestInput = z.input<typeof requestInput>;
@@ -256,6 +258,8 @@ export interface RelationshipView {
   privateSide: { you: boolean; them: boolean } | null;
   /** P2-3: the student's optional note to the teacher, for the two of them and the reviewers. */
   note: string | null;
+  /** ADR 0073: sent from the teacher's own invite link; shown to the teacher (and reviewers) only. */
+  viaInviteLink: boolean;
   /** M10a: teacher_approval (the teacher answers) or committee_review (the review queue decides). */
   verificationPath: 'teacher_approval' | 'committee_review';
   /** M10a: the historical claim of a committee_review relationship, for its student and teacher; null otherwise. */
@@ -329,6 +333,7 @@ export interface RelRow {
   prefersDisplayPrimary: boolean;
   statusReason: string | null;
   requestNote: string | null;
+  viaInviteLink: boolean;
   requestedByUserId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -349,6 +354,7 @@ const relColumns = {
   prefersDisplayPrimary: teachingRelationship.prefersDisplayPrimary,
   statusReason: teachingRelationship.statusReason,
   requestNote: teachingRelationship.requestNote,
+  viaInviteLink: teachingRelationship.viaInviteLink,
   requestedByUserId: teachingRelationship.requestedByUserId,
   createdAt: teachingRelationship.createdAt,
   updatedAt: teachingRelationship.updatedAt,
@@ -592,6 +598,7 @@ async function toViews(db: Executor, rows: RelRow[], viewer: Viewer): Promise<Re
       reminder: nextReminder ? { now: nextReminder.getTime() <= now, from: nextReminder.toISOString() } : null,
       privateSide: privateSideOf(row, role, established, facts.get(row.id)),
       note: row.requestNote,
+      viaInviteLink: (role === 'teacher' || role === 'reviewer') && row.viaInviteLink,
       verificationPath: row.verificationPath,
       review: reviews.get(row.id) ?? null,
       // M10b: the label is for the student and the reviewers only (the milestone's In scope 1).
@@ -1102,6 +1109,7 @@ export async function requestTeacher(principal: Principal | null, raw: RequestIn
         // DEFAULT D05: a wish, applied on approval; visual only.
         prefersDisplayPrimary: input.displayPrimary,
         requestNote: noteOf(input.note),
+        viaInviteLink: input.viaInviteLink,
       });
       await writePeriods(tx, id, rows);
       const eventId = await recordEvent(tx, { relationshipId: id, from: null, to: 'pending_teacher', actor: p, role: 'student', key: input.idempotencyKey });
@@ -1111,7 +1119,7 @@ export async function requestTeacher(principal: Principal | null, raw: RequestIn
         actorRole: p.user.role,
         subjectType: 'teaching_relationship',
         subjectId: id,
-        after: { status: 'pending_teacher', visibility: 'involved_only', teacherPersonId: teacherId, studentPersonId: studentId, lineageId, periods: periodShape(rows), prefersDisplayPrimary: input.displayPrimary, lineageInferred: !input.lineageId },
+        after: { status: 'pending_teacher', visibility: 'involved_only', teacherPersonId: teacherId, studentPersonId: studentId, lineageId, periods: periodShape(rows), prefersDisplayPrimary: input.displayPrimary, lineageInferred: !input.lineageId, viaInviteLink: input.viaInviteLink },
         requestId: meta.requestId,
         ipHmac: meta.ipHmac,
       });

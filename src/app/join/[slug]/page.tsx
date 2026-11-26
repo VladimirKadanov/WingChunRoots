@@ -32,7 +32,7 @@ export default async function JoinPage({ params }: { params: Params }) {
   const slug = SLUG.test(raw) && raw.length <= 120 ? raw : null;
   const read = slug ? await loadProfile(slug) : ({ state: 'none' } as const);
   const teacher = read.state === 'found' && !read.profile.limited && read.profile.visibility === 'public' && read.profile.claimState === 'claimed' && read.profile.kind === 'living' ? read.profile : null;
-  const target = teacher ? teacherRequestPath(teacher.slug) : null;
+  const target = teacher ? teacherRequestPath(teacher.slug, { invite: true }) : null;
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <div className="grid max-w-[46rem] gap-6">
