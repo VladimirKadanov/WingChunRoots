@@ -208,12 +208,13 @@ const columnsFor = (t: AdminT) =>
 /** The address of the queue with the list's state and `changes` applied. */
 export function queueHref(list: Pick<ReviewList, 'filters' | 'page'>, changes: Partial<{ sort: 'oldest' | 'newest'; page: number }>): string {
   const params = new URLSearchParams();
-  const { kind, group, status, assigned, age } = list.filters;
+  const { kind, group, status, assigned, age, decide } = list.filters;
   if (kind) params.set('kind', kind);
   if (group) params.set('group', group);
   if (status !== 'waiting') params.set('status', status);
   if (assigned !== 'any') params.set('assigned', assigned);
   if (age !== 'any') params.set('age', age);
+  if (decide !== 'any') params.set('decide', decide);
   const sort = changes.sort ?? list.filters.sort;
   if (sort !== 'oldest') params.set('sort', sort);
   const page = changes.page ?? list.page;

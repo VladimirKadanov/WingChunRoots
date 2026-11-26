@@ -475,6 +475,19 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                 </Link>{' '}
                 if you also train.
               </p>
+            ) : overview.organizationOnly ? (
+              // Role replay 2026-11-25 (P2-6): an organization's admin is asked for no practitioner profile.
+              <p data-testid="organization-no-profile" className="max-w-[56ch] text-ui text-fg-muted">
+                You manage an organization, so you don&apos;t need a practitioner profile.{' '}
+                <Link href="/dashboard/organization" className="link">
+                  Go to your organizations
+                </Link>
+                , or{' '}
+                <Link href={ONBOARDING} className="link">
+                  add a profile in onboarding
+                </Link>{' '}
+                if you also train.
+              </p>
             ) : overview.hasProfile ? null : overview.pendingClaimCaseId ? (
               // M10b: an invited teacher's claim waits for the reviewers; the profile comes with it.
               <div data-testid="pending-claim" className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
@@ -485,7 +498,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
               </div>
             ) : null /* No profile yet: "Next steps" above leads to onboarding. */}
 
-            {staffOnly ? null : sifu ? (
+            {staffOnly || overview.organizationOnly ? null : sifu ? (
               <SifuLists
                 overview={overview}
                 confirmedSchool={confirmedSchool}

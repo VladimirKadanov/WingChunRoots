@@ -34,7 +34,7 @@ test('@controlpanel @admin the review queue: each saved view shows as many cases
   const views = visible(page.getByRole('navigation', { name: 'Saved views of the queue' }));
   await expect(views.getByRole('link', { name: /^All waiting/ })).toHaveAttribute('aria-current', 'page');
   await expectNoAxeViolations(page, '/admin/review (saved views)');
-  for (const testId of ['view-all', 'view-mine', 'view-unassigned', 'view-late']) {
+  for (const testId of ['view-all', 'view-decide', 'view-mine', 'view-unassigned', 'view-late']) {
     const link = visible(page.getByTestId(testId));
     const count = Number((await link.innerText()).match(/(\d+)\s*$/)![1]);
     await link.click();
@@ -54,6 +54,26 @@ test('@controlpanel @admin the review queue: each saved view shows as many cases
   if ((await rows.count()) > 0) await expect(rows.first().locator('td').nth(4)).toContainText(/\d+ (day|days|h)|under 1 h|—/);
   for (const late of await visible(page.getByTestId('case-late')).all()) await expect(late).toContainText('over 3 days');
   await close();
+});
+
+test('@controlpanel @admin the review queue on a phone: the saved views stay, the dropdowns fold behind More filters (role replay P2-11)', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 390, height: 844 } });
+  await giveOwnAddress(context);
+  const page = await context.newPage();
+  await signInAs(page, 'admin');
+  await page.goto('/admin/review');
+  await expect(visible(page.getByTestId('queue-summary'))).toContainText(/\d+ for you to decide/);
+  await expect(visible(page.getByTestId('view-decide'))).toBeVisible();
+  const more = page.getByTestId('queue-filters').getByTestId('filters');
+  await expect(more.locator(':scope > summary')).toContainText('More filters');
+  await expect(page.locator('#filter-kind')).toBeHidden();
+  await more.locator(':scope > summary').click();
+  await expect(page.locator('#filter-kind')).toBeVisible();
+  await page.locator('#filter-age').selectOption('7d');
+  await page.getByRole('button', { name: 'Show cases' }).click();
+  await page.waitForURL(/[?&]age=7d/);
+  await expect(page.getByTestId('queue-filters').getByTestId('filters').locator(':scope > summary')).toContainText('More filters · 1');
+  await context.close();
 });
 
 test('@controlpanel @admin schools and organizations: a table searched by name, with the stage and approval filters', async ({ browser }) => {
