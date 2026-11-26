@@ -2898,13 +2898,13 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'admin'],
   },
   // M22: the billing forms post the procedures' fields; the checkout redirects to its page.
-  { action: 'src/app/dashboard/billing/actions.ts#startCheckoutAction', row: 'billing.checkout', form: same, roles: ['anonymous', 'member', 'owner'] },
-  { action: 'src/app/dashboard/billing/actions.ts#cancelSubscriptionAction', row: 'billing.cancel', form: same, roles: ['anonymous', 'member', 'owner'] },
-  { action: 'src/app/dashboard/billing/actions.ts#resumeSubscriptionAction', row: 'billing.resume', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/account/plan/_billing/actions.ts#startCheckoutAction', row: 'billing.checkout', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/account/plan/_billing/actions.ts#cancelSubscriptionAction', row: 'billing.cancel', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/account/plan/_billing/actions.ts#resumeSubscriptionAction', row: 'billing.resume', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/billing/test-checkout/[id]/actions.ts#testPayAction', row: 'billing.testPay', form: same, roles: ['anonymous', 'member', 'owner'] },
   // M23: the plan change forms and the administrators' trial forms post the procedures' fields.
-  { action: 'src/app/dashboard/billing/actions.ts#changePlanAction', row: 'billing.changePlan', form: (i) => ({ ...same(i), organizationId: '' }), roles: ['anonymous', 'member', 'party', 'owner'] },
-  { action: 'src/app/dashboard/billing/actions.ts#cancelChangeAction', row: 'billing.cancelChange', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/account/plan/_billing/actions.ts#changePlanAction', row: 'billing.changePlan', form: (i) => ({ ...same(i), organizationId: '' }), roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/account/plan/_billing/actions.ts#cancelChangeAction', row: 'billing.cancelChange', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/admin/organizations/actions.ts#startTrialAction', row: 'federationTrials.start', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/organizations/actions.ts#endTrialAction', row: 'federationTrials.end', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/billing/[id]/actions.ts#moveTestClockAction', row: 'billing.testClock', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },

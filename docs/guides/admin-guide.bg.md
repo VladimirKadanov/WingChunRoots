@@ -1414,7 +1414,7 @@ pnpm billing:test-clock --subscription <id> --step grace_end
 - сборката;
 - E2E `@M22` (`e2e/m22-billing.spec.ts` в отделното пускане `exclusive`; `e2e/m22-billing-view.spec.ts` на компютър и телефон).
 
-`/dashboard/billing` на двата демо акаунта е нов ключов екран. Датите на демо абонаментите са скрити във визуалната регресия (`[data-visual-date]`). `/plans`, `/dashboard/settings` и `/admin` се променят. Новите и променените еталони се приемат само от CI (раздел 10).
+`/dashboard/billing` на двата демо акаунта е нов ключов екран (от 26.11.2026 плащането е част от `/account/plan`, ключовите екрани са `account-plan` и `account-plan-subscribed`, а `/dashboard/billing` пренасочва там; ADR 0068). Датите на демо абонаментите са скрити във визуалната регресия (`[data-visual-date]`). `/plans`, `/dashboard/settings` и `/admin` се променят. Новите и променените еталони се приемат само от CI (раздел 10).
 
 ## 29. Инструменти на организациите (M24)
 

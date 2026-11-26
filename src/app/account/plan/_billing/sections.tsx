@@ -1,24 +1,22 @@
-// /dashboard/billing (milestone M22; docs/adr/0025-billing.md): the account's plan and its
-// subscription in test mode (billing.mine): the status in words and a shape, what happens next with
-// a date, cancel at the end of the period or resume, the payment history from the provider's
-// invoices, and the paid plan of the account's type to choose. Every screen says "Test mode, no real
-// charge". ?checkout=<id> reports on a checkout the account just left (the provider's event is
-// applied by the worker within seconds; the page reads itself again meanwhile). Reads the session,
-// so it renders per request. M23: a change of plan or billing period scheduled for the period end,
-// and the changes the subscription may make (none while each account type has one monthly plan).
+// The billing part of /account/plan, "Plan and billing" (milestone M22; docs/adr/0025-billing.md;
+// one plan page since the role replay 2026-11-25, P2-13, ADR 0068): the subscription in test mode
+// (billing.mine): the status in words and a shape, what happens next with a date, cancel at the end
+// of the period or resume, the payment history from the provider's invoices, and the paid plan of
+// the account's type to choose. Every screen says "Test mode, no real charge". ?checkout=<id>
+// reports on a checkout the account just left (the provider's event is applied by the worker within
+// seconds; the page reads itself again meanwhile). M23: a change of plan or billing period
+// scheduled for the period end, and the changes the subscription may make. Until P2-13 this was
+// its own page, /dashboard/billing, which now redirects to /account/plan (next.config.ts).
 
-import type { Metadata } from 'next';
-import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
 import { BILLING_LOAD_ERROR } from '@/components/account/load-errors/billing';
-import { PageRedirect } from '@/components/account/page-redirect';
 import { SubscriptionStatusTag, TestModeBanner } from '@/components/billing/status';
 import { CheckIcon, DashIcon } from '@/components/icons';
 import { formatDay } from '@/lib/dates';
-import { guardRoute } from '@/server/auth/web';
+import type { Principal } from '@/server/auth/principal';
 import { PLANS, type PlanCode } from '@/server/entitlements/plans';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
@@ -27,17 +25,10 @@ import { CancelForm, CheckoutForm, ConfirmingRefresh, ResumeForm } from './forms
 import { SubscriptionChanges } from './changes';
 import { CANCEL_CHANGE_FORM, CANCEL_FORM, changePlanFormId, CHECKOUT_FORM, RESUME_FORM } from './form-ids';
 
-export const instant = false;
-
-export const metadata: Metadata = {
-  title: 'Billing',
-  robots: { index: false },
-};
-
-const PAGE = '/dashboard/billing';
+const PAGE = '/account/plan';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-type Search = Promise<Record<string, string | string[] | undefined>>;
+type Query = Record<string, string | string[] | undefined>;
 const one = (value: string | string[] | undefined) => (typeof value === 'string' ? value : '');
 
 function Outcome({ children, testId }: { children: ReactNode; testId: string }) {
@@ -48,13 +39,10 @@ function Outcome({ children, testId }: { children: ReactNode; testId: string }) 
   );
 }
 
-export default async function BillingPage({ searchParams }: { searchParams: Search }) {
-  const guard = await guardRoute(PAGE);
-  if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
-  if (guard.forbidden) return <PageRedirect to="/sign-in" />;
-  const query = await searchParams;
+/** The billing sections of the plan page, read with the page's own principal and request headers. */
+export async function BillingSections({ principal, requestHeaders, query }: { principal: Principal; requestHeaders: Headers; query: Query }) {
   const checkoutId = one(query.checkout);
-  const mine = await pageRead(serverClient(await headers(), guard.principal).billing.mine(UUID.test(checkoutId) ? { checkout: checkoutId } : {}));
+  const mine = await pageRead(serverClient(requestHeaders, principal).billing.mine(UUID.test(checkoutId) ? { checkout: checkoutId } : {}));
   if (!mine) return <LoadError {...BILLING_LOAD_ERROR} retryHref={PAGE} />;
 
   const outcome = one(query.outcome);
@@ -75,21 +63,11 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   const confirming = mine.checkout !== null && mine.checkout.status === 'open' && query.cancelled !== '1' && !live;
 
   return (
-    <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
-      <div className="max-w-[46rem]">
-        <p className="eyebrow max-lg:hidden">
-          <Link href="/dashboard" className="link inline-flex min-h-11 items-center">
-            Dashboard
-          </Link>
-        </p>
-        <h1 className="mt-2 font-display text-feature">Billing</h1>
-        <div className="mt-4">
+    <>
+        <div className="grid gap-10" id="billing">
           <TestModeBanner label={mine.testModeLabel}>
             Payments here use test cards only{mine.provider === 'stripe' ? ' (Stripe test mode)' : ''}. Prices are proposed and not final.
           </TestModeBanner>
-        </div>
-
-        <div className="mt-8 grid gap-10">
           {mine.checkout && query.cancelled === '1' ? (
             <Outcome testId="checkout-left">
               <p>You left the checkout. Nothing was charged.</p>
@@ -119,7 +97,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
 
           <section aria-labelledby="current-heading" className="grid gap-4">
             <h2 id="current-heading" className="font-display text-2xl">
-              Your plan
+              Subscription
             </h2>
             <p className="text-ui" data-testid="billing-plan">
               <span className="font-semibold">{mine.plan.name}</span>
@@ -172,7 +150,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           {otherType && wantedPlan ? (
             <p className="max-w-[60ch] text-ui text-fg-muted" data-testid="other-type">
               {wantedPlan.name} is for {wantedPlan.audience === 'sifu' ? 'Sifu' : 'Student'} accounts.{' '}
-              <Link href="/account/plan" className="link inline-flex min-h-11 items-center">
+              <Link href="/account/plan#account-type-heading" className="link inline-flex min-h-11 items-center">
                 Change your account type
               </Link>
             </p>
@@ -234,16 +212,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
             </section>
           ) : null}
 
-          <p className="flex flex-wrap gap-x-5 text-ui">
-            <Link href="/plans" className="link inline-flex min-h-11 items-center">
-              Compare plans
-            </Link>
-            <Link href="/account/plan" className="link inline-flex min-h-11 items-center">
-              Plan and billing
-            </Link>
-          </p>
         </div>
-      </div>
-    </div>
+    </>
   );
 }
