@@ -569,3 +569,11 @@
     }
   }
 }
+
+/* "Find a city or town" reloads a school or event editor without JavaScript; with it the city
+   field is a type-ahead (role replay 2026-11-25, P2-12), so the reload form steps aside. */
+@media (scripting: enabled) {
+  [data-city-search] {
+    display: none;
+  }
+}

@@ -15,19 +15,72 @@ export const GEONAMES_EXTRACT_PATH = 'src/server/geo/data/geonames-places.tsv';
 export const GEONAMES_ATTRIBUTION = 'GeoNames (https://www.geonames.org/), licensed under CC BY 4.0';
 
 /**
- * The countries of the extract and the smallest population kept in each (DEFAULT, M11 In scope 1:
- * Bulgaria and the countries of the fictional demo schools of M01). Bulgaria, where the pilot
- * runs, and Hong Kong keep every populated place of 1,000 people or more; the others keep the
- * places of 15,000 or more, so the extract stays small (about 5,500 places). Other countries come
- * after the owner's decision (docs/plan/questions/M11.md).
+ * The countries of the extract and the smallest population kept in each. M11 (DEFAULT, In scope 1)
+ * had Bulgaria and the countries of the fictional demo schools. Role replay 2026-11-25, P2-12
+ * (DEFAULT, no D number; docs/adr/0071-cities-of-launch-countries.md): every European country, and
+ * the other countries with many Wing Chun schools (the United States, Canada, Australia, New
+ * Zealand, Hong Kong, Macao, Taiwan, Singapore, Malaysia). Bulgaria, where the pilot runs, and Hong
+ * Kong keep every populated place of 1,000 people or more; a small country keeps those of 5,000 or
+ * 1,000, so its towns are listed too; the others keep the places of 15,000 or more (about 10,000
+ * places in all). A town that is not listed reaches the admins through "My city is missing".
  */
+const LARGE = 15000;
+const SMALL = 5000;
+const EVERY = 1000;
 export const EXTRACT_COUNTRIES: Readonly<Record<string, number>> = {
-  BG: 1000,
-  GR: 15000,
-  DE: 15000,
-  GB: 15000,
-  US: 15000,
-  HK: 1000,
+  AD: EVERY,
+  AL: LARGE,
+  AT: LARGE,
+  AU: LARGE,
+  BA: LARGE,
+  BE: LARGE,
+  BG: EVERY,
+  BY: LARGE,
+  CA: LARGE,
+  CH: LARGE,
+  CY: SMALL,
+  CZ: LARGE,
+  DE: LARGE,
+  DK: LARGE,
+  EE: SMALL,
+  ES: LARGE,
+  FI: LARGE,
+  FR: LARGE,
+  GB: LARGE,
+  GR: LARGE,
+  HK: EVERY,
+  HR: LARGE,
+  HU: LARGE,
+  IE: LARGE,
+  IS: SMALL,
+  IT: LARGE,
+  LI: EVERY,
+  LT: LARGE,
+  LU: SMALL,
+  LV: LARGE,
+  MC: EVERY,
+  MD: LARGE,
+  ME: SMALL,
+  MK: LARGE,
+  MO: EVERY,
+  MT: SMALL,
+  MY: LARGE,
+  NL: LARGE,
+  NO: LARGE,
+  NZ: LARGE,
+  PL: LARGE,
+  PT: LARGE,
+  RO: LARGE,
+  RS: LARGE,
+  SE: LARGE,
+  SG: EVERY,
+  SI: SMALL,
+  SK: LARGE,
+  SM: EVERY,
+  TW: LARGE,
+  UA: LARGE,
+  US: LARGE,
+  XK: LARGE,
 };
 
 /** Populated places that are not a city a school could be in: sections, historical, abandoned, destroyed. */
@@ -207,7 +260,7 @@ export function sortPlaces(places: readonly GeoNamesPlace[]): GeoNamesPlace[] {
 
 export function serializeExtract(places: readonly GeoNamesPlace[], source: string): string {
   const lines = [
-    `# ${GEONAMES_ATTRIBUTION}. Changes: populated places of ${Object.keys(EXTRACT_COUNTRIES).join(', ')} above a population floor, Chinese and Cyrillic alternate names only.`,
+    `# ${GEONAMES_ATTRIBUTION}. Changes: populated places of ${Object.keys(EXTRACT_COUNTRIES).join(', ')} above a population floor per country, Chinese and Cyrillic alternate names only.`,
     `# Source: ${cleanName(source)}`,
     `# Written by scripts/geonames-extract.ts (pnpm geo:extract); loaded by pnpm geo:load and pnpm db:seed.`,
     EXTRACT_COLUMNS.join('\t'),

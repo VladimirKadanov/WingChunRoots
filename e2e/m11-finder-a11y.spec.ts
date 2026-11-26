@@ -16,7 +16,7 @@ import { closeHelpers, giveOwnAddress, loadTestEnv } from './helpers/auth';
 import { letters } from './helpers/evidence';
 import { freshAccount } from './helpers/plans';
 import { mapSettled, visible } from './helpers/schools';
-import { expectNoAxeViolations } from './helpers/ui';
+import { chooseCity, expectNoAxeViolations } from './helpers/ui';
 import { THEMES } from './routes';
 import { openFilters } from './helpers/phone-layout';
 
@@ -310,7 +310,7 @@ test('@M11 "Drop the pin on a map" takes the focus into the map, "Hide the map" 
   await freshAccount(page, { name: `Demo Pin Sifu ${letters()}`, sifu: true });
   await page.goto('/dashboard/schools/new');
   const form = visible(page.getByTestId('school-form'));
-  await form.getByLabel('City or town').selectOption({ label: 'Leipzig, DE' });
+  await chooseCity(form, 'Leip', 'Leipzig, DE');
   const dropPin = form.getByTestId('drop-pin');
   const panel = form.getByTestId('pin-picker-panel');
 

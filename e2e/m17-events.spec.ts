@@ -24,7 +24,7 @@ import { auditLog, teachingRelationship } from '../src/server/db/schema';
 import { closeHelpers, giveOwnAddress, loadTestEnv } from './helpers/auth';
 import { apiPost, freshAccount, signInSeededAdmin } from './helpers/plans';
 import { freshContext, grantProSifu, placeOf, signedIn, sifuAccount, visible } from './helpers/schools';
-import { expectNoAxeViolations, switchColorScheme } from './helpers/ui';
+import { chooseCity, expectNoAxeViolations, switchColorScheme } from './helpers/ui';
 import { THEMES } from './routes';
 
 test.beforeAll(loadTestEnv);
@@ -70,7 +70,7 @@ async function publishWithForm(page: Page, title: string, day: string) {
   await form.getByLabel('Title').fill(title);
   await form.getByLabel('Kind').selectOption('seminar');
   await form.getByTestId('event-where-city').check();
-  await form.getByLabel('City or town').selectOption({ label: 'Sofia, BG' });
+  await chooseCity(form, 'Sofi', 'Sofia, BG');
   await form.getByLabel('Venue').fill('Demo hall');
   await form.getByLabel('Starts').fill(`${YEAR}-${day}T10:00`);
   await form.getByLabel('Ends').fill(`${YEAR}-${day}T17:00`);

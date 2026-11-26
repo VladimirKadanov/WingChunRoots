@@ -25,6 +25,8 @@ import { useForm, useStore } from '@tanstack/react-form';
 import { type ReactNode, startTransition, useActionState, useEffectEvent, useLayoutEffect, useRef, useState } from 'react';
 
 import { FormMessage, SelectField, SubmitButton, fieldClassName, useFocusOnError, useFormId, useHydrated } from '@/components/account/fields';
+import { CityField, MissingCityLink } from '@/components/account/city-field';
+import type { CityChoice } from '@/components/account/city-combobox';
 import { NameLine } from '@/components/account/person-names';
 import { AlertIcon, CheckIcon, ChevronDownIcon, CloseIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -174,6 +176,7 @@ export function ProfileEditor({
   const [state, action, pending] = useActionState(saveProfileAction, initial ?? IDLE);
   // The browser's own check before anything is sent (null once a submit passed it).
   const [checked, setChecked] = useState<FormState | null>(null);
+  const [city, setCity] = useState<CityChoice | null>(null);
   const hydrated = useHydrated();
   const formRef = useRef<HTMLFormElement>(null);
   const FORM = useFormId(FORM_NAME);
@@ -316,6 +319,13 @@ export function ProfileEditor({
     .map((code) => ({ code, name: countryName.get(code) ?? code }))
     .sort((a, b) => a.name.localeCompare(b.name, 'en'));
   const filtered = hydrated && values.countryCode !== '';
+  // P2-12: the city as the type-ahead shows it (any place of the extract; the listed ones name the start).
+  const cityChoice: CityChoice | null = (() => {
+    if (!values.placeId) return null;
+    if (city?.id === values.placeId) return city;
+    const listed = options.places.find((p) => p.id === values.placeId);
+    return listed ? { id: listed.id, name: listed.name, countryCode: listed.countryCode } : null;
+  })();
   const places = filtered ? options.places.filter((p) => p.countryCode === values.countryCode) : options.places;
 
   const primary = values.names[values.primary];
@@ -588,7 +598,7 @@ export function ProfileEditor({
             value={values.countryCode}
             onValue={(code) => {
               form.setFieldValue('countryCode', code);
-              const place = options.places.find((p) => p.id === values.placeId);
+              const place = options.places.find((p) => p.id === values.placeId) ?? (city?.id === values.placeId ? city : null);
               if (place && place.countryCode !== code) form.setFieldValue('placeId', '');
             }}
             disabled={pending}
@@ -612,13 +622,37 @@ export function ProfileEditor({
               ))}
             </optgroup>
           </SelectField>
+          {hydrated ? (
+            <CityField
+              form={FORM}
+              name="placeId"
+              label="City or town"
+              optional
+              hint="Type a few letters, in any spelling: Plovdiv, Пловдив."
+              value={cityChoice}
+              onValue={(choice) => {
+                setCity(choice);
+                form.setFieldValue('placeId', choice?.id ?? '');
+                if (choice) form.setFieldValue('countryCode', choice.countryCode);
+              }}
+              countryCode={values.countryCode || null}
+              next="/dashboard/profile"
+              disabled={pending}
+              state={selectState}
+            />
+          ) : (
           <SelectField
             form={FORM}
             name="placeId"
             label="City"
             optional
             autoComplete="off"
-            hint={filtered && places.length === 0 ? 'No cities are listed for this country yet. Leave it empty.' : 'Only some cities are listed so far.'}
+            hint={
+              <>
+                {filtered && places.length === 0 ? 'No large cities are listed for this country. ' : 'The large cities are listed. '}
+                <MissingCityLink next="/dashboard/profile" countryCode={values.countryCode || null} />
+              </>
+            }
             value={values.placeId}
             onValue={(id) => {
               form.setFieldValue('placeId', id);
@@ -635,6 +669,7 @@ export function ProfileEditor({
               </option>
             ))}
           </SelectField>
+          )}
         </div>
         <div data-field="" className="grid grid-cols-[minmax(0,1fr)] content-start gap-1.5">
           <Label htmlFor={yearId} optional>

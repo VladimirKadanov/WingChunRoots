@@ -119,6 +119,8 @@ export const NOTIFICATION_CATALOG = {
   // M01b, M07, M08: system and staff notices, and the plan notices of an admin's grant.
   'mail-check.sent': dashboardOnly('account'),
   'account.deletion-requested': dashboardOnly('account'),
+  // Role replay 2026-11-25, P2-12: "My city is missing", to every admin.
+  'place.missing': dashboardOnly('account'),
   'pilot-access.requested': dashboardOnly('plan'),
   'pilot-access.closed': dashboardOnly('plan'),
   'plan.granted': dashboardOnly('plan'),

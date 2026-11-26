@@ -1782,6 +1782,8 @@ const ROWS: Row[] = [
     expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
   },
   { path: 'places.search', make: () => ({ input: { q: 'Sofia' } }), expect: everyone },
+  // Role replay 2026-11-25, P2-12: any signed-in account may tell the admins (five a day).
+  { path: 'places.reportMissing', make: () => ({ input: { name: 'Demo Missing Town', countryCode: 'FR' } }), expect: own() },
   { path: 'dashboard.overview', make: noInput, expect: own() },
   { path: 'dashboard.nav', make: noInput, expect: own() },
   // M15: organizations. `party` is the owner of another organization: it reaches only its own
@@ -2706,6 +2708,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/account/notifications/actions.ts#setNotificationEmailsAction', row: 'notifications.setPreference', form: () => ({}), roles: ['anonymous', 'member'] },
   { action: 'src/app/unsubscribe/actions.ts#unsubscribeAction', row: 'notifications.unsubscribe', form: same, roles: ['anonymous', 'member'], call: (fn, form) => fn(form) },
   { action: 'src/app/dashboard/actions.ts#requestPilotAccessAction', row: 'plans.requestPilotAccess', form: same, roles: ['anonymous', 'owner'] },
+  { action: 'src/app/dashboard/places/missing/actions.ts#reportMissingPlaceAction', row: 'places.reportMissing', form: same, roles: ['anonymous', 'member'] },
   { action: 'src/app/account/plan/actions.ts#setAccountTypeAction', row: 'account.setType', form: same, roles: ['anonymous', 'owner'] },
   { action: 'src/app/admin/grants/actions.ts#createGrantAction', row: 'grants.create', form: same, roles: ['anonymous', 'member', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/grants/actions.ts#revokeGrantAction', row: 'grants.revoke', form: same, roles: ['anonymous', 'member', 'party', 'adminNo2fa', 'admin'] },

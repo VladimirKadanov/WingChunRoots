@@ -55,7 +55,8 @@ describe('parseCitiesLine and inExtract', () => {
 
   it('keeps populated places of the listed countries above their floor only', () => {
     expect(inExtract(parseCitiesLine(citiesLine())!)).toBe(true);
-    expect(inExtract(parseCitiesLine(citiesLine({ 8: 'FR' }))!)).toBe(false);
+    // A country outside the extract (France is in it since P2-12).
+    expect(inExtract(parseCitiesLine(citiesLine({ 8: 'JP' }))!)).toBe(false);
     expect(inExtract(parseCitiesLine(citiesLine({ 6: 'A', 7: 'ADM1' }))!)).toBe(false);
     expect(inExtract(parseCitiesLine(citiesLine({ 7: 'PPLX' }))!)).toBe(false);
     expect(inExtract(parseCitiesLine(citiesLine({ 8: 'GR', 14: String(EXTRACT_COUNTRIES.GR! - 1) }))!)).toBe(false);

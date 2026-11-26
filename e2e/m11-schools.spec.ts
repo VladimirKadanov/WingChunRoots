@@ -37,7 +37,7 @@ import {
   visible,
 } from './helpers/schools';
 import { personIdOf } from './helpers/search';
-import { expectNoAxeViolations, openInTheme, resolvedTheme, switchColorScheme } from './helpers/ui';
+import { chooseCity, expectNoAxeViolations, openInTheme, resolvedTheme, switchColorScheme } from './helpers/ui';
 import { runPaths } from './projects';
 import { THEMES } from './routes';
 import { openFilters } from './helpers/phone-layout';
@@ -364,7 +364,7 @@ test('@M11 a Free Sifu sees an upgrade prompt instead of publishing a pin; a Pro
   await page.waitForURL(/\/dashboard\/schools\/new/);
   const form = visible(page.getByTestId('school-form'));
   await form.getByLabel('Name of the school').fill(name);
-  await form.getByLabel('City or town').selectOption({ label: 'Leipzig, DE' });
+  await chooseCity(form, 'Leip', 'Leipzig, DE');
   await form.getByRole('radio', { name: /^Exact pin/ }).check();
   await form.getByLabel('Latitude').fill(String(LEIPZIG.lat));
   await form.getByLabel('Longitude').fill(String(LEIPZIG.lng));
@@ -491,7 +491,7 @@ test('@M11 pages other than /schools load no map code or map style', async ({ pa
     const before = await mapLoadsOn(editor, '/dashboard/schools/new');
     expect(before.mapCode, 'the school editor before "Drop the pin"').toBe(false);
     expect(before.styles).toEqual([]);
-    await visible(editor.getByTestId('school-form')).getByLabel('City or town').selectOption({ label: 'Leipzig, DE' });
+    await chooseCity(visible(editor.getByTestId('school-form')), 'Leip', 'Leipzig, DE');
     await visible(editor.getByTestId('drop-pin')).click();
     await expect(visible(editor.getByTestId('pin-picker'))).toBeVisible();
   } finally {

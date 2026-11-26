@@ -40,10 +40,13 @@ export function SchoolNotFound() {
   );
 }
 
-/** "Find a city or town": reloads the editor with ?city=, which puts the matches first in the city list. */
+/**
+ * "Find a city or town": reloads the editor with ?city=, which puts the matches first in the city
+ * list. Only without JavaScript: with it the form's city field is a type-ahead (globals.css, P2-12).
+ */
 export function CitySearch({ action, query }: { action: string; query: string | null }) {
   return (
-    <form method="get" action={action} role="search" aria-label="Find a city or town" className="grid gap-1.5 rounded-sm bg-surface-2 p-4" data-testid="city-search">
+    <form method="get" action={action} role="search" aria-label="Find a city or town" className="grid gap-1.5 rounded-sm bg-surface-2 p-4" data-testid="city-search" data-city-search="">
       <label htmlFor="school-city-search" className="text-sm font-semibold">
         Find a city or town
       </label>

@@ -222,6 +222,7 @@ import { profileGet, profileUpdate, profileUpdateInput } from '../services/profi
 import { consentWithdraw, consentWithdrawInput, privacyOverview, requestAccountDeletion, requestDeletionInput } from '../services/privacy';
 import { searchInput, searchQuery } from '../services/search';
 import { searchResultSchema } from '../dto/search';
+import { reportMissingPlace, reportMissingPlaceInput } from '../services/places';
 import { placeSearchSchema, schoolPageSchema, schoolSearchSchema, schoolSitemapSchema } from '../dto/schools';
 import {
   confirmSchool,
@@ -1807,6 +1808,11 @@ export const router = {
       .input(placeSearchInput)
       .output(placeSearchSchema)
       .handler(({ context, input }) => placesSearch(context.principal, input)),
+    // Role replay 2026-11-25, P2-12: "My city is missing" tells the admins.
+    reportMissing: signedIn
+      .route({ method: 'POST', path: '/places/report-missing', summary: 'Tell the admins a city or town is missing from the list (its name and country; at most five a day); audited' })
+      .input(reportMissingPlaceInput)
+      .handler(({ context, input }) => reportMissingPlace(context.principal, input, context.meta)),
   },
   dashboard: {
     overview: base

@@ -10,6 +10,8 @@
 
 import { lazy, Suspense, useActionState, useEffect, useRef, useState } from 'react';
 
+import { type CityChoice } from '@/components/account/city-combobox';
+import { CityField, MissingCityLink } from '@/components/account/city-field';
 import { FieldError, FormMessage, SelectField, SubmitButton, TextField, describedBy, fieldClassName, useFocusOnError, useHydrated } from '@/components/account/fields';
 import { CheckIcon, PinIcon } from '@/components/icons';
 import { CityRingMark, ExactPinMark } from '@/components/schools/marks';
@@ -125,7 +127,17 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
     focusAfterPicking.current = null;
     target?.focus();
   }, [picking]);
-  const city = places.find((p) => p.id === placeId) ?? null;
+  // With JavaScript the city is typed (the type-ahead over every place of the extract, P2-12); a
+  // place found there that is not in the page's list keeps its own centre for the map.
+  const [typed, setTyped] = useState<CityChoice | null>(null);
+  const listed = places.find((p) => p.id === placeId) ?? null;
+  const city = listed ?? (typed && typed.id === placeId && typed.point ? { ...typed, point: typed.point } : null);
+  const cityChoice: CityChoice | null = city ? { id: city.id, name: city.name, countryCode: city.countryCode, point: city.point } : null;
+  const chooseCity = (choice: CityChoice | null) => {
+    setTyped(choice);
+    setPlaceId(choice?.id ?? '');
+  };
+  const here = school ? `/dashboard/schools/${school.id}/edit` : '/dashboard/schools/new';
   const typedPoint = /^-?\d{1,3}(\.\d+)?$/.test(lat) && /^-?\d{1,3}(\.\d+)?$/.test(lng) ? { lat: Number(lat), lng: Number(lng) } : null;
 
   const saved = (prefix: string, key: string, kept: string[] | undefined) => (values ? values[`${prefix}.${key}`] === 'on' : (kept ?? []).includes(key));
@@ -146,38 +158,55 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
 
       <TextField form={form} name="name" label={LABELS.name} state={state} autoComplete="organization" maxLength={120} defaultValue={school?.name ?? ''} />
 
-      <SelectField
-        form={form}
-        name="placeId"
-        label={LABELS.placeId}
-        state={state}
-        autoComplete="off"
-        value={placeId}
-        onValue={setPlaceId}
-        hint={cityQuery ? `Matches for “${cityQuery}” come first. Not there? Search again above.` : 'Large cities are listed; find a smaller town with the search above.'}
-      >
-        <option value="" disabled>
-          Choose the city or town
-        </option>
-        {found.length > 0 ? (
-          <optgroup label={`Matches for “${cityQuery ?? ''}”`}>
-            {found.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}, {p.countryCode}
-              </option>
-            ))}
-          </optgroup>
-        ) : null}
-        {[...byCountry].map(([country, list]) => (
-          <optgroup key={country} label={country}>
-            {list.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}, {p.countryCode}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </SelectField>
+      {hydrated ? (
+        <CityField
+          form={form}
+          name="placeId"
+          label={LABELS.placeId}
+          state={state}
+          value={cityChoice}
+          onValue={chooseCity}
+          next={here}
+          hint="Type the first letters of the city or town, in any spelling."
+        />
+      ) : (
+        <SelectField
+          form={form}
+          name="placeId"
+          label={LABELS.placeId}
+          state={state}
+          autoComplete="off"
+          value={placeId}
+          onValue={setPlaceId}
+          hint={
+            <>
+              {cityQuery ? `Matches for “${cityQuery}” come first. Not there? Search again above.` : 'Large cities are listed; find a smaller town with the search above.'} <MissingCityLink next={here} />
+            </>
+          }
+        >
+          <option value="" disabled>
+            Choose the city or town
+          </option>
+          {found.length > 0 ? (
+            <optgroup label={`Matches for “${cityQuery ?? ''}”`}>
+              {found.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}, {p.countryCode}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
+          {[...byCountry].map(([country, list]) => (
+            <optgroup key={country} label={country}>
+              {list.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}, {p.countryCode}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </SelectField>
+      )}
 
       <fieldset className="grid gap-2" data-field="">
         <legend className="mb-1 text-sm font-semibold">{LABELS.locationPrivacy}</legend>
