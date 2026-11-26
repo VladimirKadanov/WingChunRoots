@@ -97,6 +97,7 @@ export function OnboardingForm({
   documents,
   next,
   initial,
+  short = false,
 }: {
   options: OnboardingFormOptions;
   /** The account's type now: a Sifu account starts on "I teach". */
@@ -106,6 +107,11 @@ export function OnboardingForm({
   documents: readonly DocumentNote[];
   next: string;
   initial?: FormState | null;
+  /**
+   * P1-6 (ADR 0069): on the way to a school's trial lesson form only the Latin-script name is
+   * asked; the account type is left as it is (a new account is a Student) and the profile stays private.
+   */
+  short?: boolean;
 }) {
   const [state, action, pending] = useActionState(onboardAction, initial ?? IDLE);
   const value = (name: string) => state.values?.[name] ?? '';
@@ -188,6 +194,8 @@ export function OnboardingForm({
           state={state}
           autoFocus={first === 'primaryName'}
         />
+        {short ? null : (
+          <>
         <SelectField
           form={FORM}
           name="originalLang"
@@ -276,8 +284,16 @@ export function OnboardingForm({
             </div>
           </fieldset>
         ) : null}
+          </>
+        )}
       </fieldset>
 
+      {short ? (
+        <p data-testid="onboarding-short" className="max-w-[60ch] text-sm text-fg-muted">
+          That is all the school needs. Your profile stays private, and you can add the rest of it later from your dashboard.
+        </p>
+      ) : (
+        <>
       {/* Needs JavaScript to follow the typing; without it the form alone is shown. */}
       {hydrated ? (
         <figure className="grid gap-3 border-y border-border-subtle py-5">
@@ -431,10 +447,12 @@ export function OnboardingForm({
         </p>
         <CheckboxField form={FORM} name="showPublicly" label="Show my profile publicly" state={state} />
       </fieldset>
+        </>
+      )}
 
       <div>
         <SubmitButton pending={pending} pendingLabel="Saving…">
-          Save my profile
+          {short ? 'Continue to the request' : 'Save my profile'}
         </SubmitButton>
       </div>
     </form>
