@@ -38,6 +38,7 @@ export async function GET(request: Request): Promise<Response> {
       person: f.person ?? undefined,
       school: f.school ?? undefined,
       organization: f.organization ?? undefined,
+      place: f.place ?? undefined,
       limit: FEED_LIMIT,
     });
     slugs = list.items.map((e) => e.slug);

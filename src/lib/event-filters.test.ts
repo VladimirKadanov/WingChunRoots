@@ -21,6 +21,15 @@ describe('eventFiltersOf', () => {
     expect(isFiltered(f)).toBe(true);
     expect(isFiltered(eventFiltersOf({ view: 'month', month: '2027-03' }))).toBe(false);
   });
+
+  it('knows a place filter (role replay 2026-11-25, P2-5) and drops one that is not an id', () => {
+    const id = '0190f3a1-7c4e-7b2a-9c1d-2e3f4a5b6c7d';
+    const f = eventFiltersOf({ place: id });
+    expect(f.place).toBe(id);
+    expect(isFiltered(f)).toBe(true);
+    expect(eventsHref(f)).toBe(`/events?place=${id}`);
+    expect(eventFiltersOf({ place: 'sofia' }).place).toBeNull();
+  });
 });
 
 describe('addresses', () => {
