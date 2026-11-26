@@ -127,6 +127,41 @@ describe('trial lesson requests: who may send one', () => {
     expect(mine.inquiries.map((q) => [q.id, q.status, q.contactValue])).toEqual([[sent.id, 'open', '+000 000 0001']]);
   });
 
+  it('ticks classes of the timetable: they open the preferred times, before what the sender typed (role replay P3-2)', async () => {
+    const s = await listedSchool('classes', { pro: true });
+    await updateSchoolSchedule(
+      s.sifu.principal,
+      {
+        id: s.id,
+        slots: [
+          { weekday: 3, startsAt: '19:00', endsAt: '20:30', label: 'Advanced' },
+          { weekday: 1, startsAt: '18:30', endsAt: '20:00', label: 'Beginners' },
+          { weekday: 6, startsAt: '10:00', endsAt: '11:30', label: null },
+        ],
+        fees: null,
+        firstTrialFree: false,
+      },
+      meta,
+    );
+    const student = await sender('classes-student');
+    const options = await trialOptions(student.principal, { slug: s.slug });
+    expect(options.classes.map((c) => c.label)).toEqual(['Monday 18:30–20:00, Beginners', 'Wednesday 19:00–20:30, Advanced', 'Saturday 10:00–11:30']);
+    expect((await trialOptions(null, { slug: s.slug })).classes).toHaveLength(3);
+    // A class of another school is refused in words.
+    const other = await listedSchool('classes-other', { pro: true });
+    await updateSchoolSchedule(other.sifu.principal, { id: other.id, slots: [{ weekday: 2, startsAt: '18:00', endsAt: '19:00', label: null }], fees: null, firstTrialFree: false }, meta);
+    const foreign = (await trialOptions(student.principal, { slug: other.slug })).classes[0]!.id;
+    expect(await codeOf(requestTrial(student.principal, { schoolId: s.id, contactMethod: 'email', classes: [foreign] }, meta))).toBe('BAD_REQUEST');
+
+    const sent = await requestTrial(
+      student.principal,
+      { schoolId: s.id, contactMethod: 'email', classes: [options.classes[2]!.id, options.classes[0]!.id], preferredTimes: 'Or Thursday after work' },
+      meta,
+    );
+    const [row] = await getDb().select({ preferredTimes: trialInquiry.preferredTimes }).from(trialInquiry).where(eq(trialInquiry.id, sent.id));
+    expect(row!.preferredTimes).toBe('Monday 18:30–20:00, Beginners; Saturday 10:00–11:30; Or Thursday after work');
+  });
+
   it('without a session the options say sign in and a request is refused', async () => {
     const s = await listedSchool('anonymous');
     const options = await trialOptions(null, { slug: s.slug });
