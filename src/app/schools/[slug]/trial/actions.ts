@@ -18,6 +18,7 @@ import { serverClient } from '@/server/rpc/server';
 import { TRIAL_REQUEST_FORM } from './form-ids';
 
 const SLUG = /^[a-z0-9-]{1,120}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** "Send the request" (trial.request). */
 export async function requestTrialAction(_previous: FormState, form: FormData): Promise<FormState> {
@@ -34,8 +35,15 @@ export async function requestTrialAction(_previous: FormState, form: FormData): 
     const value = textValue(form, name, max);
     if (value) values[name] = value;
   }
+  // Role replay 2026-11-25 (P3-2): the ticked classes of the timetable (slot ids).
+  const classes = form
+    .getAll('classes')
+    .filter((v): v is string => typeof v === 'string' && UUID.test(v))
+    .slice(0, 20);
+  if (classes.length > 0) values.classes = classes.join(',');
   try {
     await serverClient(await headers(), await getRequestPrincipal()).trial.request({
+      classes,
       schoolId: values.schoolId ?? '',
       contactMethod: (values.contactMethod ?? '') as 'email' | 'phone',
       phone: values.phone ?? null,
