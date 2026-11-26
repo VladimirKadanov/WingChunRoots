@@ -66,7 +66,7 @@ mapfile -t M23_SQL < <(ls drizzle/*_m23_federation_billing/migration.sql 2>/dev/
 required=(
   "$SERVICE" "$TRIALS" "$PLANS" "$TEST_PROVIDER" "$STRIPE" "$CATALOG" "$TEMPLATES" "$ROUTER" "$PARITY"
   "$ORG_PAGE" 'src/app/dashboard/organization/[id]/billing/error.tsx' "$ADMIN_PAGE" "$CHECKOUT_PAGE"
-  src/app/dashboard/billing/changes.tsx src/app/dashboard/billing/forms.tsx src/app/admin/organizations/forms.tsx
+  src/app/account/plan/_billing/changes.tsx src/app/account/plan/_billing/forms.tsx src/app/admin/organizations/forms.tsx
   "$SPEC" "$VIEW_SPEC" "$INT" "$UNIT"
   docs/adr/0026-federation-billing.md docs/plan/M23-federation-billing.md docs/plan/questions/M23.md docs/plan/deferred-minors.md
   docs/guides/user-guide.bg.md docs/guides/admin-guide.bg.md docs/data-model.md docs/entitlements.md

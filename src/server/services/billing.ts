@@ -528,7 +528,7 @@ async function customerIdOf(tx: Executor, provider: 'test' | 'stripe', subject: 
  * account's own type (a Student buys Premium Student, a Sifu Professional Sifu); a free plan has no
  * checkout; a Federation only by an owner of an approved organization, for it, and only once the
  * plan is available (DEFAULT M22, question 3: it is planned, so refused now). Refused while the
- * subject has a live subscription (it is managed on /dashboard/billing instead). An earlier open
+ * subject has a live subscription (it is managed on /account/plan instead). An earlier open
  * checkout of the subject is replaced, so no two checkouts can both be paid.
  */
 export async function startCheckout(principal: Principal | null, raw: unknown, meta: RequestMeta, now: Date = new Date()): Promise<CheckoutStarted> {
@@ -654,7 +654,7 @@ export async function startCheckout(principal: Principal | null, raw: unknown, m
 
 /** The billing page of a checkout's or a subscription's subject: the account's, or the organization's. */
 export function billingPageOf(row: { subjectOrganizationId: string | null }): string {
-  return row.subjectOrganizationId ? `/dashboard/organization/${row.subjectOrganizationId}/billing` : '/dashboard/billing';
+  return row.subjectOrganizationId ? `/dashboard/organization/${row.subjectOrganizationId}/billing` : '/account/plan';
 }
 
 // --- the test checkout (billing.testCheckout, billing.testPay) ---------------------------------------
