@@ -492,6 +492,9 @@ test('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling'
 });
 
 test('@M05 no axe violations on /explore in dark and light themes', async ({ page }) => {
+  // Ten axe scans over five pages (the start page joined them with P3-6): on mobile-webkit in CI the
+  // last scan ran past 30 s while every scan passed (27 s at the start page's load).
+  test.setTimeout(90_000);
   const id = await personIdOf('demo-two-lineages');
   await openInTheme(page, `/explore?focus=${id}`, THEMES[0]!);
   await expect(personNodes(page).first()).toBeVisible({ timeout: 30_000 });

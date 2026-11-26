@@ -9,9 +9,13 @@
 
 import { Suspense, type ReactNode } from 'react';
 
+import { CompactRail } from '@/components/shell/compact-rail';
+
 export default function DashboardLayout({ children, nav }: { children: ReactNode; nav: ReactNode }) {
   return (
     <div className="lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] print:block">
+      {/* P2-10: beside this menu the site rail folds to icons. */}
+      <CompactRail />
       <div data-dashboard-nav-slot="" className="min-h-16 border-b border-border-subtle max-lg:[contain:inline-size] lg:min-h-0 lg:border-r lg:border-b-0 print:hidden">
         <Suspense fallback={null}>{nav}</Suspense>
       </div>
