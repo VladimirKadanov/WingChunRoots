@@ -157,11 +157,20 @@ test.describe('@M00b phone layout', () => {
         expect(box.y, `${route.path}: tab on screen`).toBeGreaterThan(PHONE.height / 2);
       }
 
-      // The end of the page scrolls clear of the tab bar.
+      // The end of the page scrolls clear of the tab bar. Scrolled and measured again until the
+      // layout settles: a streamed section can replace its fallback after the first scroll and
+      // move the end of the page by a fraction of a pixel (seen on CI with 746.86 against 746).
+      // A page that stays under the bar still fails when the poll runs out.
       const tabBarTop = await page.getByRole('navigation', { name: 'Main' }).evaluate((nav) => nav.getBoundingClientRect().top);
-      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-      const mainBottom = await page.locator('main').evaluate((main) => main.getBoundingClientRect().bottom);
-      expect(mainBottom, `${route.path}: content ends above the tab bar`).toBeLessThanOrEqual(tabBarTop + 0.5);
+      await expect
+        .poll(
+          async () => {
+            await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+            return page.locator('main').evaluate((main) => main.getBoundingClientRect().bottom);
+          },
+          { message: `${route.path}: content ends above the tab bar` },
+        )
+        .toBeLessThanOrEqual(tabBarTop + 0.5);
 
       // No horizontal scroll.
       const widths = await page.evaluate(() => ({
