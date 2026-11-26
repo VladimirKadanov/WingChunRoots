@@ -20,11 +20,11 @@ import { atOutcome } from '@/components/relationships/outcome-id';
 import { textValue } from '@/lib/form-data';
 import { type FormState, outcomeTarget } from '@/lib/form-state';
 import { getRequestPrincipal } from '@/server/auth/web';
-import { formResult } from '@/server/forms/flash';
+import { formResult, keepFormResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import type { RejectionReason } from '@/server/templates/relationships';
-import { APPROVE_FORM, approveForm, REJECT_FORM, rejectForm } from './form-ids';
+import { APPROVE_FORM, approveForm, REJECT_FORM, rejectForm, START_SIFU_FORM } from './form-ids';
 
 const PAGE = '/dashboard/students/requests';
 
@@ -82,4 +82,25 @@ export async function rejectRequestAction(_previous: FormState, form: FormData):
     return formResult({ form: REJECT_FORM, page: PAGE, anchor: outcomeTarget(rejectForm(relationshipId), shown, true) }, shown);
   }
   redirect(atOutcome(`${PAGE}?declined=${declined}`));
+}
+
+/**
+ * "Start answering as a Sifu" (journey review 2026-11-26, P1-1): a Student account with requests
+ * waiting for it becomes a Sifu account through the same account.setType as Plan and billing, and
+ * comes back to its requests. A refusal (the daily limit of changes, a renewing paid plan) opens
+ * Plan and billing with the reason. Posted by a Server Component form, with or without JavaScript.
+ */
+export async function startAnsweringAsSifuAction(): Promise<void> {
+  let state: FormState;
+  try {
+    const change = await serverClient(await headers(), await getRequestPrincipal()).account.setType({ accountType: 'sifu' });
+    state = { status: 'done', message: `Your account is now a Sifu account on ${change.plan.name}. Answer the requests below; your own teachers stay as they are.` };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(`/sign-in?next=${encodeURIComponent(PAGE)}`);
+    const failure = formStateFromFailure(error);
+    await keepFormResult({ form: 'account-type', page: '/account/plan' }, { status: 'error', message: `Your account type was not changed. ${failure.message ?? ''}`.trim() });
+    return;
+  }
+  await keepFormResult({ form: START_SIFU_FORM, page: PAGE }, state);
 }

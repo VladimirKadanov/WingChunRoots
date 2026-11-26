@@ -25,6 +25,7 @@ import { PageRedirect } from '@/components/account/page-redirect';
 import { NameLine, NameText } from '@/components/account/person-names';
 import { ArrowRightIcon, PinIcon } from '@/components/icons';
 import { PILOT_ACCESS_FORM, UPGRADE_CLOSED_PARAM } from '@/components/plans/form-ids';
+import { StartAsSifu } from '@/components/dashboard/start-as-sifu';
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -39,6 +40,7 @@ import type { DashboardOverview, PersonRef } from '@/server/services/dashboard';
 import type { NextStep } from '@/server/services/next-steps';
 import type { FormState } from '@/lib/form-state';
 import { requestPilotAccessAction } from './actions';
+import { startAnsweringAsSifuAction } from './students/requests/actions';
 import { listingForm } from './schools/form-ids';
 import { ListingAction } from './schools/listing-actions';
 import { Notifications, NotificationsProvider, UnreadLink } from './notifications';
@@ -143,10 +145,42 @@ function Row({ person, meta, status }: { person: PersonRef; meta: ReactNode; sta
 }
 
 function StudentLists({ overview }: { overview: DashboardOverview }) {
-  const { teachers, requests } = overview.student!;
+  const { teachers, requests, waitingStudentRequests, schools } = overview.student!;
   // Without a profile the page has one call to action, "Set up your profile", above the lists.
   return (
     <>
+      {waitingStudentRequests > 0 ? (
+        // Journey review 2026-11-26 (P1-1): a teacher with a Student account learns that students wait.
+        <Section id="student-requests" title={`Student requests (${waitingStudentRequests})`}>
+          <StartAsSifu action={startAnsweringAsSifuAction} waiting={waitingStudentRequests} testId="student-requests-waiting" />
+          <p>
+            <Link href="/dashboard/students/requests" className="link inline-flex min-h-11 items-center text-sm">
+              See who is waiting
+            </Link>
+          </p>
+        </Section>
+      ) : null}
+      {schools.length > 0 ? (
+        <Section id="schools" title="Schools you teach at">
+          <ul data-testid="schools" className="grid">
+            {schools.map((item) => (
+              <li key={item.id} className="grid gap-0.5 border-b border-border-subtle py-3">
+                <span className="font-display text-lg [overflow-wrap:anywhere]">{item.name}</span>
+                <span className="flex items-center gap-1.5 text-sm text-fg-muted">
+                  <PinIcon size={16} />
+                  {item.city}, {item.countryCode} · {item.roleLabel} · {item.statusLabel}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p>
+            <Link href="/dashboard/schools" className={buttonVariants({ variant: 'secondary' })}>
+              My schools
+              <ArrowRightIcon />
+            </Link>
+          </p>
+        </Section>
+      ) : null}
       <Section id="teachers" title="My teachers">
         {teachers.length === 0 ? (
           <Empty testId="empty-teachers" action={overview.hasProfile ? NAME_CHECK : undefined}>
@@ -515,7 +549,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
             {pilotOutcome && !offer ? <FormMessage form={PILOT_ACCESS_FORM} state={pilotOutcome} single /> : null}
             {overview.staff ? <StaffWork staff={overview.staff} /> : null}
             {overview.nextSteps.length > 0 && !stepsLater ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
-            {!sifu && !staffOnly && overview.hasProfile ? <TeachPrompt /> : null}
+            {!sifu && !staffOnly && overview.hasProfile && !overview.student?.waitingStudentRequests ? <TeachPrompt /> : null}
 
             {staffOnly ? (
               <p data-testid="staff-no-profile" className="max-w-[56ch] text-ui text-fg-muted">

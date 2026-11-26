@@ -471,8 +471,10 @@ test('@M02 onboarding with "I teach" makes a Sifu account and goes back to the p
   const account = await signInAs(page, 'new');
   await page.goto(`/onboarding?next=${encodeURIComponent('/account/plan')}`);
   await field(page, 'Name in Latin letters').fill('Demo Teaching Newcomer');
-  await page.getByRole('radio', { name: 'I teach' }).check();
-  await expect(page.getByText("Choosing it doesn't verify you as an instructor; you can send evidence later.")).toBeVisible();
+  // Journey review 2026-11-26 (P1-1): two ticks; "I train" stays ticked, "I teach" makes a Sifu account.
+  await page.getByRole('checkbox', { name: 'I teach' }).check();
+  await expect(page.getByRole('checkbox', { name: 'I train' })).toBeChecked();
+  await expect(page.getByText("It doesn't verify you as an instructor; you can send evidence later.")).toBeVisible();
   await page.getByRole('button', { name: 'Save my profile' }).click();
 
   await expect(page).toHaveURL(/\/account\/plan$/);
@@ -485,10 +487,10 @@ test('@M02 onboarding creates a person linked to the account', async ({ page }) 
   await page.goto('/onboarding');
   const publicly = field(page, 'Show my profile publicly');
   await expect(publicly).not.toBeChecked();
-  // "I train" is chosen for a new (Student) account; "I teach" is not.
+  // "I train" is ticked for a new (Student) account; "I teach" is not.
   await expect(page.getByRole('group', { name: 'How do you take part?' })).toBeVisible();
-  await expect(page.getByRole('radio', { name: 'I train' })).toBeChecked();
-  await expect(page.getByRole('radio', { name: 'I teach' })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'I train' })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'I teach' })).not.toBeChecked();
   await field(page, 'Name in Latin letters').fill('Demo Newcomer');
   await field(page, 'Country').selectOption({ label: 'Bulgaria' });
   await field(page, 'Year you started Wing Chun').fill('2015');

@@ -49,7 +49,7 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { cacheLife } from 'next/cache';
 import * as z from 'zod';
 
@@ -777,7 +777,14 @@ export interface MySchools {
   accountType: 'student' | 'sifu';
   hasProfile: boolean;
   schools: OwnSchoolItem[];
+  /**
+   * Journey review 2026-11-26 (P1-1): the schools another account listed that name this account's
+   * person as an instructor, whatever the account type. Only the school's own account edits them.
+   */
+  teachingAt: { id: string; slug: string; name: string; city: string; countryCode: string; roleLabel: string; statusLabel: string }[];
 }
+
+const INSTRUCTOR_ROLE_LABELS = { head_instructor: 'Head instructor', instructor: 'Instructor', assistant: 'Assistant' } as const;
 
 async function ownPersonId(db: Executor, userId: string): Promise<string | null> {
   const [row] = await db
@@ -835,9 +842,20 @@ export async function mySchools(principal: Principal | null): Promise<MySchools>
     db,
     rows.map((r) => r.id),
   );
+  const ownId = await ownPersonId(db, p.user.id);
+  const teaching = ownId
+    ? await db
+        .select({ id: school.id, slug: school.slug, name: school.name, city: place.name, countryCode: place.countryCode, status: school.status, activityStage: school.activityStage, role: schoolInstructor.role })
+        .from(schoolInstructor)
+        .innerJoin(school, eq(school.id, schoolInstructor.schoolId))
+        .innerJoin(place, eq(place.id, school.placeId))
+        .where(and(eq(schoolInstructor.personId, ownId), isNull(school.deletedAt), ne(school.createdByUserId, p.user.id)))
+        .orderBy(asc(school.name), asc(school.id))
+    : [];
   return {
     accountType: await accountTypeOf(db, p.user.id),
-    hasProfile: (await ownPersonId(db, p.user.id)) !== null,
+    hasProfile: ownId !== null,
+    teachingAt: teaching.map((t) => ({ id: t.id, slug: t.slug, name: t.name, city: t.city, countryCode: t.countryCode, roleLabel: INSTRUCTOR_ROLE_LABELS[t.role], statusLabel: listingLabel(t.status, t.activityStage) })),
     schools: rows.map((r) => ({
       id: r.id,
       slug: r.slug,

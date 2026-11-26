@@ -21,7 +21,9 @@ import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
 import { STUDENT_REQUESTS_LOAD_ERROR } from '@/components/account/load-errors/student-requests';
+import { FormMessage } from '@/components/account/fields';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { StartAsSifu } from '@/components/dashboard/start-as-sifu';
 import { NameText } from '@/components/account/person-names';
 import { UPGRADE_CLOSED_PARAM, UPGRADE_OPEN_PARAM, UPGRADE_SUMMARY_ID } from '@/components/plans/form-ids';
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
@@ -38,8 +40,8 @@ import { REJECTION_REASON_CODES, REJECTION_REASONS } from '@/server/templates/re
 import { requestPilotAccessAction } from '../../actions';
 import { endTrainingAction, showProfilePubliclyAction } from '../../teachers/actions';
 import { END_FORM, endForm } from '../../teachers/form-ids';
-import { approveRequestAction, rejectRequestAction } from './actions';
-import { APPROVE_FORM, approveForm, REJECT_FORM, rejectForm } from './form-ids';
+import { approveRequestAction, rejectRequestAction, startAnsweringAsSifuAction } from './actions';
+import { APPROVE_FORM, approveForm, REJECT_FORM, rejectForm, START_SIFU_FORM } from './form-ids';
 
 export const instant = false;
 
@@ -89,11 +91,12 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
   const query = await searchParams;
   const incoming = await pageRead(serverClient(await headers(), guard.principal).relationships.incoming());
   if (!incoming) return <LoadError {...STUDENT_REQUESTS_LOAD_ERROR} retryHref={PAGE} />;
-  const [approveResult, rejectResult, endResult, pilotOutcome] = await Promise.all([
+  const [approveResult, rejectResult, endResult, pilotOutcome, startedAsSifu] = await Promise.all([
     readFormResult(APPROVE_FORM, query.outcome),
     readFormResult(REJECT_FORM, query.outcome),
     readFormResult(END_FORM, query.outcome),
     readFormResult('pilot-access', query.outcome),
+    readFormResult(START_SIFU_FORM, query.outcome),
   ]);
   const { allowance } = incoming;
   const approved = incoming.students.find((view) => view.id === one(query.approved));
@@ -154,14 +157,9 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
             </OutcomeNote>
           ) : null}
 
+          {startedAsSifu ? <FormMessage form={START_SIFU_FORM} state={startedAsSifu} single /> : null}
           {incoming.accountType === 'student' && incoming.requests.length > 0 ? (
-            <p data-testid="student-account-note" className="max-w-[60ch] rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-ui">
-              Your account is a Student account, which approves no students. To answer these requests, switch to Sifu in{' '}
-              <Link href="/account/plan" className="link">
-                Plan and billing
-              </Link>
-              ; your confirmed links never change.
-            </p>
+            <StartAsSifu action={startAnsweringAsSifuAction} waiting={incoming.requests.length} testId="student-account-note" />
           ) : null}
 
           <Section id="requests" title="Waiting for your answer">

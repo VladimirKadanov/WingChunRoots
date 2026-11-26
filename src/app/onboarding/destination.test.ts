@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { afterOnboarding, afterOnboardingFor, BEGINNER_NEXT, chosenAccountType, ONBOARDING_DEFAULT_NEXT, onboardingNext, onboardingPage } from './destination';
+import { afterOnboarding, afterOnboardingFor, BEGINNER_NEXT, choseBeginner, chosenAccountType, ONBOARDING_DEFAULT_NEXT, onboardingNext, onboardingPage } from './destination';
 
 const form = (entries: Record<string, string>) => {
   const data = new FormData();
@@ -58,5 +58,18 @@ describe('the role chosen on the onboarding form', () => {
     expect(afterOnboardingFor(form({ accountType: 'new' }), ONBOARDING_DEFAULT_NEXT)).toBe(BEGINNER_NEXT);
     expect(afterOnboardingFor(form({ accountType: 'new' }), '/schools/demo-a/trial')).toBe('/schools/demo-a/trial');
     expect(afterOnboardingFor(form({ accountType: 'student' }), ONBOARDING_DEFAULT_NEXT)).toBe(ONBOARDING_DEFAULT_NEXT);
+  });
+
+  it('reads the two ticks: I teach is a Sifu account, I train alone a Student, neither is new (P1-1)', () => {
+    expect(chosenAccountType(form({ takesPart: '1', trains: 'on', teaches: 'on' }))).toBe('sifu');
+    expect(chosenAccountType(form({ takesPart: '1', teaches: 'on' }))).toBe('sifu');
+    expect(chosenAccountType(form({ takesPart: '1', trains: 'on' }))).toBe('student');
+    expect(chosenAccountType(form({ takesPart: '1' }))).toBe('student');
+    expect(choseBeginner(form({ takesPart: '1' }))).toBe(true);
+    expect(choseBeginner(form({ takesPart: '1', trains: 'on' }))).toBe(false);
+    expect(choseBeginner(form({ takesPart: '1', teaches: 'on' }))).toBe(false);
+    expect(afterOnboardingFor(form({ takesPart: '1' }), ONBOARDING_DEFAULT_NEXT)).toBe(BEGINNER_NEXT);
+    // The ticks win over an older single choice sent with them.
+    expect(chosenAccountType(form({ takesPart: '1', accountType: 'sifu' }))).toBe('student');
   });
 });

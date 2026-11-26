@@ -19,6 +19,8 @@ import { authUser, entitlementGrant, lineage, person, personName, reviewCase, re
 import { PG, pgError } from '../db/test-support';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { lineageRecomputeHandler, recomputeLineageMembership } from '../jobs/lineage-recompute';
+import { dashboardOverview } from './dashboard';
+import { dashboardNav } from './dashboard-nav';
 import { revokeGrant } from './grants';
 import { carryOutDeletionFromCommandLine, consentWithdraw, requestAccountDeletion } from './privacy';
 import { profileUpdate } from './profile';
@@ -740,5 +742,24 @@ describe('the members of a school page (ADR 0044)', () => {
     await profileUpdate(freeMember.principal, { names: [{ value: 'Demo Member Name', script: 'Latn', lang: 'en', isPrimary: true }], showPublicly: true, listOnSchoolPage: false }, meta);
     await getDb().update(entitlementGrant).set({ revokedAt: new Date(), revokeReason: 'Demo: ended' }).where(eq(entitlementGrant.subjectUserId, premiumMember.account.id));
     expect((await members()).map((m) => [m.slug, m.full])).toEqual([[premiumMember.slug, false]]);
+  });
+});
+
+describe('a teacher with a Student account (journey review 2026-11-26, P1-1, ADR 0076)', () => {
+  it('sees the school that lists them, the requests that wait for them, and both in the menu', async () => {
+    // demo-hub-a: a Student account in the demo data, head instructor of a demo school, with a request waiting.
+    const [row] = (
+      await getDb().execute<{ id: string; email: string }>(sql`SELECT u.id, u.email FROM person p JOIN auth_user u ON u.id = p.claimed_by_user_id WHERE p.slug = 'demo-hub-a'`)
+    ).rows;
+    const hub = principalOf({ id: row!.id, email: row!.email } as Parameters<typeof principalOf>[0]);
+    const mine = await mySchools(hub);
+    expect(mine.accountType).toBe('student');
+    expect(mine.teachingAt.length).toBeGreaterThan(0);
+    expect(mine.teachingAt[0]!.roleLabel).toMatch(/instructor|Assistant/i);
+    const overview = await dashboardOverview(hub);
+    expect(overview.student!.waitingStudentRequests).toBeGreaterThan(0);
+    expect(overview.student!.schools.map((s) => s.id)).toEqual(expect.arrayContaining(mine.teachingAt.map((s) => s.id)));
+    const nav = await dashboardNav(hub);
+    expect(nav).toMatchObject({ accountType: 'student', waitingStudentRequests: overview.student!.waitingStudentRequests, instructorSchools: mine.teachingAt.length });
   });
 });

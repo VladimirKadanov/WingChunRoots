@@ -141,7 +141,12 @@ export interface DashboardOverview {
   staff: { role: StaffRole; secondFactorVerified: boolean; openPilotRequests: number | null } | null;
   /** Role replay 2026-11-25 (P2-6): an organization's admin without a practitioner profile, asked for none. */
   organizationOnly: boolean;
-  student: { teachers: TeacherItem[]; requests: RequestItem[] } | null;
+  /**
+   * A Student account's lists. Journey review 2026-11-26 (P1-1): many teachers also train, and a
+   * claimed record starts as Student, so a Student account sees the requests that wait for it and
+   * the schools that list it as an instructor; it answers them once it is a Sifu account.
+   */
+  student: { teachers: TeacherItem[]; requests: RequestItem[]; waitingStudentRequests: number; schools: SchoolItem[] } | null;
   sifu: {
     requests: StudentRequestItem[];
     students: { approved: number; limit: number | null };
@@ -261,6 +266,47 @@ export async function approvalOffer(
   return { approved: decision.current, limit, upgrade };
 }
 
+/**
+ * The schools the account listed and the schools that list its person as an instructor, once
+ * each (role replay 2026-11-25, P1-4): the same schools as Your schools, and more.
+ */
+async function ownSchools(db: ReturnType<typeof getDb>, userId: string, ownId: string): Promise<SchoolItem[]> {
+  const schoolRows = await db
+    .select({
+      id: school.id,
+      slug: school.slug,
+      name: school.name,
+      city: place.name,
+      countryCode: place.countryCode,
+      status: school.status,
+      activityStage: school.activityStage,
+      owned: sql<boolean>`${school.createdByUserId} = ${userId}::uuid`,
+      role: schoolInstructor.role,
+    })
+    .from(school)
+    .innerJoin(place, eq(place.id, school.placeId))
+    .leftJoin(schoolInstructor, and(eq(schoolInstructor.schoolId, school.id), eq(schoolInstructor.personId, ownId)))
+    .where(and(isNull(school.deletedAt), or(eq(school.createdByUserId, userId), eq(schoolInstructor.personId, ownId))))
+    .orderBy(asc(school.name), asc(school.id));
+  const trials = await openTrialCounts(
+    db,
+    schoolRows.filter((s) => s.owned).map((s) => s.id),
+  );
+  return schoolRows.map((s) => ({
+    id: s.id,
+    slug: s.slug,
+    name: s.name,
+    city: s.city,
+    countryCode: s.countryCode,
+    status: s.status,
+    statusLabel: listingLabel(s.status, s.activityStage),
+    roleLabel: s.role ? SCHOOL_ROLE_LABELS[s.role] : 'Listed by you',
+    owned: s.owned,
+    openTrialRequests: s.owned ? (trials.get(s.id) ?? 0) : 0,
+    needsConfirmation: s.owned && s.status === 'active' && s.activityStage !== 'current',
+  }));
+}
+
 export async function dashboardOverview(principal: Principal | null): Promise<DashboardOverview> {
   const p = requireUser(principal);
   const db = getDb();
@@ -312,6 +358,8 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   if (effective.accountType === 'student') {
     let teachers: TeacherItem[] = [];
     let requests: RequestItem[] = [];
+    let waitingStudentRequests = 0;
+    let schools: SchoolItem[] = [];
     if (own) {
       const rows = await db
         .select({
@@ -355,9 +403,10 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       }
       teachers = teachers.sort((a, b) => a.teacher.name.value.localeCompare(b.teacher.name.value, 'en'));
       requests = requests.slice(0, 50);
+      [waitingStudentRequests, schools] = await Promise.all([waitingRequests(db, own.id), ownSchools(db, p.user.id, own.id)]);
     }
     const steps = nextSteps({ accountType: 'student', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: teachers.length + requests.length, schools: 0, ...looks });
-    return { ...base, student: { teachers, requests }, sifu: null, nextSteps: steps };
+    return { ...base, student: { teachers, requests, waitingStudentRequests, schools }, sifu: null, nextSteps: steps };
   }
 
   // Sifu.
@@ -382,42 +431,7 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       createdAt: r.createdAt.toISOString(),
       waitingDays: Math.max(0, Math.floor((now - r.updatedAt.getTime()) / 86_400_000)),
     }));
-    // The schools the account listed and the schools that list its person as an instructor, once
-    // each (role replay 2026-11-25, P1-4): the same schools as Your schools, and more.
-    const schoolRows = await db
-      .select({
-        id: school.id,
-        slug: school.slug,
-        name: school.name,
-        city: place.name,
-        countryCode: place.countryCode,
-        status: school.status,
-        activityStage: school.activityStage,
-        owned: sql<boolean>`${school.createdByUserId} = ${p.user.id}::uuid`,
-        role: schoolInstructor.role,
-      })
-      .from(school)
-      .innerJoin(place, eq(place.id, school.placeId))
-      .leftJoin(schoolInstructor, and(eq(schoolInstructor.schoolId, school.id), eq(schoolInstructor.personId, own.id)))
-      .where(and(isNull(school.deletedAt), or(eq(school.createdByUserId, p.user.id), eq(schoolInstructor.personId, own.id))))
-      .orderBy(asc(school.name), asc(school.id));
-    const trials = await openTrialCounts(
-      db,
-      schoolRows.filter((s) => s.owned).map((s) => s.id),
-    );
-    schools = schoolRows.map((s) => ({
-      id: s.id,
-      slug: s.slug,
-      name: s.name,
-      city: s.city,
-      countryCode: s.countryCode,
-      status: s.status,
-      statusLabel: listingLabel(s.status, s.activityStage),
-      roleLabel: s.role ? SCHOOL_ROLE_LABELS[s.role] : 'Listed by you',
-      owned: s.owned,
-      openTrialRequests: s.owned ? (trials.get(s.id) ?? 0) : 0,
-      needsConfirmation: s.owned && s.status === 'active' && s.activityStage !== 'current',
-    }));
+    schools = await ownSchools(db, p.user.id, own.id);
   }
 
   const { approved, limit, upgrade } = await approvalOffer(db, p.user.id, waiting);

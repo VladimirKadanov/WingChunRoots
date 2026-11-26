@@ -9,7 +9,7 @@ import { and, asc, count, eq, isNull, or } from 'drizzle-orm';
 import { requireUser } from '../auth/guards';
 import { isStaffRole, type Principal } from '../auth/principal';
 import { getDb } from '../db';
-import { notification, organization, organizationAdmin, person, successionNomination } from '../db/schema';
+import { notification, organization, organizationAdmin, person, school, schoolInstructor, successionNomination } from '../db/schema';
 import { effectivePlan } from '../entitlements/access';
 import { hasPartyCases } from './cases';
 import { waitingRequests } from './dashboard';
@@ -33,8 +33,13 @@ export interface DashboardNav {
   /** The organizations this account administers (organization_admin, not revoked). */
   organizations: DashboardNavOrganization[];
   unreadNotifications: number;
-  /** Student requests waiting for this Sifu's answer (pending_teacher); 0 for a student. */
+  /**
+   * Student requests waiting for this account's answer (pending_teacher), whatever its type:
+   * journey review 2026-11-26 (P1-1), a teacher with a Student account must see them too.
+   */
   waitingStudentRequests: number;
+  /** The schools that list the account's person as an instructor (P1-1: shown for any account type). */
+  instructorSchools: number;
   /** ADR 0048: the account has a profile and its plan includes the kung fu family page. */
   family: boolean;
   /** Role replay 2026-11-25 (P2-7): the account is a party of a case (Cases is hidden until then). */
@@ -65,7 +70,17 @@ export async function dashboardNav(principal: Principal | null): Promise<Dashboa
       .orderBy(asc(organization.name), asc(organization.id)),
   ]);
   const instructor = await instructorStatus(db, p.user.id, effective.accountType);
-  const waitingStudentRequests = own && effective.accountType === 'sifu' ? await waitingRequests(db, own.id) : 0;
+  const [waitingStudentRequests, instructorSchools] = own
+    ? await Promise.all([
+        waitingRequests(db, own.id),
+        db
+          .select({ n: count() })
+          .from(schoolInstructor)
+          .innerJoin(school, eq(school.id, schoolInstructor.schoolId))
+          .where(and(eq(schoolInstructor.personId, own.id), isNull(school.deletedAt)))
+          .then(([row]) => row?.n ?? 0),
+      ])
+    : [0, 0];
   const [hasCases, [nominated]] = await Promise.all([
     hasPartyCases(db, p.user.id, own?.id ?? null),
     db
@@ -83,6 +98,7 @@ export async function dashboardNav(principal: Principal | null): Promise<Dashboa
     organizations: organizations.map((o) => ({ id: o.id, name: o.name, role: o.role })),
     unreadNotifications: unread?.n ?? 0,
     waitingStudentRequests,
+    instructorSchools,
     family: Boolean(own) && familyIncluded(effective.plan),
     hasCases,
     inSuccession: Boolean(nominated),

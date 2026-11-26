@@ -13,6 +13,7 @@ const student: DashboardNav = {
   organizations: [],
   unreadNotifications: 0,
   waitingStudentRequests: 0,
+  instructorSchools: 0,
   family: false,
   hasCases: false,
   inSuccession: false,
@@ -32,6 +33,14 @@ describe('dashboardNavGroups', () => {
     expect(account({ ...student, hasCases: true })).toContain('/dashboard/cases');
     expect(account({ ...student, inSuccession: true })).toContain('/dashboard/succession');
     expect(account({ ...student, accountType: 'sifu' })).toContain('/dashboard/succession');
+  });
+
+  it('shows a Student account the requests that wait for it and the schools that list it (journey review 2026-11-26, P1-1)', () => {
+    const teacher = { ...student, waitingStudentRequests: 1, instructorSchools: 1 };
+    expect(labels(teacher)).toEqual(['Overview', 'Teaching', 'Schools', 'My training', 'Account']);
+    const teaching = dashboardNavGroups(teacher).find((g) => g.label === 'Teaching')!;
+    expect(teaching.links).toEqual([expect.objectContaining({ href: '/dashboard/students/requests', count: 1 })]);
+    expect(dashboardNavGroups(teacher).find((g) => g.label === 'Schools')!.links.map((l) => l.href)).toEqual(['/dashboard/schools']);
   });
 
   it('gives an organization admin who is no Sifu the events page with the organizations (P2-6)', () => {

@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { auditLog, consentRecord, notification, person, personClaim, personName, relationshipEvent, reviewCase, reviewEvent, reviewNote, teachingRelationship } from '../db/schema';
+import { auditLog, authUser, consentRecord, notification, person, personClaim, personName, relationshipEvent, reviewCase, reviewEvent, reviewNote, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { jobTemplateData } from '../jobs/outbox';
 import type { EmailSendJob } from '../jobs/queues';
@@ -151,6 +151,8 @@ describe('claims.request: a claim from the profile page', () => {
     expect(after).toMatchObject({ claimedByUserId: claimant.account.id, stewardship: 'self', visibility: 'public' });
     expect((await getDb().select({ status: personClaim.status }).from(personClaim).where(eq(personClaim.reviewCaseId, sent.caseId)))[0]!.status).toBe('approved');
     expect(cache.revalidated).toContain(`person:${target.id}`);
+    // A record that teaches nobody leaves the account type as it was (ADR 0076).
+    expect((await getDb().select({ accountType: authUser.accountType }).from(authUser).where(eq(authUser.id, claimant.account.id)))[0]!.accountType).toBe('student');
     // Told in words that fit: no student waits; the e-mail leads to Your profile.
     const decided = await notices(claimant.account.id, 'claim.decided');
     expect(decided.at(-1)!.payload).toEqual({ caseId: sent.caseId, decision: 'approved', self: true });
@@ -302,6 +304,12 @@ describe('requests to a teacher who is not on WingChunRoots yet (ADR 0056)', () 
     cache.revalidated.length = 0;
     await decide(archivist, claimed.caseId, 'verify');
     expect(cache.revalidated).toContain(`person:${target.id}`);
+    // Journey review 2026-11-26 (P1-1, ADR 0076): the record already teaches, so the claimant's
+    // account is a Sifu account now, changed by the reviewer and audited with the case.
+    const [type] = await getDb().select({ accountType: authUser.accountType }).from(authUser).where(eq(authUser.id, teacher.account.id));
+    expect(type!.accountType).toBe('sifu');
+    const [change] = await getDb().select({ actor: auditLog.actorUserId, after: auditLog.after }).from(auditLog).where(and(eq(auditLog.action, 'account.type_change'), eq(auditLog.subjectId, teacher.account.id)));
+    expect(change).toMatchObject({ actor: archivist.account.id, after: { accountType: 'sifu', reason: 'claim_of_teaching_record', caseId: claimed.caseId } });
     const after = await getDb().select({ id: teachingRelationship.id, status: teachingRelationship.status }).from(teachingRelationship).where(eq(teachingRelationship.teacherPersonId, target.id));
     expect(after.map((r) => r.status)).toEqual(['pending_teacher', 'pending_teacher']);
     for (const id of [a.relationship.id, b.relationship.id]) {

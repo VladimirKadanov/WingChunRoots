@@ -81,7 +81,7 @@ export default async function SchoolsDashboardPage({ searchParams }: { searchPar
         <div className="mt-8 grid gap-6">
           {mine.accountType !== 'sifu' ? (
             <div data-testid="schools-needs-sifu" className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
-              <p className="text-ui">Schools are listed from a Sifu account. Your account is a Student account.</p>
+              <p className="text-ui">To list a school of your own, use a Sifu account. Your account is a Student account; it is free to switch, and your teachers stay as they are.</p>
               <Link href="/account/plan" className={buttonVariants({ variant: 'secondary' })}>
                 Plan and billing
                 <ArrowRightIcon />
@@ -109,9 +109,27 @@ export default async function SchoolsDashboardPage({ searchParams }: { searchPar
               Confirmed: {confirmed.name} is current as of today{confirmed.pin === 'shown' ? ', and its pin is on the public map' : ''}.
             </OutcomeNote>
           ) : null}
+          {mine.teachingAt.length > 0 ? (
+            <section aria-labelledby="teaching-at-heading" className="grid gap-2" data-testid="teaching-at">
+              <h2 id="teaching-at-heading" className="font-display text-2xl">
+                Schools that list you as an instructor
+              </h2>
+              <p className="max-w-[60ch] text-sm text-fg-muted">The school&apos;s own account keeps these listings. Ask its owner to change what they say about you.</p>
+              <ul className="grid">
+                {mine.teachingAt.map((s) => (
+                  <li key={s.id} className="grid gap-0.5 border-b border-border-subtle py-3">
+                    <span className="font-display text-lg [overflow-wrap:anywhere]">{s.name}</span>
+                    <span className="text-sm text-fg-muted">
+                      {s.city}, {s.countryCode} · {s.roleLabel} · {s.statusLabel}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           {mine.schools.length === 0 ? (
             <p className="text-ui text-fg-muted" data-testid="no-schools">
-              You have not listed a school yet.
+              {mine.teachingAt.length > 0 ? 'You have not listed a school of your own.' : 'You have not listed a school yet.'}
             </p>
           ) : (
             <ul className="grid" data-testid="own-schools">
