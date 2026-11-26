@@ -25,7 +25,8 @@ import { useForm, useStore } from '@tanstack/react-form';
 import { type ReactNode, startTransition, useActionState, useEffectEvent, useLayoutEffect, useRef, useState } from 'react';
 
 import { FormMessage, SelectField, SubmitButton, fieldClassName, useFocusOnError, useFormId, useHydrated } from '@/components/account/fields';
-import { CityField, MissingCityLink } from '@/components/account/city-field';
+import { LazyCityField } from '@/components/account/lazy-city-field';
+import { MissingCityLink } from '@/components/account/missing-city-link';
 import type { CityChoice } from '@/components/account/city-combobox';
 import { NameLine } from '@/components/account/person-names';
 import { AlertIcon, CheckIcon, ChevronDownIcon, CloseIcon } from '@/components/icons';
@@ -622,8 +623,7 @@ export function ProfileEditor({
               ))}
             </optgroup>
           </SelectField>
-          {hydrated ? (
-            <CityField
+          <LazyCityField
               form={FORM}
               name="placeId"
               label="City or town"
@@ -639,37 +639,37 @@ export function ProfileEditor({
               next="/dashboard/profile"
               disabled={pending}
               state={selectState}
-            />
-          ) : (
-          <SelectField
-            form={FORM}
-            name="placeId"
-            label="City"
-            optional
-            autoComplete="off"
-            hint={
-              <>
-                {filtered && places.length === 0 ? 'No large cities are listed for this country. ' : 'The large cities are listed. '}
-                <MissingCityLink next="/dashboard/profile" countryCode={values.countryCode || null} />
-              </>
+            fallback={
+            <SelectField
+              form={FORM}
+              name="placeId"
+              label="City"
+              optional
+              autoComplete="off"
+              hint={
+                <>
+                  {filtered && places.length === 0 ? 'No large cities are listed for this country. ' : 'The large cities are listed. '}
+                  <MissingCityLink next="/dashboard/profile" countryCode={values.countryCode || null} />
+                </>
+              }
+              value={values.placeId}
+              onValue={(id) => {
+                form.setFieldValue('placeId', id);
+                const place = options.places.find((p) => p.id === id);
+                if (place) form.setFieldValue('countryCode', place.countryCode);
+              }}
+              disabled={pending}
+              state={selectState}
+            >
+              <option value="">Not given</option>
+              {places.map((place) => (
+                <option key={place.id} value={place.id}>
+                  {filtered ? place.name : `${place.name}, ${countryName.get(place.countryCode) ?? place.countryCode}`}
+                </option>
+              ))}
+            </SelectField>
             }
-            value={values.placeId}
-            onValue={(id) => {
-              form.setFieldValue('placeId', id);
-              const place = options.places.find((p) => p.id === id);
-              if (place) form.setFieldValue('countryCode', place.countryCode);
-            }}
-            disabled={pending}
-            state={selectState}
-          >
-            <option value="">Not given</option>
-            {places.map((place) => (
-              <option key={place.id} value={place.id}>
-                {filtered ? place.name : `${place.name}, ${countryName.get(place.countryCode) ?? place.countryCode}`}
-              </option>
-            ))}
-          </SelectField>
-          )}
+          />
         </div>
         <div data-field="" className="grid grid-cols-[minmax(0,1fr)] content-start gap-1.5">
           <Label htmlFor={yearId} optional>

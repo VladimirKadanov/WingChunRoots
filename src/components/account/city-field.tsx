@@ -2,24 +2,15 @@
 
 // A form's city field with the type-ahead (role replay 2026-11-25, P2-12): the label, the hint,
 // the error and "My city is missing", around CityCombobox. The forms render it once hydrated and
-// keep their select of the large cities before that (and without JavaScript).
+// keep their select of the large cities before that (and without JavaScript), and load this module
+// only then (LazyCityField in ./lazy-city-field), so it is not in a page's first JavaScript.
 
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { fieldId, type FormState } from '@/lib/form-state';
 import { type CityChoice, CityCombobox } from './city-combobox';
 import { FieldError, FieldLabel, Hint, describedBy } from './fields';
-
-/** "My city is missing": the page that tells the admins, back to this form afterwards. */
-export function MissingCityLink({ next, countryCode }: { next: string; countryCode?: string | null }) {
-  const search = new URLSearchParams({ next, ...(countryCode ? { country: countryCode } : {}) });
-  return (
-    <Link href={`/dashboard/places/missing?${search}`} className="link inline-flex min-h-11 items-center text-sm" data-testid="missing-city-link">
-      My city is missing
-    </Link>
-  );
-}
+import { MissingCityLink } from './missing-city-link';
 
 export function CityField({
   form,

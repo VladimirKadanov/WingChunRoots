@@ -10,7 +10,8 @@
 import { useActionState, useState } from 'react';
 
 import { type CityChoice } from '@/components/account/city-combobox';
-import { CityField, MissingCityLink } from '@/components/account/city-field';
+import { LazyCityField } from '@/components/account/lazy-city-field';
+import { MissingCityLink } from '@/components/account/missing-city-link';
 import { describedBy, FieldError, fieldClassName, FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useHydrated } from '@/components/account/fields';
 import { CheckIcon } from '@/components/icons';
 import { cx } from '@/lib/cx';
@@ -153,8 +154,7 @@ export function EventForm({ editor, publishAs, cityQuery, initial }: EventFormPr
       {/* Both are drawn without JavaScript (the server reads the one the radio chose); with it,
           only the chosen one shows. */}
       <div className={cx('grid gap-6', hydrated && where === 'online' && 'hidden')}>
-        {hydrated ? (
-          <CityField
+        <LazyCityField
             form={form}
             name="placeId"
             label={LABELS.placeId}
@@ -163,43 +163,43 @@ export function EventForm({ editor, publishAs, cityQuery, initial }: EventFormPr
             onValue={chooseCity}
             next={here}
             hint="Type the first letters of the city or town, in any spelling."
-          />
-        ) : (
-          <SelectField
-            form={form}
-            name="placeId"
-            label={LABELS.placeId}
-            state={state}
-            autoComplete="off"
-            value={placeId}
-            onValue={setPlaceId}
-            hint={
-              <>
-                {cityQuery ? `Matches for “${cityQuery}” come first. Not there? Search again above.` : 'Large cities are listed; find a smaller town with the search above.'} <MissingCityLink next={here} />
-              </>
-            }
-          >
-            <option value="">Choose the city or town</option>
-            {found.length > 0 ? (
-              <optgroup label={`Matches for “${cityQuery ?? ''}”`}>
-                {found.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}, {p.countryCode}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-            {[...byCountry].map(([country, list]) => (
-              <optgroup key={country} label={country}>
-                {list.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}, {p.countryCode}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </SelectField>
-        )}
+          fallback={
+            <SelectField
+              form={form}
+              name="placeId"
+              label={LABELS.placeId}
+              state={state}
+              autoComplete="off"
+              value={placeId}
+              onValue={setPlaceId}
+              hint={
+                <>
+                  {cityQuery ? `Matches for “${cityQuery}” come first. Not there? Search again above.` : 'Large cities are listed; find a smaller town with the search above.'} <MissingCityLink next={here} />
+                </>
+              }
+            >
+              <option value="">Choose the city or town</option>
+              {found.length > 0 ? (
+                <optgroup label={`Matches for “${cityQuery ?? ''}”`}>
+                  {found.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}, {p.countryCode}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {[...byCountry].map(([country, list]) => (
+                <optgroup key={country} label={country}>
+                  {list.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}, {p.countryCode}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </SelectField>
+          }
+        />
         <TextField
           form={form}
           name="venue"

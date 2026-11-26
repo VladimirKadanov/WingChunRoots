@@ -11,7 +11,8 @@
 import { lazy, Suspense, useActionState, useEffect, useRef, useState } from 'react';
 
 import { type CityChoice } from '@/components/account/city-combobox';
-import { CityField, MissingCityLink } from '@/components/account/city-field';
+import { LazyCityField } from '@/components/account/lazy-city-field';
+import { MissingCityLink } from '@/components/account/missing-city-link';
 import { FieldError, FormMessage, SelectField, SubmitButton, TextField, describedBy, fieldClassName, useFocusOnError, useHydrated } from '@/components/account/fields';
 import { CheckIcon, PinIcon } from '@/components/icons';
 import { CityRingMark, ExactPinMark } from '@/components/schools/marks';
@@ -158,8 +159,7 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
 
       <TextField form={form} name="name" label={LABELS.name} state={state} autoComplete="organization" maxLength={120} defaultValue={school?.name ?? ''} />
 
-      {hydrated ? (
-        <CityField
+      <LazyCityField
           form={form}
           name="placeId"
           label={LABELS.placeId}
@@ -168,45 +168,45 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
           onValue={chooseCity}
           next={here}
           hint="Type the first letters of the city or town, in any spelling."
-        />
-      ) : (
-        <SelectField
-          form={form}
-          name="placeId"
-          label={LABELS.placeId}
-          state={state}
-          autoComplete="off"
-          value={placeId}
-          onValue={setPlaceId}
-          hint={
-            <>
-              {cityQuery ? `Matches for “${cityQuery}” come first. Not there? Search again above.` : 'Large cities are listed; find a smaller town with the search above.'} <MissingCityLink next={here} />
-            </>
-          }
-        >
-          <option value="" disabled>
-            Choose the city or town
-          </option>
-          {found.length > 0 ? (
-            <optgroup label={`Matches for “${cityQuery ?? ''}”`}>
-              {found.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}, {p.countryCode}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-          {[...byCountry].map(([country, list]) => (
-            <optgroup key={country} label={country}>
-              {list.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}, {p.countryCode}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </SelectField>
-      )}
+        fallback={
+          <SelectField
+            form={form}
+            name="placeId"
+            label={LABELS.placeId}
+            state={state}
+            autoComplete="off"
+            value={placeId}
+            onValue={setPlaceId}
+            hint={
+              <>
+                {cityQuery ? `Matches for “${cityQuery}” come first. Not there? Search again above.` : 'Large cities are listed; find a smaller town with the search above.'} <MissingCityLink next={here} />
+              </>
+            }
+          >
+            <option value="" disabled>
+              Choose the city or town
+            </option>
+            {found.length > 0 ? (
+              <optgroup label={`Matches for “${cityQuery ?? ''}”`}>
+                {found.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}, {p.countryCode}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {[...byCountry].map(([country, list]) => (
+              <optgroup key={country} label={country}>
+                {list.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}, {p.countryCode}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </SelectField>
+        }
+      />
 
       <fieldset className="grid gap-2" data-field="">
         <legend className="mb-1 text-sm font-semibold">{LABELS.locationPrivacy}</legend>
