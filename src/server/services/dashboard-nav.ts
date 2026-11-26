@@ -4,13 +4,14 @@
 // cached (the @nav slot reads it per request behind <Suspense>). Each page still guards itself:
 // the menu is only a way there.
 
-import { and, asc, count, eq, isNull } from 'drizzle-orm';
+import { and, asc, count, eq, isNull, or } from 'drizzle-orm';
 
 import { requireUser } from '../auth/guards';
 import { isStaffRole, type Principal } from '../auth/principal';
 import { getDb } from '../db';
-import { notification, organization, organizationAdmin, person } from '../db/schema';
+import { notification, organization, organizationAdmin, person, successionNomination } from '../db/schema';
 import { effectivePlan } from '../entitlements/access';
+import { hasPartyCases } from './cases';
 import { waitingRequests } from './dashboard';
 import { familyIncluded } from './family';
 import { instructorStatus } from './plans';
@@ -36,6 +37,10 @@ export interface DashboardNav {
   waitingStudentRequests: number;
   /** ADR 0048: the account has a profile and its plan includes the kung fu family page. */
   family: boolean;
+  /** Role replay 2026-11-25 (P2-7): the account is a party of a case (Cases is hidden until then). */
+  hasCases: boolean;
+  /** P2-7: the account has nominated a successor or been nominated as one (a Sifu always sees the page). */
+  inSuccession: boolean;
 }
 
 export async function dashboardNav(principal: Principal | null): Promise<DashboardNav> {
@@ -61,6 +66,14 @@ export async function dashboardNav(principal: Principal | null): Promise<Dashboa
   ]);
   const instructor = await instructorStatus(db, p.user.id, effective.accountType);
   const waitingStudentRequests = own && effective.accountType === 'sifu' ? await waitingRequests(db, own.id) : 0;
+  const [hasCases, [nominated]] = await Promise.all([
+    hasPartyCases(db, p.user.id, own?.id ?? null),
+    db
+      .select({ id: successionNomination.id })
+      .from(successionNomination)
+      .where(or(eq(successionNomination.ownerUserId, p.user.id), eq(successionNomination.successorUserId, p.user.id)))
+      .limit(1),
+  ]);
   return {
     accountType: effective.accountType,
     instructor,
@@ -71,5 +84,7 @@ export async function dashboardNav(principal: Principal | null): Promise<Dashboa
     unreadNotifications: unread?.n ?? 0,
     waitingStudentRequests,
     family: Boolean(own) && familyIncluded(effective.plan),
+    hasCases,
+    inSuccession: Boolean(nominated),
   };
 }

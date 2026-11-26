@@ -14,18 +14,35 @@ const student: DashboardNav = {
   unreadNotifications: 0,
   waitingStudentRequests: 0,
   family: false,
+  hasCases: false,
+  inSuccession: false,
 };
 
 const labels = (nav: DashboardNav) => dashboardNavGroups(nav).map((g) => g.label);
 
 describe('dashboardNavGroups', () => {
   it('shows a student no teaching or organization groups', () => {
-    expect(labels(student)).toEqual(['Overview', 'Learning', 'You']);
+    expect(labels(student)).toEqual(['Overview', 'My training', 'Account']);
+  });
+
+  it('hides Cases while there is none, and Digital successor from a student outside a nomination (role replay 2026-11-25, P2-7)', () => {
+    const account = (nav: DashboardNav) => dashboardNavGroups(nav).at(-1)!.links.map((l) => l.href);
+    expect(account(student)).not.toContain('/dashboard/cases');
+    expect(account(student)).not.toContain('/dashboard/succession');
+    expect(account({ ...student, hasCases: true })).toContain('/dashboard/cases');
+    expect(account({ ...student, inSuccession: true })).toContain('/dashboard/succession');
+    expect(account({ ...student, accountType: 'sifu' })).toContain('/dashboard/succession');
+  });
+
+  it('gives an organization admin who is no Sifu the events page with the organizations (P2-6)', () => {
+    const admin = { ...student, organizations: [{ id: 'o1', name: 'Demo Federation North', role: 'admin' as const }] };
+    expect(dashboardNavGroups(admin).find((g) => g.label === 'Organizations')!.links.map((l) => l.href)).toContain('/dashboard/events');
   });
 
   it('shows a Sifu teaching and organizations, with verification until verified', () => {
     const sifu = { ...student, accountType: 'sifu' as const, instructor: 'unverified' as const, waitingStudentRequests: 2 };
-    expect(labels(sifu)).toEqual(['Overview', 'Learning', 'Teaching', 'Organizations', 'You']);
+    expect(labels(sifu)).toEqual(['Overview', 'Teaching', 'Schools and events', 'My training', 'Organizations', 'Account']);
+    expect(dashboardNavGroups(sifu).filter((g) => g.links.some((l) => l.href === '/dashboard/events'))).toHaveLength(1);
     const teaching = dashboardNavGroups(sifu).find((g) => g.label === 'Teaching')!;
     expect(teaching.links.map((l) => l.href)).toContain('/dashboard/instructor');
     expect(teaching.links.find((l) => l.href === '/dashboard/students/requests')?.count).toBe(2);
@@ -34,7 +51,7 @@ describe('dashboardNavGroups', () => {
   });
 
   it('lists the kung fu family only on a plan that includes it (ADR 0048)', () => {
-    const learning = (nav: DashboardNav) => dashboardNavGroups(nav).find((g) => g.label === 'Learning')!.links.map((l) => l.href);
+    const learning = (nav: DashboardNav) => dashboardNavGroups(nav).find((g) => g.label === 'My training')!.links.map((l) => l.href);
     expect(learning(student)).not.toContain('/dashboard/family');
     expect(learning({ ...student, family: true })).toEqual(['/dashboard/teachers', '/dashboard/passport', '/dashboard/family', '/dashboard/trial-lessons']);
   });
@@ -45,12 +62,13 @@ describe('dashboardNavGroups', () => {
     expect(group.links.map((l) => [l.href, l.label])).toEqual([
       ['/dashboard/organization/o1', 'Demo Federation North'],
       ['/dashboard/organization', 'All your organizations'],
+      ['/dashboard/events', 'Events'],
     ]);
   });
 
   it('gives a staff account without a profile only the overview and its own pages', () => {
     const staff = { ...student, hasProfile: false, profileSlug: null, staffOnly: true };
-    expect(labels(staff)).toEqual(['Overview', 'You']);
+    expect(labels(staff)).toEqual(['Overview', 'Account']);
     expect(dashboardNavGroups(staff).at(-1)!.links.map((l) => l.href)).not.toContain('/dashboard/cases');
   });
 });
