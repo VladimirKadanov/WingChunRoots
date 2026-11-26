@@ -230,10 +230,16 @@ export default async function OrganizationBillingPage({ params, searchParams }: 
             </section>
           ) : null}
 
+          {view.grantNote ? (
+            <p className="max-w-[60ch] rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4 text-ui" data-testid="organization-grant-note">
+              {view.grantNote}
+            </p>
+          ) : null}
+
           {view.offers.length > 0 ? (
             <section aria-labelledby="offers-heading" className="grid gap-4">
               <h2 id="offers-heading" className="font-display text-2xl">
-                {trialRunning ? 'Continue after the trial' : 'Choose Federation'}
+                {trialRunning ? 'Continue after the trial' : view.grantNote ? 'If you want to pay for it yourselves' : 'Choose Federation'}
               </h2>
               {view.offers.map((offer) => (
                 <CheckoutForm

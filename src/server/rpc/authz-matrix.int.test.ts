@@ -48,6 +48,8 @@ import { inviteTeacher } from '../services/invitations';
 import { requestPilotAccess } from '../services/plans';
 import { approveRelationship, rejectRelationship, requestTeacher } from '../services/relationships';
 import { assignReviewCase, decideReviewCase } from '../services/review';
+import { askTeacherToConfirm } from '../services/claim-confirmations';
+import { requestProfileClaim } from '../services/profile-claims';
 import { addArchiveLink, createArchiveLineage, createArchiveRecord } from '../services/archive-editor';
 import { reportLineage } from '../services/disputes';
 import { answerNomination, nominateSuccessor } from '../services/succession';
@@ -547,6 +549,21 @@ async function claimableRecord() {
   await getDb().insert(person).values({ id, slug, kind: 'living', stewardship: 'unclaimed', visibility: 'public', lifeStatus: 'living' });
   await getDb().insert(personName).values({ personId: id, value: 'Demo Claimable Record', script: 'Latn', lang: 'en', isPrimary: true });
   return { id, slug };
+}
+
+/** ADR 0067: a profile claim whose record has a verified teacher with an account. */
+async function claimWithTeacher(opts: { asked?: boolean } = {}) {
+  const record = await claimableRecord();
+  const teacher = await actor('claim-teacher', { sifu: true });
+  const lineageId = await newLineage('m13-authz');
+  const [rel] = await getDb()
+    .insert(teachingRelationship)
+    .values({ teacherPersonId: teacher.personId!, studentPersonId: record.id, lineageId, status: 'verified', visibility: 'public' })
+    .returning({ id: teachingRelationship.id });
+  const claimant = await actor('claim-asker', { noPerson: true });
+  const claim = await requestProfileClaim(claimant.principal, { personId: record.id, note: 'A fictional note for the reviewers.', idempotencyKey: key() }, meta);
+  const confirmationId = opts.asked ? (await askTeacherToConfirm(world.admin.principal, { caseId: claim.caseId, relationshipId: rel!.id }, meta)).id : null;
+  return { teacher, claimant, caseId: claim.caseId, relationshipId: rel!.id, confirmationId };
 }
 
 /**
@@ -1284,6 +1301,32 @@ const ROWS: Row[] = [
       return { owner: c.student, input: { caseId: c.caseId, body: 'A fictional note.', idempotencyKey: key() } };
     },
     expect: { ...staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  // ADR 0067: the reviewer who may ask the claimant may ask the record's teacher (an administrator,
+  // or the archivist the case is assigned to); the asked teacher alone reads and answers.
+  {
+    path: 'review.askTeacher',
+    make: async () => {
+      const c = await claimWithTeacher();
+      return { owner: c.claimant, input: { caseId: c.caseId, relationshipId: c.relationshipId } };
+    },
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  {
+    path: 'claimConfirmations.get',
+    make: async () => {
+      const c = await claimWithTeacher({ asked: true });
+      return { owner: c.teacher, party: c.claimant, input: { id: c.confirmationId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'claimConfirmations.answer',
+    make: async () => {
+      const c = await claimWithTeacher({ asked: true });
+      return { owner: c.teacher, party: c.claimant, input: { id: c.confirmationId, answer: 'yes', note: 'A fictional note.' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
   {
     path: 'archive.get',
@@ -2690,6 +2733,8 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/admin/review/actions.ts#assignCaseAction', row: 'review.assign', form: (i) => ({ ...same(i), mode: 'take' }), roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'] },
   { action: 'src/app/admin/review/actions.ts#decideCaseAction', row: 'review.decide', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'] },
   { action: 'src/app/admin/review/actions.ts#addNoteAction', row: 'review.note', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'moderator'] },
+  { action: 'src/app/admin/review/actions.ts#askTeacherAction', row: 'review.askTeacher', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'moderator'] },
+  { action: 'src/app/dashboard/confirmations/[id]/actions.ts#answerConfirmationAction', row: 'claimConfirmations.answer', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/admin/review/actions.ts#arbitrateAction', row: 'review.arbitrate', form: same, roles: ['anonymous', 'member', 'owner', 'archivist', 'adminNo2fa', 'moderator'] },
   // M14: a moderator's "Remove photo" on a case card; the owner's own removal is the same procedure.
   {

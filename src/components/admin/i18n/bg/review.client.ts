@@ -82,4 +82,7 @@ export const BG_REVIEW_CLIENT: AdminDict = {
   'Take record down': 'Свали записа',
   'Restoring…': 'Връщане…',
   'Taking down…': 'Сваляне…',
+  // ADR 0067.
+  'Ask {name} to confirm': 'Помолете {name} да потвърди',
+  'Asking…': 'Питане…',
 };
