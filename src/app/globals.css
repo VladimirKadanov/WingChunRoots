@@ -238,6 +238,77 @@
   }
 }
 
+/* Role replay 2026-11-25, P2-10: inside /dashboard and /admin, which have their own sidebar, the
+   site rail folds to icons from 1024 px, where their sidebar stands beside it (one sidebar carries
+   the words). The page marks itself with
+   [data-compact-rail] (CompactRail, src/components/shell/compact-rail.tsx); its labels show on
+   hover and focus. --rail-w is set on :root, so the sheets and toasts that offset by it follow. */
+@custom-variant rail-compact {
+  @media (width >= 64rem) {
+    &:where(:root:has([data-compact-rail]) *) {
+      @slot;
+    }
+  }
+}
+@media (width >= 64rem) {
+  :root:has([data-compact-rail]) {
+    --rail-w: 4.75rem;
+  }
+  /* The client parts of the rail (nav-links, search-trigger, account-menu, theme-menu) are styled
+     here by their structure, so the JS every page loads stays as it is. A label (a span that is not
+     aria-hidden) keeps its place in the accessible name and shows beside the icon, as a tooltip, on
+     hover and keyboard focus; the decorative parts (aria-hidden spans, the shortcut) step aside. */
+  :root:has([data-compact-rail]) [data-tab-bar] {
+    & :is(li:not([popover] *) > a[href], [data-search-field='rail'], [data-testid='account-menu-trigger'], [role='switch']) {
+      justify-content: center;
+      margin-inline: 0;
+      padding-inline: 0;
+    }
+    & li:not([popover] *) > a[href] {
+      min-width: 46px;
+    }
+    & [role='switch'] {
+      width: 44px;
+    }
+    & li:not([popover] *) > a[href] > [aria-hidden='true']:last-child {
+      right: 0.25rem;
+    }
+    & [data-search-field='rail'] > kbd,
+    & [role='switch'] > span {
+      display: none;
+    }
+    & :is(li:not([popover] *) > a[href], [data-search-field='rail'], [data-testid='account-menu-trigger']) > span:not([aria-hidden]) {
+      position: absolute;
+      top: 50%;
+      left: 100%;
+      z-index: 50;
+      display: block;
+      flex: none;
+      width: max-content;
+      max-width: 16rem;
+      margin-left: 0.5rem;
+      translate: 0 -50%;
+      border-radius: var(--radius-sm);
+      background: var(--color-fg);
+      padding: 0.375rem 0.625rem;
+      font-size: var(--text-sm);
+      font-weight: 500;
+      text-align: left;
+      color: var(--color-fg-inverse);
+      box-shadow: var(--shadow-pop);
+      pointer-events: none;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    & :is(li:not([popover] *) > a[href], [data-search-field='rail'], [data-testid='account-menu-trigger']):is(:hover, :focus-visible) > span:not([aria-hidden]) {
+      clip-path: none;
+    }
+    & [data-testid='account-menu-trigger'] > span:not([aria-hidden]) * {
+      color: inherit;
+    }
+  }
+}
+
 /* The search palette as a sheet under the top edge (src/components/ui/search-palette.tsx,
    SHEET_QUERY): from 40rem wide and 32rem high. A phone in landscape (844 x 390) is wide but low,
    so it keeps the full-screen palette, whose field and results get the whole height. */
