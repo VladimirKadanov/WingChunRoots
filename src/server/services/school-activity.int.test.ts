@@ -20,6 +20,7 @@ import { jobTemplateData } from '../jobs/outbox';
 import type { EmailSendJob } from '../jobs/queues';
 import { schoolActivityHandler } from '../jobs/school-activity';
 import { renderNotification } from '../templates/notifications';
+import { dashboardOverview } from './dashboard';
 import { organizationGet } from './organizations';
 import { member, meta, principalOf, staff } from './relationships.test-support';
 import { adminSchools, runSchoolActivityCheck, SCHOOL_CONFIRM_GRACE_DAYS } from './school-activity';
@@ -299,6 +300,30 @@ describe('the organization (In scope 2)', () => {
     // The organization's public page no longer lists it.
     const page = await organizationGet(null, { slug: 'demo-federation-north' });
     expect(JSON.stringify(page)).not.toContain(s.slug);
+  });
+});
+
+describe('the owner reads one status, where the reminder is (role replay 2026-11-25, P1-4)', () => {
+  it('Your schools and the dashboard home say "Hidden from the map until you confirm it", list the owned school, and confirm with one tap', async () => {
+    const s = await listedSchool('owner-view', '120 days', { stage: 'awaiting_confirmation', awaitingFor: '20 days' });
+    // The owner is not (or no longer) an instructor of it: the home lists it all the same.
+    await getDb().delete(schoolInstructor).where(eq(schoolInstructor.schoolId, s.id));
+    const before = (await mySchools(s.sifu.principal)).schools.find((x) => x.id === s.id)!;
+    expect(before.statusLabel).toBe('Listed, needs your confirmation');
+    await run();
+    expect((await mySchools(s.sifu.principal)).schools.find((x) => x.id === s.id)!.statusLabel).toBe('Hidden from the map until you confirm it');
+    const home = (await dashboardOverview(s.sifu.principal)).sifu!.schools.find((x) => x.id === s.id);
+    expect(home).toMatchObject({ owned: true, roleLabel: 'Listed by you', statusLabel: 'Hidden from the map until you confirm it', needsConfirmation: true, openTrialRequests: 0 });
+    await confirmSchool(s.sifu.principal, { id: s.id }, meta);
+    expect((await dashboardOverview(s.sifu.principal)).sifu!.schools.find((x) => x.id === s.id)).toMatchObject({ statusLabel: 'Listed', needsConfirmation: false });
+  });
+
+  it('a school that lists the Sifu as an instructor is on the home too, without the owner’s steps', async () => {
+    const s = await listedSchool('instructor-view', '10 days');
+    const colleague = await member('m20-instructor-view-colleague', { sifu: true });
+    await getDb().insert(schoolInstructor).values({ schoolId: s.id, personId: colleague.personId, role: 'instructor' });
+    const home = (await dashboardOverview(colleague.principal)).sifu!.schools;
+    expect(home.map((x) => [x.id, x.owned, x.roleLabel, x.needsConfirmation])).toEqual([[s.id, false, 'Instructor', false]]);
   });
 });
 

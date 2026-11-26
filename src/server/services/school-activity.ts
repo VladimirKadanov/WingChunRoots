@@ -70,6 +70,20 @@ export const ACTIVITY_LABELS: Record<SchoolActivityStage, string> = {
   hidden: 'Hidden from the map',
 };
 
+/** The listing's status in words, as its owner reads it (D11 moderation, M20 activity, never colour alone). */
+const LISTING_LABELS = { draft: 'Draft', pending_review: 'Waiting for review', active: 'Listed', hidden: 'Hidden by a moderator', archived: 'Archived' } as const;
+
+/**
+ * The owner's one status line of a school (role replay 2026-11-25, P1-4): a listed school that the
+ * activity check is waiting on, or has hidden, says so here instead of "Listed" next to a note
+ * that it is off the map.
+ */
+export function listingLabel(status: keyof typeof LISTING_LABELS, stage: SchoolActivityStage): string {
+  if (status === 'active' && stage === 'hidden') return 'Hidden from the map until you confirm it';
+  if (status === 'active' && stage === 'awaiting_confirmation') return 'Listed, needs your confirmation';
+  return LISTING_LABELS[status];
+}
+
 /** The activity of one school, for its owner and for staff. */
 export interface SchoolActivity {
   stage: SchoolActivityStage;
