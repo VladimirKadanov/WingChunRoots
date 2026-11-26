@@ -25,7 +25,7 @@ import { useForm, useStore } from '@tanstack/react-form';
 import { type ReactNode, startTransition, useActionState, useEffectEvent, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { FormMessage, SelectField, SubmitButton, fieldClassName, useFocusOnError, useFormId, useHydrated } from '@/components/account/fields';
-import { NameLine } from '@/components/account/person-names';
+import { NameLine, NameText } from '@/components/account/person-names';
 import { AlertIcon, CheckIcon, ChevronDownIcon, CloseIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
@@ -429,9 +429,11 @@ export function ProfileEditor({
                   {collapsed ? (
                     <div className="flex items-center justify-between gap-3" data-testid="name-summary">
                       <p className="grid min-w-0">
-                        <span lang={writing.lang || undefined} translate="no" className={cx('font-display text-lg [overflow-wrap:anywhere]', LARGER_SCRIPTS.has(writing.script) && 'text-xl')}>
-                          {row.value.trim()}
-                        </span>
+                        {/* NameText: Chinese takes the CJK face (.cjk), as everywhere a name is shown. */}
+                        <NameText
+                          name={{ value: row.value.trim(), lang: writing.lang ?? '' }}
+                          className={cx('font-display text-lg [overflow-wrap:anywhere]', LARGER_SCRIPTS.has(writing.script) && 'text-xl')}
+                        />
                         <span className="text-sm text-fg-muted">
                           {writingLabel}
                           {isPrimary ? ' · Display name' : row.kind === 'alias' && !isRomanization ? ' · Also known as' : ''}
