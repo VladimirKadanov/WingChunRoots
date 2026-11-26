@@ -303,6 +303,20 @@ describe('note to the teacher (role replay 2026-11-25, P2-3, ADR 0060)', () => {
     const plain = await request(student, await member('p2-noted-second', { sifu: true }), { note: '' });
     expect((await myTeachers(student.principal)).requests.find((r) => r.id === plain)!.note).toBeNull();
   });
+
+  it('marks a request sent from the teacher\'s invite link for the teacher only (ADR 0073)', async () => {
+    const teacher = await member('invite-mark-teacher', { sifu: true });
+    const student = await member('invite-mark-student');
+    const marked = await request(student, teacher, { viaInviteLink: true });
+    const plain = await request(await member('invite-mark-other'), teacher, {});
+    const seen = (await studentRequests(teacher.principal)).requests;
+    expect(seen.find((r) => r.id === marked)!.viaInviteLink).toBe(true);
+    expect(seen.find((r) => r.id === plain)!.viaInviteLink).toBe(false);
+    // The student's own view does not carry it, and it is never an approval.
+    const own = (await myTeachers(student.principal)).requests.find((r) => r.id === marked)!;
+    expect(own.viaInviteLink).toBe(false);
+    expect(own.status).toBe('pending_teacher');
+  });
 });
 
 describe('end: the end date (M09 review, code-6)', () => {

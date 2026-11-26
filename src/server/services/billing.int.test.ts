@@ -81,6 +81,10 @@ afterAll(async () => {
 
 /** A fake key of a kind, built at run time (no key-like literal in the repository; gitleaks). */
 const fakeKey = (prefix: string) => [prefix, randomBytes(12).toString('hex')].join('_');
+// Generated ids (UUIDs, `evt_<hex>` and the like) can hold "4242" by chance (CI saw one in a UUID);
+// the card checks read the text with those ids blanked. A card number or last4 never looks like one.
+const withoutIds = (text: string) =>
+  text.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<uuid>').replace(/\b([a-z]+)_[0-9a-f]{12,}\b/gi, '$1_<hex>');
 
 /** A Stripe-signed request (Stripe-Signature: t=<seconds>,v1=<HMAC-SHA256 of "t.body">). */
 function stripeRequest(body: string, secret: string): Request {
@@ -598,9 +602,11 @@ describe('secrets, card data and logs', () => {
     const [row] = await getDb().select().from(billingEvent).where(eq(billingEvent.providerEventId, id));
     expect(row).toMatchObject({ provider: 'stripe', providerType: 'checkout.session.completed', outcome: 'pending' });
     const stored = JSON.stringify(row!.raw);
-    for (const secret of ['demo-buyer@example.test', 'Demo Buyer', 'Demo City', '4242', 'visa']) expect(stored).not.toContain(secret);
+    for (const secret of ['demo-buyer@example.test', 'Demo Buyer', 'Demo City', 'visa']) expect(stored).not.toContain(secret);
+    expect(withoutIds(stored)).not.toContain('4242');
     expect(lines.join('\n')).toContain(id);
-    for (const secret of ['demo-buyer@example.test', 'Demo Buyer', '4242', webhookSecret]) expect(lines.join('\n')).not.toContain(secret);
+    for (const secret of ['demo-buyer@example.test', 'Demo Buyer', webhookSecret]) expect(lines.join('\n')).not.toContain(secret);
+    expect(withoutIds(lines.join('\n'))).not.toContain('4242');
     // Unknown checkout: recorded as such on the last attempt, nothing else changes.
     expect((await applyStoredEvent(row!.id, { final: true })).outcome).toBe('unknown');
   });
@@ -621,12 +627,12 @@ describe('secrets, card data and logs', () => {
     const log = lines.join('\n');
     expect(log).toContain('[billing]');
     expect(log).not.toContain(email);
-    expect(log).not.toMatch(/4242|4000 0000/);
+    expect(withoutIds(log)).not.toMatch(/4242|4000 0000/);
     const raw = await getDb().select({ raw: billingEvent.raw }).from(billingEvent);
     expect(JSON.stringify(raw)).not.toContain(email);
     const users = await getDb().select({ id: authUser.id }).from(authUser).where(eq(authUser.email, email));
     expect(users).toHaveLength(1);
     const checkouts = await getDb().select().from(billingCheckout).where(eq(billingCheckout.subjectUserId, users[0]!.id));
-    expect(JSON.stringify(checkouts)).not.toMatch(/4242/);
+    expect(withoutIds(JSON.stringify(checkouts))).not.toMatch(/4242/);
   });
 });

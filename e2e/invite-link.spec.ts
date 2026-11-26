@@ -52,7 +52,7 @@ test('@invite a new student opens the link, signs up, and lands on the request f
     await switchColorScheme(page, theme);
     await expectNoAxeViolations(page, `/join/<slug> (${theme})`);
   }
-  const target = `/dashboard/teachers/new?teacher=${TEACHER.slug}`;
+  const target = `/dashboard/teachers/new?teacher=${TEACHER.slug}&from=invite`;
   await visible(page.getByTestId('join-sign-up')).click();
   await page.waitForURL((u) => u.pathname === '/sign-up' && u.searchParams.get('next') === target);
   await expect(visible(page.getByText('Then your teacher'))).toBeVisible();
@@ -75,6 +75,9 @@ test('@invite a new student opens the link, signs up, and lands on the request f
   await visible(page.getByRole('button', { name: 'Save my profile' })).click();
   await page.waitForURL((u) => u.pathname === '/dashboard/teachers/new' && u.searchParams.get('teacher') === TEACHER.slug, { timeout: 15_000 });
   await expect(visible(page.getByTestId('chosen-teacher'))).toContainText(TEACHER.name);
+  // ADR 0073: the request this form sends is marked "From your invite link" for this teacher.
+  expect(new URL(page.url()).searchParams.get('from')).toBe('invite');
+  await expect(page.locator('form input[name="viaInviteFor"]')).toHaveCount(1);
 });
 
 test('@invite the link of a profile that is not public says it does not work', async ({ page }) => {

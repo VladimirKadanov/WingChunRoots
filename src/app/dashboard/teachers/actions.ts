@@ -89,7 +89,7 @@ function requestInput(form: FormData) {
   const note = textValue(form, 'note', 600);
   const key = textValue(form, 'idempotencyKey', 64);
   // The chosen teacher's name, as the form showed it: shown again after an error.
-  for (const name of ['teacherId', 'teacherName', 'teacherLang', 'teacherWhere', 'teacherHasLineage', 'teacherInvitable', 'lineageId', 'email', 'idempotencyKey'] as const) {
+  for (const name of ['teacherId', 'teacherName', 'teacherLang', 'teacherWhere', 'teacherHasLineage', 'teacherInvitable', 'lineageId', 'email', 'idempotencyKey', 'viaInviteFor'] as const) {
     const value = textValue(form, name, name === 'email' ? 400 : 300);
     if (value) values[name] = value;
   }
@@ -126,7 +126,9 @@ export async function requestTeacherAction(_previous: FormState, form: FormData)
       const result = await client.relationships.invite({ ...input, email: values.email ?? null, evidenceIds: [] });
       target = `${TEACHERS}?invited=${result.relationship.id}`;
     } else {
-      const result = await client.relationships.request({ ...input, note });
+      // ADR 0073: marked only when the teacher sent to is the one whose invite link the student followed.
+      const viaInviteLink = UUID.test(input.teacherId) && values.viaInviteFor === input.teacherId;
+      const result = await client.relationships.request({ ...input, note, viaInviteLink });
       target = `${TEACHERS}?sent=${result.relationship.id}`;
     }
   } catch (error) {

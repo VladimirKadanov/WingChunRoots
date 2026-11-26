@@ -87,6 +87,10 @@ export const teachingRelationship = pgTable(
     // the request ("We trained together in Varna, 2019"). Private: only the two people and the
     // reviewers see it, like the request itself (DEFAULT D03); never in a public view.
     requestNote: text('request_note'),
+    // Role replay 2026-11-25 (P1-3 follow-up, ADR 0073): the request was sent from the teacher's own
+    // invite link (/join/<slug>). A hint for the teacher only, never an approval: the link holds no
+    // secret. Private like the request (DEFAULT D03).
+    viaInviteLink: boolean('via_invite_link').notNull().default(false),
     ...timestamps(),
   },
   (t) => [

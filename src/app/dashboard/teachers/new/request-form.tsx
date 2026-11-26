@@ -194,6 +194,7 @@ export function RequestForm({
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       <input type="hidden" name="periodCount" value={String(count)} />
       {resubmit ? <input type="hidden" name="relationshipId" value={relationshipId} /> : null}
+      {!resubmit && (state.values?.viaInviteFor ?? prefill.viaInviteFor) ? <input type="hidden" name="viaInviteFor" value={state.values?.viaInviteFor ?? prefill.viaInviteFor} /> : null}
 
       {/* The teacher. */}
       <section aria-labelledby={`${formId}-teacher`} className="grid gap-3">

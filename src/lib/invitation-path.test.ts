@@ -33,6 +33,9 @@ describe('the paths that ride in the confirmation link', () => {
 
   it("knows the request form with a teacher chosen (a Sifu's invite link)", () => {
     expect(isTeacherRequestPath(teacherRequestPath('demo-root-a'))).toBe(true);
+    expect(isTeacherRequestPath(teacherRequestPath('demo-root-a', { invite: true }))).toBe(true);
+    expect(teacherRequestPath('demo-root-a', { invite: true })).toBe('/dashboard/teachers/new?teacher=demo-root-a&from=invite');
+    expect(isTeacherRequestPath('/dashboard/teachers/new?teacher=demo-a&from=elsewhere')).toBe(false);
     expect(isTeacherRequestPath('/dashboard/teachers/new')).toBe(false);
     expect(isTeacherRequestPath('/dashboard/teachers/new?teacher=demo-a&q=x')).toBe(false);
     expect(isTeacherRequestPath('/dashboard/teachers/new?resubmit=1')).toBe(false);
