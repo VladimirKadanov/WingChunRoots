@@ -538,5 +538,7 @@ describe('the English copy of the app', () => {
 
     const findings = files.flatMap((file) => scan(repoPath(file), readFileSync(file, 'utf8')));
     expect([...new Set(findings)]).toEqual([]);
-  });
+    // The whole app is read and parsed: about 1.5 s alone, past vitest's 5 s default when the CI
+    // runner is busy with the rest of the unit suite (seen on PRs #85 and #92, 2026-11-26).
+  }, 30_000);
 });

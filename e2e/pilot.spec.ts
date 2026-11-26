@@ -200,7 +200,7 @@ test('@pilot register → onboarding → find a teacher with the palette → req
   await visible(page.getByRole('link', { name: 'Create an account' })).click();
   await page.waitForURL((url) => url.pathname === '/sign-up');
 
-  // Sign up, confirm the address from the e-mail, sign in.
+  // Sign up, confirm the address from the e-mail: the browser that signed up is signed in (ADR 0069).
   const email = uniqueEmail('pilot');
   await field(page, 'E-mail address').fill(email);
   await field(page, 'Password', true).fill(NEW_ACCOUNT_PASSWORD);
@@ -210,10 +210,6 @@ test('@pilot register → onboarding → find a teacher with the palette → req
   const link = new URL(await emailLinkFromOutbox('verify-email', email));
   await page.goto(link.pathname + link.search);
   await page.getByRole('button', { name: 'Confirm my address' }).click();
-  await expect(page).toHaveURL(/\/sign-in\?verified=1$/);
-  await expect(field(page, 'E-mail address')).toHaveValue(email);
-  await field(page, 'Password', true).fill(NEW_ACCOUNT_PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
 
   // Onboarding: a Latin-script name, shown publicly.
   await expect(page).toHaveURL(/\/onboarding$/);
