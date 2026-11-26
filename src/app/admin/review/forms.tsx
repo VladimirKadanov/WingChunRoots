@@ -13,6 +13,7 @@ import { useActionState, useState } from 'react';
 import { CheckboxField, FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { useAdminT } from '@/components/admin/i18n/client';
 import type { AdminT } from '@/components/admin/i18n/translate';
+import { NameText } from '@/components/account/person-names';
 import { TextAreaField } from '@/components/account/textarea-field';
 import { EvidenceUploader } from '@/components/evidence/uploader';
 import { ChevronDownIcon } from '@/components/icons';
@@ -21,9 +22,9 @@ import { cx } from '@/lib/cx';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import type { ArchiveRecordView } from '@/server/services/review';
 import { discardEvidenceAction } from '../../dashboard/teachers/historical/actions';
-import { addNoteAction, arbitrateAction, archiveUpdateAction, assignCaseAction, decideCaseAction, removeGalleryPhotoAction, removePhotoAction, removeSchoolPhotoAction, restoreAction, takeDownAction } from './actions';
+import { addNoteAction, arbitrateAction, askTeacherAction, archiveUpdateAction, assignCaseAction, decideCaseAction, removeGalleryPhotoAction, removePhotoAction, removeSchoolPhotoAction, restoreAction, takeDownAction } from './actions';
 import type { LifeStatusChoiceText } from './life-status-choice';
-import { ARBITRATE_FORM, ARCHIVE_FORM, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from './form-ids';
+import { ARBITRATE_FORM, ARCHIVE_FORM, askTeacherForm, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from './form-ids';
 
 function Button({ pending, label, pendingLabel, variant = 'secondary' }: { pending: boolean; label: string; pendingLabel: string; variant?: 'secondary' | 'ink' | 'danger' | 'primary' }) {
   return (
@@ -281,6 +282,46 @@ export function NoteForm({ caseId, idempotencyKey, initial }: { caseId: string; 
       <TextAreaField form={formId} name="body" label={t('Internal note')} maxLength={2000} hint={t('Only reviewers read internal notes.')} state={state} />
       <div>
         <Button pending={pending} label={t('Add the note')} pendingLabel={t('Adding…')} />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Role replay 2026-11-25 (P3-8, ADR 0067): "Ask <teacher> to confirm" (review.askTeacher). The
+ * teacher's name keeps its own language inside the translated words.
+ */
+export function AskTeacherForm({ caseId, relationshipId, teacher, initial }: { caseId: string; relationshipId: string; teacher: { value: string; lang: string }; initial?: FormState | null }) {
+  const t = useAdminT();
+  const [state, action, pending] = useActionState(askTeacherAction, initial ?? IDLE);
+  const generatedId = useFormId(askTeacherForm(relationshipId));
+  const formId = initial ? askTeacherForm(relationshipId) : generatedId;
+  useFocusOnError(formId, state);
+  const [before, after] = t('Ask {name} to confirm', { name: '\u0000' }).split('\u0000');
+  return (
+    <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-2" data-testid="ask-teacher-form">
+      <FormMessage form={formId} state={state} single />
+      <input type="hidden" name="caseId" value={caseId} />
+      <input type="hidden" name="relationshipId" value={relationshipId} />
+      <div>
+        <button
+          type="submit"
+          aria-disabled={pending || undefined}
+          onClick={(event) => {
+            if (pending) event.preventDefault();
+          }}
+          className={cx(buttonVariants({ variant: 'secondary' }), 'w-full sm:w-auto sm:min-w-40')}
+        >
+          {pending ? (
+            t('Asking…')
+          ) : (
+            <span>
+              {before}
+              <NameText name={teacher} />
+              {after}
+            </span>
+          )}
+        </button>
       </div>
     </form>
   );

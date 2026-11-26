@@ -23,7 +23,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { type FormPlace, formResult, postedByReact } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { ARBITRATE_FORM, ARCHIVE_FORM, type AssignMode, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from './form-ids';
+import { ARBITRATE_FORM, ARCHIVE_FORM, askTeacherForm, type AssignMode, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from './form-ids';
 import { translateState } from './text';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -143,6 +143,23 @@ export async function addNoteAction(_previous: FormState, form: FormData): Promi
   }
   // The note's confirmation sits in the Notes section, under the new note (screens-5).
   redirect(doneAt(page, 'noted'));
+}
+
+/** "Ask <teacher> to confirm" (review.askTeacher, ADR 0067): one verified teacher of the claimed record. */
+export async function askTeacherAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const caseId = textValue(form, 'caseId', 40);
+  const relationshipId = textValue(form, 'relationshipId', 40);
+  const page = casePage(caseId);
+  const formId = askTeacherForm(UUID.test(relationshipId) ? relationshipId : 'none');
+  try {
+    await (await client()).review.askTeacher({ caseId, relationshipId });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
+    const state = formStateFromFailure(error, { caseId, relationshipId });
+    return refused({ form: formId, page, anchor: outcomeTarget(formId, state, true) }, state);
+  }
+  redirect(doneAt(page, 'teacher-asked'));
 }
 
 /** "Save the record" of the archival edit (archive.update; an archivist or an administrator). */

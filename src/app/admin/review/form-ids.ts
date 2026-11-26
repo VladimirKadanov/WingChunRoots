@@ -24,3 +24,6 @@ export const SCHOOL_PHOTO_REMOVE_FORM = 'review-school-photo-remove';
 /** Review 2026-11: "Take down" and "Restore" of a profile (moderation.takeDown, moderation.restore). */
 export const TAKEDOWN_FORM = 'review-takedown';
 export const RESTORE_FORM = 'review-restore';
+/** Role replay 2026-11-25 (P3-8, ADR 0067): "Ask <teacher> to confirm" (review.askTeacher), one form per teacher. */
+export const ASK_TEACHER_FORM = 'review-ask-teacher';
+export const askTeacherForm = (relationshipId: string) => `${ASK_TEACHER_FORM}-${relationshipId}`;
