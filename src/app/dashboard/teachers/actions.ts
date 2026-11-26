@@ -22,7 +22,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { END_FORM, endForm, REQUEST_FORM, WITHDRAW_FORM, withdrawForm } from './form-ids';
+import { END_FORM, endForm, REMIND_FORM, remindForm, REQUEST_FORM, WITHDRAW_FORM, withdrawForm } from './form-ids';
 
 const TEACHERS = '/dashboard/teachers';
 const NEW = '/dashboard/teachers/new';
@@ -85,6 +85,8 @@ function requestInput(form: FormData) {
   const teacherId = textValue(form, 'teacherId', 40);
   const lineageId = textValue(form, 'lineageId', 40);
   const displayPrimary = ticked(form, 'displayPrimary');
+  // P2-3: the optional note to the teacher; a longer one comes back as the procedure's field error.
+  const note = textValue(form, 'note', 600);
   const key = textValue(form, 'idempotencyKey', 64);
   // The chosen teacher's name, as the form showed it: shown again after an error.
   for (const name of ['teacherId', 'teacherName', 'teacherLang', 'teacherWhere', 'teacherHasLineage', 'teacherInvitable', 'lineageId', 'email', 'idempotencyKey'] as const) {
@@ -92,6 +94,7 @@ function requestInput(form: FormData) {
     if (value) values[name] = value;
   }
   if (displayPrimary) values.displayPrimary = 'on';
+  if (note) values.note = note;
   return {
     input: {
       teacherId,
@@ -101,6 +104,8 @@ function requestInput(form: FormData) {
       // The form always sends one; a missing key is refused by the procedure like any bad input.
       idempotencyKey: KEY.test(key) ? key : '',
     },
+    // An invitation carries no note (ADR 0060): it is for a teacher who answers in the app.
+    note: note || null,
     values,
   };
 }
@@ -112,7 +117,7 @@ function requestInput(form: FormData) {
  * the search comes back as a field error that says so.
  */
 export async function requestTeacherAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const { input, values } = requestInput(form);
+  const { input, note, values } = requestInput(form);
   const inviting = values.teacherInvitable === 'yes';
   let target: string;
   try {
@@ -121,7 +126,7 @@ export async function requestTeacherAction(_previous: FormState, form: FormData)
       const result = await client.relationships.invite({ ...input, email: values.email ?? null, evidenceIds: [] });
       target = `${TEACHERS}?invited=${result.relationship.id}`;
     } else {
-      const result = await client.relationships.request(input);
+      const result = await client.relationships.request({ ...input, note });
       target = `${TEACHERS}?sent=${result.relationship.id}`;
     }
   } catch (error) {
@@ -135,7 +140,7 @@ export async function requestTeacherAction(_previous: FormState, form: FormData)
 
 /** "Send it again" of /dashboard/teachers/new?resubmit=<id> (relationships.resubmit). */
 export async function resubmitRequestAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const { input, values } = requestInput(form);
+  const { input, note, values } = requestInput(form);
   const relationshipId = textValue(form, 'relationshipId', 40);
   const page = UUID.test(relationshipId) ? `${NEW}?resubmit=${relationshipId}` : NEW;
   let sent: string;
@@ -145,6 +150,7 @@ export async function resubmitRequestAction(_previous: FormState, form: FormData
       lineageId: input.lineageId,
       periods: input.periods,
       displayPrimary: input.displayPrimary,
+      note,
       idempotencyKey: input.idempotencyKey,
     });
     sent = result.relationship.id;
@@ -169,6 +175,37 @@ export async function withdrawRequestAction(_previous: FormState, form: FormData
     return formResult({ form: WITHDRAW_FORM, page: TEACHERS, anchor: outcomeTarget(withdrawForm(relationshipId), state, true) }, state);
   }
   redirect(atOutcome(`${TEACHERS}?withdrawn=${relationshipId}`));
+}
+
+/**
+ * "Show my profile publicly" beside a confirmed link that is not public yet (profile.publish; role
+ * replay 2026-11-25, P2-2), on Your teachers, Student requests and the dashboard (`page`).
+ */
+export async function showProfilePubliclyAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const choice = textValue(form, 'page', 20);
+  const page = choice === 'students' ? '/dashboard/students/requests' : choice === 'dashboard' ? '/dashboard' : TEACHERS;
+  try {
+    await serverClient(await headers(), await getRequestPrincipal()).profile.publish();
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
+    return formStateFromFailure(error, {});
+  }
+  redirect(atOutcome(`${page}?published=1`));
+}
+
+/** "Send a reminder" of a request that has waited 14 days or more (relationships.remind; P2-1, ADR 0060). */
+export async function remindTeacherAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const relationshipId = textValue(form, 'relationshipId', 40);
+  try {
+    await serverClient(await headers(), await getRequestPrincipal()).relationships.remind({ relationshipId, idempotencyKey: textValue(form, 'idempotencyKey', 64) });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(TEACHERS);
+    const state = formStateFromFailure(error, { relationshipId });
+    return formResult({ form: REMIND_FORM, page: TEACHERS, anchor: outcomeTarget(remindForm(relationshipId), state, true) }, state);
+  }
+  redirect(atOutcome(`${TEACHERS}?reminded=${relationshipId}`));
 }
 
 /**

@@ -126,7 +126,9 @@ export function SchoolList({ schools, selectedId = null, onShow, className }: Sc
                 requests; the form asks a visitor without a session to sign in and comes back. */}
             <p className="flex flex-wrap gap-x-5">
               <Link href={`/schools/${school.slug}/trial`} className="link inline-flex min-h-11 items-center text-sm" data-testid="school-trial-link">
-                Request a trial lesson<span className="sr-only">: {school.name}</span>
+                {/* Role replay 2026-11-25 (P3-7): a private club is asked for a visit. */}
+                {school.precision === 'exact' ? 'Request a trial lesson' : 'Ask to visit'}
+                <span className="sr-only">: {school.name}</span>
               </Link>
             </p>
             {onShow ? (

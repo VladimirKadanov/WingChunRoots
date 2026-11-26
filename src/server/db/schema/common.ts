@@ -275,6 +275,14 @@ export const EVENT_TITLE_MAX = 160;
 export const EVENT_DESCRIPTION_MAX = 4000;
 export const EVENT_VENUE_MAX = 200;
 export const EVENT_URL_MAX = 600;
+/**
+ * Role replay 2026-11-25 (P2-9, ADR 0062): how to join an event. A short price line the organizer
+ * writes ("Free", "EUR 25, members EUR 20"), who it is open to, and where to register (an https
+ * link or an e-mail address the organizer publishes); each optional.
+ */
+export const EVENT_PRICE_MAX = 120;
+export const EVENT_EMAIL_MAX = 254;
+export const EVENT_AUDIENCES = ['all_levels', 'members_only', 'instructors_only'] as const;
 /** M17: the longest note the organizer gives with a cancellation, and staff with a removal. */
 export const EVENT_REASON_MAX = 1000;
 /** M17: an event lasts at most this many days (a camp of two weeks fits). A default with no D number. */

@@ -248,6 +248,28 @@ describe('the Professional Sifu allowance (DEFAULT M17, question 1)', () => {
     expect(await codeOf(updateEvent(sifu.principal, { id: created.id, ...seminar(at('09-01'), at('09-01', '13:00')) }, meta))).toBe('CONFLICT');
   });
 
+  it('publishes how to join: a price line, who it is open to, a registration link or address (role replay 2026-11-25, P2-9, ADR 0062)', async () => {
+    const sifu = await proSifu('events-join');
+    const fieldsOf = async (extra: Record<string, unknown>) => {
+      const error = (await createEvent(sifu.principal, { ...seminar(at('09-05'), at('09-05', '12:00')), ...extra }, meta).catch((e: unknown) => e)) as { code: string; fields: Record<string, string> };
+      return { code: error.code, fields: Object.keys(error.fields).sort() };
+    };
+    expect(await fieldsOf({ priceNote: 'x'.repeat(121), registrationUrl: 'http://example.test', registrationEmail: 'not an address' })).toEqual({ code: 'BAD_REQUEST', fields: ['priceNote', 'registrationEmail', 'registrationUrl'] });
+    expect(await fieldsOf({ openTo: 'everyone' })).toEqual({ code: 'BAD_REQUEST', fields: ['openTo'] });
+    const created = await createEvent(
+      sifu.principal,
+      { ...seminar(at('09-05'), at('09-05', '12:00')), priceNote: '  EUR 25, members EUR 20 ', openTo: 'members_only', registrationUrl: 'https://example.test/register', registrationEmail: 'demo-join@example.test' },
+      meta,
+    );
+    const shown = await eventGet(null, { slug: created.slug });
+    expect(shown).toMatchObject({ priceNote: 'EUR 25, members EUR 20', openTo: 'members_only', openToLabel: 'Members only', registrationUrl: 'https://example.test/register', registrationEmail: 'demo-join@example.test' });
+    expect((await eventEditor(sifu.principal, { id: created.id })).event).toMatchObject({ priceNote: 'EUR 25, members EUR 20', openTo: 'members_only' });
+    // Left empty on a change: each is removed again.
+    await updateEvent(sifu.principal, { id: created.id, ...seminar(at('09-05'), at('09-05', '12:00')), priceNote: '', registrationUrl: '', registrationEmail: '', openTo: null }, meta);
+    const [row] = await getDb().select({ p: event.priceNote, o: event.openTo, u: event.registrationUrl, e: event.registrationEmail }).from(event).where(eq(event.id, created.id));
+    expect(row).toEqual({ p: null, o: null, u: null, e: null });
+  });
+
   it('refuses the hour the clocks skip and an end before the start', async () => {
     const sifu = await proSifu('events-times');
     const skipped = wallTimeToInstant(`${YEAR}-03-${lastSunday(YEAR, 3)}T03:30`, 'Europe/Sofia');

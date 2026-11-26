@@ -22,6 +22,7 @@ import { EVENT_CANCEL_FORM, EVENT_FORM } from './form-ids';
 const LIST = '/dashboard/events';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type EventKind = 'seminar' | 'camp' | 'exam_session' | 'other';
+type EventAudience = 'all_levels' | 'members_only' | 'instructors_only';
 
 function signInAgain(next: string): never {
   redirect(`/sign-in?next=${encodeURIComponent(next)}`);
@@ -42,6 +43,10 @@ function readFields(form: FormData) {
     ['venue', 400],
     ['schoolId', 40],
     ['externalUrl', 1200],
+    ['priceNote', 240],
+    ['openTo', 20],
+    ['registrationUrl', 1200],
+    ['registrationEmail', 508],
     ['organizationId', 40],
   ] as const) {
     const value = textValue(form, name, max);
@@ -68,6 +73,11 @@ function readFields(form: FormData) {
       venue: online ? null : (values.venue ?? null),
       schoolId: values.schoolId ?? null,
       externalUrl: values.externalUrl ?? null,
+      // P2-9 (ADR 0062). An unknown choice goes to the procedure as it is: its answer names the field.
+      priceNote: values.priceNote ?? null,
+      openTo: (values.openTo ?? null) as EventAudience | null,
+      registrationUrl: values.registrationUrl ?? null,
+      registrationEmail: values.registrationEmail ?? null,
       instructorIds,
     },
     values,

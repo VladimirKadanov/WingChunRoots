@@ -71,6 +71,8 @@ export interface StudentRequestItem {
   student: PersonRef;
   lineage: string;
   createdAt: string;
+  /** Role replay 2026-11-25 (P2-1): whole days the request has waited since it was (last) sent. */
+  waitingDays: number;
 }
 
 export interface SchoolItem {
@@ -264,9 +266,10 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   const db = getDb();
   const subject = { kind: 'user' as const, userId: p.user.id };
   const [own] = await db
-    .select({ id: person.id, slug: person.slug })
+    .select({ id: person.id, slug: person.slug, visibility: person.visibility, photoId: person.photoId })
     .from(person)
     .where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)));
+  const looks = { profilePublic: own?.visibility === 'public', hasPhoto: Boolean(own?.photoId) };
   const effective = await effectivePlan(subject, { db });
   const premium =
     own && feature('kung_fu_family').values[effective.plan].included && feature('lineage_card').values[effective.plan].included
@@ -353,7 +356,7 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       teachers = teachers.sort((a, b) => a.teacher.name.value.localeCompare(b.teacher.name.value, 'en'));
       requests = requests.slice(0, 50);
     }
-    const steps = nextSteps({ accountType: 'student', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: teachers.length + requests.length, schools: 0 });
+    const steps = nextSteps({ accountType: 'student', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: teachers.length + requests.length, schools: 0, ...looks });
     return { ...base, student: { teachers, requests }, sifu: null, nextSteps: steps };
   }
 
@@ -363,7 +366,7 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   let schools: SchoolItem[] = [];
   if (own) {
     const rows = await db
-      .select({ id: teachingRelationship.id, studentId: teachingRelationship.studentPersonId, lineage: lineage.name, createdAt: teachingRelationship.createdAt })
+      .select({ id: teachingRelationship.id, studentId: teachingRelationship.studentPersonId, lineage: lineage.name, createdAt: teachingRelationship.createdAt, updatedAt: teachingRelationship.updatedAt })
       .from(teachingRelationship)
       .innerJoin(lineage, eq(lineage.id, teachingRelationship.lineageId))
       .where(and(eq(teachingRelationship.teacherPersonId, own.id), eq(teachingRelationship.status, 'pending_teacher')))
@@ -371,7 +374,14 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       .limit(50);
     waiting = await waitingRequests(db, own.id);
     const refs = await peopleRefs(rows.map((r) => r.studentId));
-    requests = rows.map((r) => ({ relationshipId: r.id, student: refs.get(r.studentId)!, lineage: r.lineage, createdAt: r.createdAt.toISOString() }));
+    const now = Date.now();
+    requests = rows.map((r) => ({
+      relationshipId: r.id,
+      student: refs.get(r.studentId)!,
+      lineage: r.lineage,
+      createdAt: r.createdAt.toISOString(),
+      waitingDays: Math.max(0, Math.floor((now - r.updatedAt.getTime()) / 86_400_000)),
+    }));
     // The schools the account listed and the schools that list its person as an instructor, once
     // each (role replay 2026-11-25, P1-4): the same schools as Your schools, and more.
     const schoolRows = await db
@@ -411,6 +421,6 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   }
 
   const { approved, limit, upgrade } = await approvalOffer(db, p.user.id, waiting);
-  const steps = nextSteps({ accountType: 'sifu', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: 0, schools: schools.length });
+  const steps = nextSteps({ accountType: 'sifu', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: 0, schools: schools.length, ...looks });
   return { ...base, student: null, sifu: { requests, students: { approved, limit }, schools, upgrade }, nextSteps: steps };
 }

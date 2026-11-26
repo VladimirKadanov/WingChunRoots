@@ -184,10 +184,10 @@ async function leaver() {
   // Relationships: one verified (stays), one pending to another teacher (withdrawn), a historical claim
   // under review with its case and evidence, an invited teacher who has not joined, and a student's
   // pending request to the leaver as a teacher (withdrawn).
-  const verified = (await db.insert(teachingRelationship).values({ teacherPersonId: teacher.personId, studentPersonId: personId, lineageId, status: 'verified', visibility: 'public', requestedByUserId: userId, confirmedByUserId: teacher.account.id }).returning({ id: teachingRelationship.id }))[0]!.id;
+  const verified = (await db.insert(teachingRelationship).values({ teacherPersonId: teacher.personId, studentPersonId: personId, lineageId, status: 'verified', visibility: 'public', requestedByUserId: userId, confirmedByUserId: teacher.account.id, requestNote: 'A fictional note the leaver wrote to a teacher.' }).returning({ id: teachingRelationship.id }))[0]!.id;
   const pending = (await db.insert(teachingRelationship).values({ teacherPersonId: other.personId, studentPersonId: personId, lineageId, status: 'pending_teacher', visibility: 'involved_only', requestedByUserId: userId }).returning({ id: teachingRelationship.id }))[0]!.id;
   const claimed = (await db.insert(teachingRelationship).values({ teacherPersonId: historical, studentPersonId: personId, lineageId, status: 'under_review', visibility: 'involved_only', requestedByUserId: userId }).returning({ id: teachingRelationship.id }))[0]!.id;
-  const toLeaver = (await db.insert(teachingRelationship).values({ teacherPersonId: personId, studentPersonId: student.personId, lineageId, status: 'pending_teacher', visibility: 'involved_only', requestedByUserId: student.account.id }).returning({ id: teachingRelationship.id }))[0]!.id;
+  const toLeaver = (await db.insert(teachingRelationship).values({ teacherPersonId: personId, studentPersonId: student.personId, lineageId, status: 'pending_teacher', visibility: 'involved_only', requestedByUserId: student.account.id, requestNote: 'A fictional note another student wrote.' }).returning({ id: teachingRelationship.id }))[0]!.id;
   for (const [relationshipId, to] of [[verified, 'verified'], [pending, 'pending_teacher'], [claimed, 'under_review']] as const) {
     await db.insert(relationshipEvent).values({ relationshipId, toStatus: to, actorUserId: userId, actorRole: 'student' });
   }
@@ -293,6 +293,10 @@ describe('accounts.erase', () => {
     const status = async (id: string) => (await getDb().select({ s: teachingRelationship.status }).from(teachingRelationship).where(eq(teachingRelationship.id, id)))[0]!.s;
     expect(await status(s.ids.verified)).toBe('verified');
     for (const id of [s.ids.pending, s.ids.claimed, s.ids.awaiting, s.ids.toLeaver]) expect(await status(id)).toBe('withdrawn');
+    // P2-3 (ADR 0060): the leaver's own notes to teachers go; a note another student wrote to the leaver stays with its request.
+    const noteOf = async (id: string) => (await getDb().select({ n: teachingRelationship.requestNote }).from(teachingRelationship).where(eq(teachingRelationship.id, id)))[0]!.n;
+    expect(await noteOf(s.ids.verified)).toBeNull();
+    expect(await noteOf(s.ids.toLeaver)).toBe('A fictional note another student wrote.');
     const events = await getDb().select().from(relationshipEvent).where(and(eq(relationshipEvent.relationshipId, s.ids.pending), eq(relationshipEvent.toStatus, 'withdrawn')));
     expect(events).toEqual([expect.objectContaining({ fromStatus: 'pending_teacher', actorUserId: admin.account.id, actorRole: 'admin', reason: 'account_erased' })]);
     // Nobody can approve a withdrawn request (flows-core L3): the erasure and every approval hold the same global lock.

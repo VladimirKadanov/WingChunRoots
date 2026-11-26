@@ -1,4 +1,4 @@
-// The fixed form ids of /dashboard/billing (M22) for the outcome of a post without JavaScript: the
+// The fixed form ids of the billing part of /account/plan (M22) for the outcome of a post without JavaScript: the
 // outcome address opens the page at that form's message (src/server/forms/flash.ts).
 
 export const CHECKOUT_FORM = 'billing-checkout';
