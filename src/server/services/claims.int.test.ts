@@ -30,6 +30,7 @@ import { filesystemStore } from '../storage/fs';
 import { landingPath } from './account';
 import { arbitrateRelationship } from './arbitration';
 import { getPartyCase, myCases, replyToCase } from './cases';
+import { dashboardNav } from './dashboard-nav';
 import { grantConsents, recordConsents, REQUIRED_SIGN_UP_CONSENTS } from './consent';
 import { pgErrorOf } from './errors';
 import { openEvidence, PARTY_FULL_MESSAGE, uploadEvidence } from './evidence';
@@ -382,6 +383,9 @@ describe('the profile claim', () => {
     expect(party.files).toEqual([]);
     expect(JSON.stringify(party)).not.toContain(file!.id);
     expect((await myCases(invitee.principal)).cases.map((c) => c.id)).toContain(caseId);
+    // Role replay 2026-11-25 (P2-7, ADR 0061): the menu shows Cases to a party of a case only.
+    expect((await dashboardNav(invitee.principal)).hasCases).toBe(true);
+    expect((await dashboardNav((await member('m10b-no-cases')).principal)).hasCases).toBe(false);
     // Strangers, the student included, get 404 for the claim case.
     expect(await refusal(getPartyCase(student.principal, { id: caseId }))).toBe('NOT_FOUND');
     expect(await refusal(getPartyCase((await member('m10b-stranger')).principal, { id: caseId }))).toBe('NOT_FOUND');

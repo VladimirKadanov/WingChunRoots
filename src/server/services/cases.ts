@@ -101,17 +101,25 @@ const rowOf = (c: CaseRow): PartyCaseRow => ({
   openedAt: c.createdAt.toISOString(),
 });
 
+/** The cases an account is a party of: those it opened, and the disputes of its own person's relationships. */
+function partyCases(db: Executor, userId: string, ownId: string | null) {
+  const disputed = ownId
+    ? db
+        .select({ id: teachingRelationship.id })
+        .from(teachingRelationship)
+        .where(or(eq(teachingRelationship.teacherPersonId, ownId), eq(teachingRelationship.studentPersonId, ownId)))
+    : null;
+  return or(
+    and(inArray(reviewCase.kind, [...OPENED_KINDS]), eq(reviewCase.openedByUserId, userId)),
+    disputed ? and(eq(reviewCase.kind, 'relationship_dispute'), inArray(reviewCase.relationshipId, disputed)) : sql`false`,
+  );
+}
+
 /** cases.mine: the signed-in account's own cases, newest first. */
 export async function myCases(principal: Principal | null): Promise<{ cases: PartyCaseRow[] }> {
   const p = requireUser(principal);
   const db = getDb();
   const [own] = await db.select({ id: person.id }).from(person).where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)));
-  const disputed = own
-    ? db
-        .select({ id: teachingRelationship.id })
-        .from(teachingRelationship)
-        .where(or(eq(teachingRelationship.teacherPersonId, own.id), eq(teachingRelationship.studentPersonId, own.id)))
-    : null;
   const rows = await db
     .select({
       id: reviewCase.id,
@@ -120,15 +128,16 @@ export async function myCases(principal: Principal | null): Promise<{ cases: Par
       createdAt: reviewCase.createdAt,
     })
     .from(reviewCase)
-    .where(
-      or(
-        and(inArray(reviewCase.kind, [...OPENED_KINDS]), eq(reviewCase.openedByUserId, p.user.id)),
-        disputed ? and(eq(reviewCase.kind, 'relationship_dispute'), inArray(reviewCase.relationshipId, disputed)) : sql`false`,
-      ),
-    )
+    .where(partyCases(db, p.user.id, own?.id ?? null))
     .orderBy(desc(reviewCase.createdAt), desc(reviewCase.id))
     .limit(50);
   return { cases: rows.map((r) => ({ id: r.id, kind: r.kind, kindLabel: REVIEW_KIND_LABELS[r.kind], status: r.status, statusLabel: CLAIM_STATUS_LABELS[r.status], openedAt: r.createdAt.toISOString() })) };
+}
+
+/** Role replay 2026-11-25 (P2-7): whether the account is a party of any case (the menu hides Cases until then). */
+export async function hasPartyCases(db: Executor, userId: string, ownId: string | null): Promise<boolean> {
+  const [row] = await db.select({ id: reviewCase.id }).from(reviewCase).where(partyCases(db, userId, ownId)).limit(1);
+  return Boolean(row);
 }
 
 /** cases.get: one of the signed-in account's cases; 404 for anyone else. */

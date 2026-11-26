@@ -51,43 +51,50 @@ const TEST_IDS: Record<string, string> = {
 
 const link = (href: string, label: string, count: number | null = null, countLabel?: string): DashboardNavLink => ({ href, label, count, countLabel, testId: TEST_IDS[href] });
 
-/** The menu's groups for an account: only what it uses (a student never sees Teaching). */
+/**
+ * The menu's groups for an account: only what it uses (a student never sees Teaching). Role replay
+ * 2026-11-25 (P2-7): a Sifu's menu leads with Teaching, then Schools and events, then their own
+ * training; Cases appears once the account is a party of one, Digital successor for a Sifu or an
+ * account in a nomination; an organization admin who is no Sifu gets Events with the organizations
+ * (P2-6: they publish events too).
+ */
 export function dashboardNavGroups(nav: NavData): DashboardNavGroup[] {
   const groups: DashboardNavGroup[] = [{ label: 'Overview', links: [link('/dashboard', 'Overview')] }];
-  const sifu = nav.accountType === 'sifu';
-  if (!nav.staffOnly) {
-    const learning = [link('/dashboard/teachers', 'My teachers'), link('/dashboard/passport', 'Training passport')];
-    // ADR 0048: only on a plan that includes it (no menu entry offers what the plan does not have).
-    if (nav.family) learning.push(link('/dashboard/family', 'Kung fu family'));
-    learning.push(link('/dashboard/trial-lessons', 'Trial lessons'));
-    groups.push({ label: 'Learning', links: learning });
-  }
-  if (sifu && !nav.staffOnly) {
+  const sifu = nav.accountType === 'sifu' && !nav.staffOnly;
+  if (sifu) {
     const teaching = [
       link('/dashboard/students/requests', 'Student requests', nav.waitingStudentRequests || null, 'waiting'),
       link('/dashboard/students', 'Students’ passports'),
-      link('/dashboard/schools', 'My schools'),
-      link('/dashboard/events', 'Events'),
     ];
     if (nav.instructor !== 'verified') teaching.push(link('/dashboard/instructor', 'Instructor verification'));
     groups.push({ label: 'Teaching', links: teaching });
+    groups.push({ label: 'Schools and events', links: [link('/dashboard/schools', 'My schools'), link('/dashboard/events', 'Events')] });
   }
-  if (nav.organizations.length > 0 || (sifu && !nav.staffOnly)) {
+  if (!nav.staffOnly) {
+    const training = [link('/dashboard/teachers', 'My teachers'), link('/dashboard/passport', 'Training passport')];
+    // ADR 0048: only on a plan that includes it (no menu entry offers what the plan does not have).
+    if (nav.family) training.push(link('/dashboard/family', 'Kung fu family'));
+    training.push(link('/dashboard/trial-lessons', 'Trial lessons'));
+    groups.push({ label: 'My training', links: training });
+  }
+  if (nav.organizations.length > 0 || sifu) {
     groups.push({
       label: 'Organizations',
       links: [
         ...nav.organizations.map((o) => link(`/dashboard/organization/${o.id}`, o.name)),
         link('/dashboard/organization', nav.organizations.length > 0 ? 'All your organizations' : 'Organizations'),
+        ...(!sifu && nav.organizations.length > 0 ? [link('/dashboard/events', 'Events')] : []),
       ],
     });
   }
-  const you: DashboardNavLink[] = [];
+  const account: DashboardNavLink[] = [];
   // Without a profile the dashboard home's "Next steps" offers "Set up your profile"; the menu does not repeat it.
-  if (nav.hasProfile) you.push(link('/dashboard/profile', 'Profile'), link('/dashboard/photos', 'Photos'));
-  you.push(link('/dashboard/notifications', 'Notifications', nav.unreadNotifications || null, 'unread'));
-  if (!nav.staffOnly) you.push(link('/dashboard/cases', 'Cases'), link('/dashboard/succession', 'Digital successor'));
-  you.push(link('/account/plan', 'Plan and billing'), link('/account', 'Settings'));
-  groups.push({ label: 'You', links: you });
+  if (nav.hasProfile) account.push(link('/dashboard/profile', 'Profile'), link('/dashboard/photos', 'Photos'));
+  account.push(link('/dashboard/notifications', 'Notifications', nav.unreadNotifications || null, 'unread'));
+  if (!nav.staffOnly && nav.hasCases) account.push(link('/dashboard/cases', 'Cases'));
+  if (!nav.staffOnly && (sifu || nav.inSuccession)) account.push(link('/dashboard/succession', 'Digital successor'));
+  account.push(link('/account/plan', 'Plan and billing'), link('/account', 'Settings'));
+  groups.push({ label: 'Account', links: account });
   return groups;
 }
 
