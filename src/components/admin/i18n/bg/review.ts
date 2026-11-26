@@ -557,4 +557,20 @@ export const BG_REVIEW: AdminDict = {
   'Your gallery changed in the meantime. Reload the page and try again.': 'Галерията се промени междувременно. Презаредете страницата и опитайте отново.',
   'The school’s photos changed in the meantime. Reload the page and try again.': 'Снимките на школата се промениха междувременно. Презаредете страницата и опитайте отново.',
   "We couldn't load the review queue. Nothing was changed.": "Опашката за преглед не можа да се зареди. Нищо не е променено.",
+  // Role replay 2026-11-25 (P3-8, ADR 0067): asking the record's teacher.
+  'Ask the record’s teacher': 'Попитайте учителя на записа',
+  'A verified teacher of the record can tell you whether the claim is their student’s. They see their student’s name and nothing of the claimant; only reviewers read the answer.':
+    'Потвърден учител на записа може да ви каже дали заявката е на неговия ученик. Той вижда името на ученика си и нищо за заявителя; отговора четат само проверяващите.',
+  'answered on {day}': 'отговори на {day}',
+  'Asked on {day}. No answer yet.': 'Попитан на {day}. Още няма отговор.',
+  'Not asked.': 'Не е питан.',
+  'The teacher is asked. Their answer will appear on this case.': 'Учителят е попитан. Отговорът му ще се появи в този случай.',
+  'Yes, it is my student': 'Да, това е мой ученик',
+  'No, I do not think it is my student': 'Не, не мисля, че е мой ученик',
+  'I do not know': 'Не знам',
+  'Only the teacher of a claimed profile can be asked.': 'Може да се пита само учителят на заявен профил.',
+  'Assign the case to yourself to ask the teacher.': 'Възложете случая на себе си, за да попитате учителя.',
+  'That is not a verified teacher of the record with an account.': 'Това не е потвърден учител на записа с акаунт.',
+  'Choose a teacher of the record.': 'Изберете учител на записа.',
+  'That teacher has no account.': 'Този учител няма акаунт.',
 };
