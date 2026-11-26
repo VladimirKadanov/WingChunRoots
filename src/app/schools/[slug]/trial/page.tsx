@@ -113,7 +113,7 @@ export default async function TrialRequestPage({ params, searchParams }: Props) 
         Ask {school.name} for a first lesson. {school.firstTrialFree ? 'The school says the first trial lesson is free. ' : ''}You can send up to{' '}
         {options.limits.perDay} requests a day, one at a time to each school.
       </p>
-      <TrialForm school={school} sender={options.sender} limits={options.limits} initial={outcome} />
+      <TrialForm school={school} sender={options.sender} limits={options.limits} classes={options.classes} initial={outcome} />
     </Shell>
   );
 }

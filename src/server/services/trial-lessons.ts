@@ -33,14 +33,14 @@
 // Inquiries are deleted TRIAL_INQUIRY_RETENTION_DAYS after they closed (purgeOldTrialData in
 // retention.ts, the daily job; DEFAULT M21, question 5).
 
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
 import { requireUser } from '../auth/guards';
 import { isStaffRole, type Principal } from '../auth/principal';
 import { getDb } from '../db';
-import { trialInquiry } from '../db/schema';
+import { schoolScheduleSlot, trialInquiry } from '../db/schema';
 import {
   TRIAL_CONTACT_METHODS,
   TRIAL_DAILY_LIMIT,
@@ -59,6 +59,7 @@ import { isServiceError, pgErrorOf, ServiceError } from './errors';
 import { beginLedgerOrRefuse } from './ledger-guard';
 import { notify, notifyEach } from './notify';
 import { organizationAdminsOf } from './school-activity';
+import { WEEKDAY_LABELS } from './school-schedule';
 import { countSchoolEvent } from './school-stats';
 
 export { TRIAL_DAILY_LIMIT, TRIAL_INQUIRY_RETENTION_DAYS, TRIAL_MESSAGE_MAX, TRIAL_PREFERRED_MAX, TRIAL_REPLY_MAX };
@@ -96,6 +97,9 @@ export const trialRequestInput = z
   .object({
     schoolId: z.uuid({ error: NO_SCHOOL }),
     preferredTimes: text(TRIAL_PREFERRED_MAX, `Use at most ${TRIAL_PREFERRED_MAX} characters.`),
+    // Role replay 2026-11-25 (P3-2): classes of the school's timetable that suit the sender (its
+    // slot ids); they open the preferred times the school reads.
+    classes: z.array(z.uuid({ error: 'Choose classes from the timetable.' })).max(20, { error: 'Choose classes from the timetable.' }).optional(),
     message: text(TRIAL_MESSAGE_MAX, `Use at most ${TRIAL_MESSAGE_MAX} characters.`),
     contactMethod: z.enum(TRIAL_CONTACT_METHODS, { error: 'Choose how the school may reach you.' }),
     // Read only when the contact is by phone: a value left in the field after choosing e-mail is ignored.
@@ -210,6 +214,22 @@ export interface TrialOptions {
   /** What the school would see: the profile's name and the account's e-mail (signed in only). */
   sender: { name: string | null; email: string } | null;
   limits: { message: number; preferred: number; perDay: number };
+  /** Role replay 2026-11-25 (P3-2): the school's weekly classes, to tick on the form. */
+  classes: { id: string; label: string }[];
+}
+
+/** One class of the timetable as the form and the school read it: "Tuesday 18:30–20:00, Adults". */
+const classLine = (slot: { weekday: number; startsAt: string; endsAt: string; label: string | null }) =>
+  `${WEEKDAY_LABELS[slot.weekday as keyof typeof WEEKDAY_LABELS] ?? 'Day'} ${slot.startsAt.slice(0, 5)}–${slot.endsAt.slice(0, 5)}${slot.label ? `, ${slot.label}` : ''}`;
+
+async function classesOf(db: Executor, schoolId: string, ids?: readonly string[]): Promise<{ id: string; label: string }[]> {
+  if (ids && ids.length === 0) return [];
+  const rows = await db
+    .select({ id: schoolScheduleSlot.id, weekday: schoolScheduleSlot.weekday, startsAt: schoolScheduleSlot.startsAt, endsAt: schoolScheduleSlot.endsAt, label: schoolScheduleSlot.label })
+    .from(schoolScheduleSlot)
+    .where(and(eq(schoolScheduleSlot.schoolId, schoolId), ...(ids ? [inArray(schoolScheduleSlot.id, [...ids])] : [])))
+    .orderBy(asc(schoolScheduleSlot.weekday), asc(schoolScheduleSlot.startsAt), asc(schoolScheduleSlot.position), asc(schoolScheduleSlot.id));
+  return rows.map((r) => ({ id: r.id, label: classLine(r) }));
 }
 
 const LIMITS = { message: TRIAL_MESSAGE_MAX, preferred: TRIAL_PREFERRED_MAX, perDay: TRIAL_DAILY_LIMIT };
@@ -222,7 +242,8 @@ export async function trialOptions(principal: Principal | null, raw: z.input<typ
   const s = await publicSchool(db, { slug: parsed.data.slug });
   if (!s) throw new ServiceError('NOT_FOUND', NO_SCHOOL);
   const schoolView = { id: s.id, slug: s.slug, name: s.name, firstTrialFree: s.first_trial_free, privateClub: s.location_privacy === 'city_only' };
-  if (!principal) return { school: schoolView, state: 'sign_in', reason: null, openInquiryId: null, sender: null, limits: LIMITS };
+  const classes = await classesOf(db, s.id);
+  if (!principal) return { school: schoolView, state: 'sign_in', reason: null, openInquiryId: null, sender: null, limits: LIMITS, classes };
   const { refusal, name, openId } = await refusalOf(db, principal, s);
   return {
     school: schoolView,
@@ -231,6 +252,7 @@ export async function trialOptions(principal: Principal | null, raw: z.input<typ
     openInquiryId: openId,
     sender: { name, email: principal.user.email },
     limits: LIMITS,
+    classes,
   };
 }
 
@@ -259,6 +281,14 @@ export async function requestTrial(principal: Principal | null, raw: TrialReques
       if (refusal === 'unconfirmed') throw new ServiceError('FORBIDDEN', REFUSAL_TEXT.unconfirmed);
       if (refusal) throw new ServiceError('CONFLICT', REFUSAL_TEXT[refusal]);
       const contactValue = input.contactMethod === 'phone' ? input.phone! : p.user.email;
+      // The ticked classes first, then what the sender typed, within the one field's limit.
+      const wanted = [...new Set(input.classes ?? [])];
+      const chosen = await classesOf(tx, s.id, wanted);
+      if (chosen.length !== wanted.length) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { classes: 'The timetable changed. Choose the classes again.' });
+      const preferredTimes = [...chosen.map((c) => c.label), ...(input.preferredTimes ? [input.preferredTimes] : [])].join('; ') || null;
+      if (preferredTimes && preferredTimes.length > TRIAL_PREFERRED_MAX) {
+        throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { classes: `Together with the other times, use at most ${TRIAL_PREFERRED_MAX} characters: choose fewer classes or shorten the times.` });
+      }
       const [created] = await tx
         .insert(trialInquiry)
         .values({
@@ -267,7 +297,7 @@ export async function requestTrial(principal: Principal | null, raw: TrialReques
           senderName: name!.slice(0, 200),
           contactMethod: input.contactMethod,
           contactValue,
-          preferredTimes: input.preferredTimes,
+          preferredTimes,
           message: input.message,
         })
         .returning({ id: trialInquiry.id });
