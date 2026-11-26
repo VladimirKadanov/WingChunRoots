@@ -12,6 +12,8 @@
 
 import { Suspense, type ReactNode } from 'react';
 
+import { CompactRail } from '@/components/shell/compact-rail';
+
 import { BG_ADMIN_CLIENT } from '@/components/admin/i18n/bg';
 import { AdminTProvider } from '@/components/admin/i18n/client';
 import { getAdminLang } from '@/components/admin/i18n/server';
@@ -23,6 +25,8 @@ export default async function AdminLayout({ children, nav }: { children: ReactNo
   return (
     <AdminTProvider lang={lang} dict={lang === 'bg' ? BG_ADMIN_CLIENT : {}}>
     <div lang={lang} className="lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
+      {/* P2-10: beside this menu the site rail folds to icons. */}
+      <CompactRail />
       <div data-admin-nav-slot="" className="min-h-[3.75rem] border-b border-border-subtle lg:min-h-0 lg:border-r lg:border-b-0">
         <Suspense fallback={null}>{nav}</Suspense>
       </div>
