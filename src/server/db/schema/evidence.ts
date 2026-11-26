@@ -232,3 +232,43 @@ export const reviewEvent = pgTable(
     check('review_event_to_status_check', inList(t.toStatus.name, REVIEW_CASE_STATUSES)),
   ],
 );
+
+/** Role replay 2026-11-25 (P3-8, ADR 0067): what a teacher answers when a reviewer asks about a claim. */
+export const CLAIM_CONFIRMATION_ANSWERS = ['yes', 'no', 'unsure'] as const;
+export const CLAIM_CONFIRMATION_NOTE_MAX = 500;
+
+/**
+ * Role replay 2026-11-25 (P3-8, ADR 0067): a reviewer of a profile claim asks a verified teacher of
+ * the claimed record (one with an account) whether the claim is their student's. One ask per case
+ * and teacher; the teacher answers once, with an optional note that only the reviewers read.
+ */
+export const claimConfirmation = pgTable(
+  'claim_confirmation',
+  {
+    id: idColumn(),
+    reviewCaseId: uuid('review_case_id')
+      .notNull()
+      .references(() => reviewCase.id, { onDelete: 'cascade' }),
+    // The verified link the teacher is asked through; the ask goes when the link goes.
+    relationshipId: uuid('relationship_id')
+      .notNull()
+      .references(() => teachingRelationship.id, { onDelete: 'cascade' }),
+    teacherUserId: uuid('teacher_user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'cascade' }),
+    askedByUserId: uuid('asked_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    answer: text('answer', { enum: CLAIM_CONFIRMATION_ANSWERS }),
+    note: text('note'),
+    answeredAt: timestamp('answered_at', { withTimezone: true }),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex('claim_confirmation_case_teacher_key').on(t.reviewCaseId, t.teacherUserId),
+    index('claim_confirmation_teacher_user_id_idx').on(t.teacherUserId),
+    index('claim_confirmation_relationship_id_idx').on(t.relationshipId),
+    index('claim_confirmation_asked_by_user_id_idx').on(t.askedByUserId),
+    check('claim_confirmation_answer_check', sql`${t.answer} IS NULL OR ${inList(t.answer.name, CLAIM_CONFIRMATION_ANSWERS)}`),
+    check('claim_confirmation_answered', sql`(${t.answer} IS NULL) = (${t.answeredAt} IS NULL)`),
+    check('claim_confirmation_note', sql`${t.note} IS NULL OR (${t.answer} IS NOT NULL AND char_length(${t.note}) BETWEEN 1 AND ${sql.raw(String(CLAIM_CONFIRMATION_NOTE_MAX))})`),
+  ],
+);
