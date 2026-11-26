@@ -59,6 +59,7 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/admin/review/actions.ts#assignCaseAction': { rpc: ['review.assign'] },
   'src/app/admin/review/actions.ts#decideCaseAction': { rpc: ['review.decide'] },
   'src/app/admin/review/actions.ts#addNoteAction': { rpc: ['review.note'] },
+  'src/app/admin/review/actions.ts#askTeacherAction': { rpc: ['review.askTeacher'] },
   'src/app/admin/review/actions.ts#archiveUpdateAction': { rpc: ['archive.update'] },
   // M26: the archive editor (docs/adr/0034-archive-editor.md).
   'src/app/admin/archive/actions.ts#createLineageAction': { rpc: ['archiveEditor.createLineage'] },
@@ -87,6 +88,7 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/people/[slug]/claim/actions.ts#requestClaimAction': { rpc: ['claims.request'] },
   'src/app/dashboard/instructor/actions.ts#requestInstructorAction': { rpc: ['instructor.request'] },
   'src/app/dashboard/cases/[id]/actions.ts#replyCaseAction': { rpc: ['cases.reply'] },
+  'src/app/dashboard/confirmations/[id]/actions.ts#answerConfirmationAction': { rpc: ['claimConfirmations.answer'] },
   'src/app/people/[slug]/report/actions.ts#reportProfileAction': { rpc: ['reports.create'] },
   // M14: a moderator's removal of a reported profile photo.
   'src/app/admin/review/actions.ts#removePhotoAction': { rpc: ['photos.remove'] },

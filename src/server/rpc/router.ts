@@ -266,6 +266,14 @@ import {
   withdrawTrial,
 } from '../services/trial-lessons';
 import {
+  answerClaimConfirmation,
+  askTeacherToConfirm,
+  claimConfirmationAnswerInput,
+  claimConfirmationAskInput,
+  claimConfirmationIdInput,
+  getClaimConfirmation,
+} from '../services/claim-confirmations';
+import {
   adminBillingGet,
   adminBillingList,
   billingAdminListInput,
@@ -995,6 +1003,26 @@ export const router = {
       .route({ method: 'POST', path: '/review/note', summary: 'Add an internal note to a case (reviewers only); audited' })
       .input(reviewNoteInput)
       .handler(({ context, input }) => addReviewNote(context.principal, input, context.meta)),
+    // Role replay 2026-11-25 (P3-8, docs/adr/0067-ask-teacher-to-confirm.md).
+    askTeacher: staffWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/review/ask-teacher',
+        summary: 'Ask a verified teacher (with an account) of the record a profile claim is about whether the claim is their student’s (the reviewer who may ask the claimant); the teacher is notified; once per case and teacher; audited',
+      })
+      .input(claimConfirmationAskInput)
+      .handler(({ context, input }) => askTeacherToConfirm(context.principal, input, context.meta)),
+  },
+  // ADR 0067: the asked teacher's side.
+  claimConfirmations: {
+    get: signedIn
+      .route({ method: 'GET', path: '/claim-confirmations/{id}', summary: 'A reviewers’ question to you, as a teacher, about a claim of your student’s profile; 404 for anyone else' })
+      .input(claimConfirmationIdInput)
+      .handler(({ context, input }) => getClaimConfirmation(context.principal, input)),
+    answer: signedIn
+      .route({ method: 'POST', path: '/claim-confirmations/answer', summary: 'Answer the reviewers’ question once (yes, no or not sure, with an optional note only they read); the assigned reviewer is told; audited' })
+      .input(claimConfirmationAnswerInput)
+      .handler(({ context, input }) => answerClaimConfirmation(context.principal, input, context.meta)),
   },
   // M25 (docs/adr/0028-governance.md): governance. Succession, lineage dispute reports, appeals and
   // proposed changes to the shared archival records; every decision is a case of the review queue

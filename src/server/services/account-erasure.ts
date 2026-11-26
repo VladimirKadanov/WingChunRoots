@@ -179,6 +179,9 @@ export const USER_REFERENCES: readonly UserReference[] = [
   { table: 'review_case', column: 'opened_by_user_id', action: 'clear', why: 'cases the account opened keep no link to it' },
   { table: 'review_case', column: 'assigned_to_user_id', action: 'clear', why: 'cases assigned to the account' },
   { table: 'review_note', column: 'author_user_id', action: 'clear', why: 'notes the account wrote are blanked first' },
+  // ADR 0067: a reviewer's question to a teacher about a claim: the teacher's asks go, the reviewer's stay without them.
+  { table: 'claim_confirmation', column: 'teacher_user_id', action: 'delete', why: 'questions to the account as a teacher, and its answers' },
+  { table: 'claim_confirmation', column: 'asked_by_user_id', action: 'clear', why: 'questions the account asked as a reviewer' },
   { table: 'evidence_file', column: 'uploaded_by_user_id', action: 'clear', why: 'files the account uploaded: names and hashes cleared, unused ones deleted first' },
   { table: 'evidence_link', column: 'created_by_user_id', action: 'clear', why: 'links the account made: their notes are cleared first' },
   { table: 'invitation', column: 'invited_by_user_id', action: 'clear', why: 'invitations the account sent are revoked first' },

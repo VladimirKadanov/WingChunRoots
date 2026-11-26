@@ -135,6 +135,8 @@ export const NOTIFICATION_CATALOG = {
   'review.opened': dashboardOnly('review'),
   'review.updated': dashboardOnly('review'),
   'claim.decided': mailed('review', 'claim-decided'),
+  // Role replay 2026-11-25 (P3-8, ADR 0067): a reviewer asks a teacher about a claim.
+  'claim.confirmation_asked': mailed('review', 'notice'),
   'invitation.claimed': mailed('teaching', 'notice'),
   'instructor.decided': mailed('review', 'instructor-decided'),
   // DEFAULT D19: both parties of an arbitration, its decision included (e-mailed since M10b).
