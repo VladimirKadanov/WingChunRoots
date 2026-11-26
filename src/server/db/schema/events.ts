@@ -17,8 +17,11 @@ import { boolean, check, index, integer, pgTable, primaryKey, text, timestamp, u
 
 import { authUser } from './auth';
 import {
+  EVENT_AUDIENCES,
   EVENT_DESCRIPTION_MAX,
+  EVENT_EMAIL_MAX,
   EVENT_KINDS,
+  EVENT_PRICE_MAX,
   EVENT_REASON_MAX,
   EVENT_STATUSES,
   EVENT_TITLE_MAX,
@@ -51,6 +54,11 @@ export const event = pgTable(
     venue: text('venue'),
     schoolId: uuid('school_id').references(() => school.id, { onDelete: 'set null' }),
     externalUrl: text('external_url'),
+    // P2-9 (ADR 0062): how to join, as the organizer publishes it; all public, all optional.
+    priceNote: text('price_note'),
+    openTo: text('open_to', { enum: EVENT_AUDIENCES }),
+    registrationUrl: text('registration_url'),
+    registrationEmail: text('registration_email'),
     // The organizer: a Sifu's account and its person, or an organization.
     organizerUserId: uuid('organizer_user_id').references(() => authUser.id, { onDelete: 'set null' }),
     organizerPersonId: uuid('organizer_person_id').references(() => person.id, { onDelete: 'restrict' }),
@@ -98,6 +106,10 @@ export const event = pgTable(
     check('event_timezone_format', sql`${t.timezone} ~ '^[A-Za-z][A-Za-z0-9_+/-]{1,80}$'`),
     // A city or online, never both and never neither; an online event has no venue.
     check('event_place_or_online', sql`(${t.online} AND ${t.placeId} IS NULL AND ${t.venue} IS NULL) OR (NOT ${t.online} AND ${t.placeId} IS NOT NULL)`),
+    check('event_price_note_length', sql`${t.priceNote} IS NULL OR char_length(${t.priceNote}) BETWEEN 1 AND ${sql.raw(String(EVENT_PRICE_MAX))}`),
+    check('event_open_to_check', sql`${t.openTo} IS NULL OR ${inList(t.openTo.name, EVENT_AUDIENCES)}`),
+    check('event_registration_url_https', sql`${t.registrationUrl} IS NULL OR (${t.registrationUrl} ~ '^https://[^[:space:]]+$' AND char_length(${t.registrationUrl}) <= ${sql.raw(String(EVENT_URL_MAX))})`),
+    check('event_registration_email_format', sql`${t.registrationEmail} IS NULL OR (${t.registrationEmail} ~ '^[^[:space:]@]+@[^[:space:]@]+$' AND char_length(${t.registrationEmail}) <= ${sql.raw(String(EVENT_EMAIL_MAX))})`),
     check('event_external_url_https', sql`${t.externalUrl} IS NULL OR (${t.externalUrl} ~ '^https://[^[:space:]]+$' AND char_length(${t.externalUrl}) <= ${sql.raw(String(EVENT_URL_MAX))})`),
     // A Sifu's event (an account and its person, while the account exists) or an organization's.
     check(

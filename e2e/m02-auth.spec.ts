@@ -496,6 +496,8 @@ test('@M02 onboarding creates a person linked to the account', async ({ page }) 
 
   // Without a `next`, onboarding ends on the dashboard, as a normal sign-in does.
   await expect(page).toHaveURL(/\/dashboard$/);
+  // Role replay P3-5: the header knows the new name at once, without a reload.
+  await expect(page.getByTestId('account-menu-trigger').filter({ visible: true })).toContainText('Demo Newcomer');
   expect(await accountTypeOf(account.email)).toBe('student');
   await page.goto('/account');
   // The account's overview of Settings (usability review 2026-11): the name heads its Profile section.

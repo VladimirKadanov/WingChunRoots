@@ -360,6 +360,44 @@ export async function setOwnVisibility(
 }
 
 /**
+ * profile.publish (role replay 2026-11-25, P2-2, ADR 0060): "Show my profile publicly" in one tap,
+ * from a confirmed link that is not public yet. The same consent record and the same visibility
+ * change as the box in the profile editor (setOwnVisibility); nothing else of the profile changes.
+ * Calling it on a public profile changes nothing.
+ */
+export async function profilePublish(principal: Principal | null, meta: RequestMeta): Promise<{ visibilityChanged: boolean }> {
+  const p = requireUser(principal);
+  const db = getDb();
+  const outcome = await db.transaction(async (tx) => {
+    const [own] = await tx
+      .select({ id: person.id, visibility: person.visibility, takenDownAt: person.takenDownAt, takenDownVisibility: person.takenDownVisibility, schoolListing: person.schoolListing })
+      .from(person)
+      .where(and(eq(person.claimedByUserId, p.user.id), eq(person.stewardship, 'self'), isNull(person.deletedAt)))
+      .for('update');
+    if (!own) throw new ServiceError('NOT_FOUND', 'Create your profile first: finish setting up your account.');
+    const visibilityChanged = await setOwnVisibility(tx, p, own, true, meta);
+    if (visibilityChanged) {
+      await writeAudit(tx, {
+        action: 'person.publish',
+        actorUserId: p.user.id,
+        actorRole: p.user.role,
+        subjectType: 'person',
+        subjectId: own.id,
+        before: { visibility: own.visibility },
+        after: { visibility: 'public' },
+        requestId: meta.requestId,
+        ipHmac: meta.ipHmac,
+      });
+    }
+    const tags = visibilityChanged ? await neighbourTags(tx, own.id, { ancestors: true }) : [];
+    if (visibilityChanged && own.schoolListing) tags.push(SCHOOLS_TAG);
+    return { visibilityChanged, tags };
+  });
+  if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');
+  return { visibilityChanged: outcome.visibilityChanged };
+}
+
+/**
  * profile.update: saves the account's own profile. Refused without a session (401), for another
  * person (403), before onboarding (404) and with field errors (400), for example without a
  * Latin-script primary name.

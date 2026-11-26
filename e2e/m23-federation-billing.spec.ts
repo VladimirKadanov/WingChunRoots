@@ -255,7 +255,7 @@ test('@M23 downstream independence: a member student keeps Premium Student when 
     const { checkoutId } = (await checkout.json()) as { checkoutId: string };
     const paid = await apiPost(s.page, '/billing/test-checkout/pay', { checkoutId, card: 'succeeds' });
     expect(paid.status(), await paid.text()).toBe(200);
-    await untilAttribute(s.page, '/dashboard/billing', 'billing-subscription', 'data-status', 'active');
+    await untilAttribute(s.page, '/account/plan', 'billing-subscription', 'data-status', 'active');
 
     // The trial lets the federation list the student as a member.
     const admin = await signedIn(browser, 'admin');
@@ -279,7 +279,7 @@ test('@M23 downstream independence: a member student keeps Premium Student when 
     await page.goto(billing);
     await expect(visible(page.getByTestId('organization-billing-plan'))).toHaveAttribute('data-plan', 'none');
     await expect(visible(page.getByTestId('organization-trial'))).toHaveAttribute('data-status', 'revoked');
-    await s.page.goto('/dashboard/billing');
+    await s.page.goto('/account/plan');
     await expect(visible(s.page.getByTestId('billing-plan'))).toContainText('Premium Student');
     await expect(visible(s.page.getByTestId('billing-subscription'))).toHaveAttribute('data-status', 'active');
 
@@ -301,7 +301,7 @@ test('@M23 downstream independence: a member student keeps Premium Student when 
     }
     await untilAttribute(page, billing, 'organization-billing-plan', 'data-plan', 'none');
     await expect(visible(page.getByTestId('earlier-subscription'))).toHaveCount(1);
-    await s.page.goto('/dashboard/billing');
+    await s.page.goto('/account/plan');
     await expect(visible(s.page.getByTestId('billing-plan'))).toContainText('Premium Student');
     await expect(visible(s.page.getByTestId('billing-subscription'))).toHaveAttribute('data-status', 'active');
     // The membership stays as it was.
