@@ -9,6 +9,7 @@ import { useActionState, useState } from 'react';
 
 import { FormMessage, SubmitButton, TextField, useFocusOnError, useHydrated } from '@/components/account/fields';
 import { TextAreaField } from '@/components/account/textarea-field';
+import { CheckIcon } from '@/components/icons';
 import { cx } from '@/lib/cx';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import { requestTrialAction } from './actions';
@@ -17,6 +18,7 @@ import { TRIAL_REQUEST_FORM } from './form-ids';
 const FORM = TRIAL_REQUEST_FORM;
 
 const LABELS = {
+  classes: 'Classes that suit you',
   preferredTimes: 'Times that suit you',
   message: 'Message to the school',
   contactMethod: 'How the school may reach you',
@@ -30,11 +32,14 @@ export function TrialForm({
   school,
   sender,
   limits,
+  classes = [],
   initial,
 }: {
   school: { id: string; slug: string; name: string };
   sender: { name: string | null; email: string };
   limits: { message: number; preferred: number };
+  /** Role replay 2026-11-25 (P3-2): the school's weekly classes, to tick. */
+  classes?: { id: string; label: string }[];
   initial: FormState | null;
 }) {
   const [state, action, pending] = useActionState(requestTrialAction, initial ?? IDLE);
@@ -42,20 +47,51 @@ export function TrialForm({
   const [method, setMethod] = useState(state.values?.contactMethod === 'phone' ? 'phone' : 'email');
   const hydrated = useHydrated();
   const methodError = state.status === 'error' ? state.fields?.contactMethod : undefined;
+  const classesError = state.status === 'error' ? state.fields?.classes : undefined;
+  const ticked = new Set((state.values?.classes ?? '').split(',').filter(Boolean));
   return (
     <form id={FORM} action={action} className="grid gap-6" data-testid="trial-form" noValidate>
       <FormMessage form={FORM} state={state} labels={LABELS} />
       <input type="hidden" name="schoolId" value={school.id} />
       <input type="hidden" name="slug" value={school.slug} />
+      {classes.length > 0 ? (
+        <fieldset className="grid gap-2" aria-describedby={classesError ? `${fieldId(FORM, 'classes')}-error` : undefined} data-testid="trial-classes">
+          <legend className="mb-1 text-sm font-semibold">
+            {LABELS.classes} <span className="font-normal text-fg-muted">(optional)</span>
+          </legend>
+          {classesError ? (
+            <p id={`${fieldId(FORM, 'classes')}-error`} className="text-sm text-danger">
+              {classesError}
+            </p>
+          ) : null}
+          {classes.map((c, i) => (
+            <label key={c.id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-sm border border-border-subtle px-3 py-2.5 text-ui has-checked:border-fg">
+              <span className="relative grid size-6 shrink-0 place-items-center">
+                <input
+                  id={i === 0 ? fieldId(FORM, 'classes') : undefined}
+                  type="checkbox"
+                  name="classes"
+                  value={c.id}
+                  defaultChecked={ticked.has(c.id)}
+                  className="peer size-6 cursor-pointer appearance-none rounded-[3px] border-2 border-border-strong bg-surface-1 transition-colors duration-(--duration-fast) checked:border-fg checked:bg-fg hover:border-fg-muted"
+                  data-testid="trial-class"
+                />
+                <CheckIcon size={18} className="pointer-events-none absolute hidden text-fg-inverse peer-checked:block" />
+              </span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">{c.label}</span>
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
       <TextField
         form={FORM}
         name="preferredTimes"
-        label={LABELS.preferredTimes}
+        label={classes.length > 0 ? 'Other times that suit you' : LABELS.preferredTimes}
         state={state}
         optional
         autoComplete="off"
         maxLength={limits.preferred}
-        hint="For example: weekday evenings, or Saturday mornings."
+        hint={classes.length > 0 ? 'If none of the classes suits you: for example, weekday evenings.' : 'For example: weekday evenings, or Saturday mornings.'}
       />
       <TextAreaField
         form={FORM}
