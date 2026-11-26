@@ -61,6 +61,11 @@ export const BG_ARCHIVE_CLIENT: AdminDict = {
   'Create the record': 'Създай записа',
   'Adding…': 'Добавяне…',
   'Add the link': 'Добави връзката',
+  'Find by name': 'Търсене по име',
+  'Choose the teacher': 'Изберете учителя',
+  'Choose the student': 'Изберете ученика',
+  'Type the name in any spelling. Only public records are found; type the address of any other record.': 'Въведете името с какъвто и да е правопис. Намират се само публичните записи; за друг запис въведете адреса му.',
+  'Chosen: {name}': 'Избрано: {name}',
   'Ending…': 'Прекратяване…',
   'End this link': 'Прекрати тази връзка',
 };

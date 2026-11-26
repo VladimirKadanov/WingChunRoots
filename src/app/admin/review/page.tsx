@@ -21,6 +21,8 @@ import type { AdminT } from '@/components/admin/i18n/translate';
 import { AdminPageHeader, AdminViews } from '@/components/admin/table-parts';
 import { ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { SearchPick } from '@/components/ui/search-pick';
+import { pickWords } from '@/components/admin/pick-words';
 import { FilterDisclosure } from '@/components/ui/filter-disclosure';
 import { guardRoute } from '@/server/auth/web';
 import { pageRead } from '@/server/rpc/form';
@@ -274,6 +276,8 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
               {t('Record address')}
             </label>
             <input id="record-slug" name="slug" autoComplete="off" maxLength={120} pattern="[a-z0-9\-]+" className={inputClass} />
+            {/* Role replay 2026-11-25 (P2-4): a public record is found by name (the island loads on first use). */}
+            <SearchPick inputId="record-slug" words={pickWords(t, t('Choose a record'))} />
             <div>
               <button type="submit" className={buttonVariants({ variant: 'secondary' })}>
                 {t('Open the record')}

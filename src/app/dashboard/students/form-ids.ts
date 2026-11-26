@@ -10,3 +10,7 @@ export const ENTRY_FORM = 'passport-entry';
 export const WITHDRAW_FORM = 'passport-withdraw';
 /** "Mark as attended" of a past event. */
 export const ATTENDANCE_FORM = 'passport-attendance';
+/** "Record the grading" of several students (ADR 0072). */
+export const GRADING_FORM = 'passport-grading';
+/** "Save the ladder" of the account's rank ladder (ADR 0072). */
+export const LADDER_FORM = 'passport-ladder';
