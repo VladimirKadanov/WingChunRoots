@@ -12,6 +12,9 @@ test('@nav the home page has one search box, the next three events and a school 
   await page.goto('/');
   await expect(page.locator('[data-home-search]').filter({ visible: true })).toHaveCount(1);
 
+  // While the section streams in, React briefly holds both the fallback (loading) and the content
+  // (shown) in the page: wait for the fallback to go before reading the one section.
+  await expect(page.locator('[data-testid="home-coming-up"][data-state="loading"]')).toHaveCount(0);
   const comingUp = page.getByTestId('home-coming-up');
   await expect(comingUp).toHaveAttribute('data-state', 'shown');
   await expect(comingUp.getByRole('heading', { name: 'Coming up' })).toBeVisible();
@@ -31,6 +34,7 @@ test('@nav the home page has one search box, the next three events and a school 
 
 test('@nav the home page passes axe with the new start section', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('[data-testid="home-coming-up"][data-state="loading"]')).toHaveCount(0);
   await expect(page.getByTestId('home-coming-up')).toHaveAttribute('data-state', 'shown');
   await expectNoAxeViolations(page, '/ (start here with Coming up)');
 });
