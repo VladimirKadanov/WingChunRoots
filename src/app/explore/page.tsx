@@ -221,7 +221,7 @@ export default async function ExplorePage({ searchParams }: Props) {
                         </Link>
                       </p>
                       <p className="flex items-baseline gap-1.5" data-testid="explore-lineage-size">
-                        <span className="font-display text-2xl tabular">{l.people.toLocaleString('en')}</span>
+                        <span className="font-display text-2xl tabular">{l.people.toLocaleString('en')}</span>{' '}
                         <span className="text-sm text-fg-muted">{l.people === 1 ? 'person on the public record' : 'people on the public record'}</span>
                       </p>
                     </div>
