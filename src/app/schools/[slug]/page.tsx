@@ -213,7 +213,7 @@ export default async function SchoolPage({ params }: Props) {
             jump there. From 1024 px they sit beside the page. */}
         <nav aria-label="On this page" className="flex flex-wrap gap-2 lg:hidden" data-testid="school-quick-actions">
           <a href="#school-trial" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
-            Trial lesson
+            {exact ? 'Trial lesson' : 'Visit'}
           </a>
           <a href="#school-contact" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
             Contact
@@ -348,7 +348,7 @@ export default async function SchoolPage({ params }: Props) {
       {/* ADR 0052: what a visitor acts on, beside the page from 1024 px (under the header before). */}
       <aside aria-label="Visit the school" className="grid content-start gap-8 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1">
         <div className="grid gap-8 rounded-md border border-border-subtle bg-surface-1 p-5">
-          <TrialAction slug={school.slug} options={trial} />
+          <TrialAction slug={school.slug} options={trial} privateClub={!exact} />
           <section aria-labelledby="school-contact">
             <h2 id="school-contact" className="font-display text-xl">
               Contact

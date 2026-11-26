@@ -24,9 +24,9 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { SubscriptionChanges } from '../../../billing/changes';
-import { CANCEL_CHANGE_FORM, CANCEL_FORM, changePlanFormId, CHECKOUT_FORM, RESUME_FORM } from '../../../billing/form-ids';
-import { CancelForm, CheckoutForm, ConfirmingRefresh, ResumeForm } from '../../../billing/forms';
+import { SubscriptionChanges } from '@/app/account/plan/_billing/changes';
+import { CANCEL_CHANGE_FORM, CANCEL_FORM, changePlanFormId, CHECKOUT_FORM, RESUME_FORM } from '@/app/account/plan/_billing/form-ids';
+import { CancelForm, CheckoutForm, ConfirmingRefresh, ResumeForm } from '@/app/account/plan/_billing/forms';
 
 export const instant = false;
 

@@ -4,5 +4,5 @@ export const TEST_CHECKOUT_LOAD_ERROR = {
   eyebrow: 'Billing',
   title: 'Test checkout',
   message: "We couldn't load this checkout. Nothing was charged.",
-  back: { href: '/dashboard/billing', label: 'Back to billing' },
+  back: { href: '/account/plan', label: 'Back to billing' },
 } as const;

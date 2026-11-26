@@ -54,7 +54,7 @@ async function demoSubscriptionOf(email: string): Promise<string> {
 
 test('@M22 the active demo subscription: its state, what happens next and its payment', async ({ page }, testInfo) => {
   await signInAs(page, 'demo-premium-student');
-  await page.goto('/dashboard/billing');
+  await page.goto('/account/plan');
   await expect(shown(page.getByTestId('test-mode-banner'))).toContainText('Test mode, no real charge');
   await expect(shown(page.getByTestId('billing-plan'))).toContainText('Premium Student');
   const subscription = shown(page.getByTestId('billing-subscription'));
@@ -66,21 +66,24 @@ test('@M22 the active demo subscription: its state, what happens next and its pa
   await expect(shown(page.getByTestId('payment-history'))).toContainText('Paid (test)');
   // A live subscription: no offer to buy another.
   await expect(page.getByTestId('offer-premium_student')).toHaveCount(0);
-  await axeBothThemes(page, '/dashboard/billing (active)');
+  await axeBothThemes(page, '/account/plan (active)');
   if (testInfo.project.name.startsWith('mobile')) await expectTouchTargets(page, '[data-testid="billing-subscription"] button');
 
-  // The settings name the paid plan and link to billing, once (usability review 2026-11: no
-  // second "Billing" link beside "Manage billing").
-  await page.goto('/account/plan');
-  await expect(shown(page.getByTestId('settings-paid-plan'))).toContainText('Premium Student');
-  await expect(shown(page.getByTestId('billing-link'))).toHaveText('Billing and invoices');
-  await expect(shown(page.getByTestId('billing-link'))).toHaveAttribute('href', '/dashboard/billing');
-  await expect(page.locator('main a[href="/dashboard/billing"]').filter({ visible: true })).toHaveCount(1);
+  // One plan page (role replay 2026-11-25, P2-13): the account type, the plan in effect and the
+  // subscription are on the same page, with no link to a second billing page; the old address
+  // lands here with its query.
+  await expect(page).toHaveURL(/\/account\/plan$/);
+  await expect(shown(page.getByTestId('settings-plan'))).toContainText('Premium Student');
+  await expect(shown(page.getByRole('heading', { level: 2, name: 'Account type' }))).toBeVisible();
+  await expect(page.locator('main a[href^="/dashboard/billing"]')).toHaveCount(0);
+  await page.goto('/dashboard/billing?plan=premium_student');
+  await expect(page).toHaveURL(/\/account\/plan\?plan=premium_student$/);
+  await expect(shown(page.getByTestId('billing-subscription'))).toHaveAttribute('data-status', 'active');
 });
 
 test('@M22 the ended demo subscription keeps its records; the account is back on its free plan', async ({ page }) => {
   await signInAs(page, 'demo-free-sifu-5');
-  await page.goto('/dashboard/billing');
+  await page.goto('/account/plan');
   await expect(shown(page.getByTestId('billing-plan'))).toContainText('Free Sifu');
   await expect(page.getByTestId('billing-subscription')).toHaveCount(0);
   const earlier = shown(page.getByTestId('earlier-subscription'));
@@ -89,22 +92,21 @@ test('@M22 the ended demo subscription keeps its records; the account is back on
   await expect(earlier.getByTestId('subscription-status')).toContainText('Ended');
   await expect(shown(page.getByTestId('payment-history'))).toContainText('$19.00');
   await expect(shown(page.getByTestId('offer-pro_sifu'))).toBeVisible();
-  await axeBothThemes(page, '/dashboard/billing (ended)');
-  await page.goto('/account/plan');
-  await expect(page.getByTestId('settings-paid-plan')).toHaveCount(0);
+  await axeBothThemes(page, '/account/plan (ended)');
+  await expect(page.getByTestId('settings-plan')).toContainText('Free Sifu');
 });
 
 test('@M22 /plans offers the paid plans that exist now, in test mode', async ({ page }) => {
   await page.goto('/plans');
   for (const code of ['premium_student', 'pro_sifu']) {
-    await expect(shown(page.getByTestId(`choose-${code}`))).toHaveAttribute('href', `/dashboard/billing?plan=${code}`);
+    await expect(shown(page.getByTestId(`choose-${code}`))).toHaveAttribute('href', `/account/plan?plan=${code}`);
   }
   // The planned Federation is not for sale.
   await expect(page.getByTestId('choose-federation')).toHaveCount(0);
   // Without a session, the billing page asks to sign in and comes back.
   await shown(page.getByTestId('choose-pro_sifu')).click();
   await page.waitForURL(/\/sign-in\?next=/);
-  expect(new URL(page.url()).searchParams.get('next')).toMatch(/^\/dashboard\/billing/);
+  expect(new URL(page.url()).searchParams.get('next')).toMatch(/^\/account\/plan/);
 });
 
 test('@M22 the administrator sees every subscription and its provider events, read-only', async ({ page }, testInfo) => {

@@ -208,7 +208,7 @@ export interface MyPlan {
     startsAt: string;
     endsAt: string | null;
     inEffect: boolean;
-    /** M22: the grant of a paid subscription in test mode (managed on /dashboard/billing), not a test plan. */
+    /** M22: the grant of a paid subscription in test mode (managed under Subscription on /account/plan), not a test plan. */
     paid: boolean;
   }[];
   pilotRequest: PilotRequestView | null;

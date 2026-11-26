@@ -230,9 +230,10 @@ export const ROUTES: readonly AppRoute[] = [
   // hides them ([data-visual-date], e2e/visual.css). The test checkout and the page of one
   // subscription need an id: screen states (e2e/screenshots.spec.ts), and the M22 specs run axe on
   // them in both themes. Key screens: their baselines come from a CI run.
-  { path: '/dashboard/billing', name: 'dashboard-billing', status: 200, milestone: 'M22', key: true, signInAs: 'demo-premium-student' },
-  { path: '/dashboard/billing', name: 'dashboard-billing-ended', status: 200, milestone: 'M22', key: true, signInAs: 'demo-free-sifu-5' },
-  { path: '/dashboard/billing?plan=premium_student', name: 'dashboard-billing-none', status: 200, milestone: 'M22', signInAs: 'demo-pending' },
+  // Role replay 2026-11-25 (P2-13): billing is part of /account/plan; the ended subscription of
+  // demo-free-sifu-5 is the account-plan route above.
+  { path: '/account/plan', name: 'account-plan-subscribed', status: 200, milestone: 'M22', key: true, signInAs: 'demo-premium-student' },
+  { path: '/account/plan?plan=premium_student', name: 'account-plan-offer', status: 200, milestone: 'M22', signInAs: 'demo-pending' },
   { path: '/admin/billing', name: 'admin-billing', status: 200, milestone: 'M22', signInAs: 'admin' },
   // ADR 0041: the control panel's reports (growth by default; the billing report for admins).
   { path: '/admin/reports', name: 'admin-reports', status: 200, milestone: 'review-2026-11', signInAs: 'admin' },
