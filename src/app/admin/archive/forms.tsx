@@ -15,6 +15,8 @@ import type { AdminT } from '@/components/admin/i18n/translate';
 import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { TextAreaField } from '@/components/account/textarea-field';
 import { EvidenceUploader } from '@/components/evidence/uploader';
+import { pickWords } from '@/components/admin/pick-words';
+import { SearchPick } from '@/components/ui/search-pick';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import { discardEvidenceAction } from '../../dashboard/teachers/historical/actions';
 import { addLinkAction, createLineageAction, createRecordAction, endLinkAction, updateLineageAction } from './actions';
@@ -209,8 +211,14 @@ export function AddLinkForm({
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       {person ? <input type="hidden" name="person" value={person} /> : null}
       <div className="grid gap-3 sm:max-w-[40rem] sm:grid-cols-2">
-        <TextField form={formId} name="teacherSlug" label={labels.teacherSlug} {...slugField} defaultValue={teacherSlug} hint={t("The teacher's record address.")} state={state} />
-        <TextField form={formId} name="studentSlug" label={labels.studentSlug} {...slugField} defaultValue={studentSlug} hint={t("The student's record address.")} state={state} />
+        <div className="grid content-start gap-2">
+          <TextField form={formId} name="teacherSlug" label={labels.teacherSlug} {...slugField} defaultValue={teacherSlug} hint={t("The teacher's record address.")} state={state} />
+          <SearchPick inputId={fieldId(formId, 'teacherSlug')} words={pickWords(t, t('Choose the teacher'))} />
+        </div>
+        <div className="grid content-start gap-2">
+          <TextField form={formId} name="studentSlug" label={labels.studentSlug} {...slugField} defaultValue={studentSlug} hint={t("The student's record address.")} state={state} />
+          <SearchPick inputId={fieldId(formId, 'studentSlug')} words={pickWords(t, t('Choose the student'))} />
+        </div>
       </div>
       <div className="grid gap-3 sm:max-w-[34rem] sm:grid-cols-2">
         <TextField form={formId} name="fromYear" label={labels.fromYear} optional autoComplete="off" inputMode="numeric" maxLength={4} state={state} />

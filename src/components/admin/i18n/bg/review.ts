@@ -154,6 +154,7 @@ export const BG_REVIEW: AdminDict = {
   'Correct a record kept by the platform or unclaimed, with a reason and optional evidence. Enter the record’s address: the part after /people/.': 'Коригирайте запис, поддържан от платформата или непотърсен, с причина и доказателства по избор. Въведете адреса на записа: частта след /people/.',
   'Archivists correct records kept by the platform or unclaimed. You can open a record to read it.': 'Архивистите коригират записи, поддържани от платформата или непотърсени. Можете да отворите запис, за да го прочетете.',
   'Record address': 'Адрес на записа',
+  'Choose a record': 'Изберете запис',
   'Open the record': 'Отвори записа',
   'No such record': 'Няма такъв запис',
   "No record has this address. Check the part after /people/ in the profile's address.": 'Няма запис с този адрес. Проверете частта след /people/ в адреса на профила.',

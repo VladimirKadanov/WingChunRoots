@@ -236,6 +236,7 @@ export function TextField({
   onValue,
   className,
   inputClassName,
+  list,
 }: BaseFieldProps & {
   /** 'date' (M08): the native date picker, value "YYYY-MM-DD". */
   type?: 'text' | 'email' | 'password' | 'date' | 'tel';
@@ -257,6 +258,8 @@ export function TextField({
   onValue?: (value: string) => void;
   className?: string;
   inputClassName?: string;
+  /** The id of a <datalist> of suggestions (a pick list that still takes free text; ADR 0072). */
+  list?: string;
 }) {
   const id = fieldId(form, name);
   const error = state.status === 'error' ? state.fields?.[name] : undefined;
@@ -288,6 +291,7 @@ export function TextField({
           spellCheck={password ? false : spellCheck}
           autoCapitalize={password ? 'none' : autoCapitalize}
           placeholder={placeholder}
+          list={list}
           required={!optional}
           defaultValue={value}
           autoFocus={autoFocus}
@@ -484,7 +488,8 @@ export function CheckboxField({
   hint,
   autoFocus,
   required,
-}: Omit<BaseFieldProps, 'optional'> & { required?: boolean }) {
+  defaultChecked = false,
+}: Omit<BaseFieldProps, 'optional'> & { required?: boolean; defaultChecked?: boolean }) {
   const id = fieldId(form, name);
   const error = state.status === 'error' ? state.fields?.[name] : undefined;
   const errorId = `${id}-error`;
@@ -501,7 +506,7 @@ export function CheckboxField({
             type="checkbox"
             value="on"
             required={required}
-            defaultChecked={state.values?.[name] === 'on'}
+            defaultChecked={state.values?.[name] !== undefined ? state.values[name] === 'on' : defaultChecked}
             autoFocus={autoFocus}
             aria-invalid={error ? true : undefined}
             aria-errormessage={error ? errorId : undefined}
