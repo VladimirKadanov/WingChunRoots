@@ -226,7 +226,27 @@ test('@M15 an administrator gives Federation, the owner lists a public member, a
   await page.goto(`/dashboard/organization/${applied.organizationId}`);
   await expect(page.getByTestId('organization-plan')).toHaveAttribute('data-plan', 'federation');
   const add = page.getByTestId('organization-add-member');
-  await add.getByLabel('Public profile').fill('/people/demo-root-a');
+  // Role replay 2026-11-25 (P2-4): the person is chosen by name; the field gets the address.
+  const palette = page.getByRole('combobox', { name: 'Choose a member' });
+  await expect(async () => {
+    await add.getByRole('button', { name: 'Find by name' }).click();
+    await expect(palette).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await palette.fill('Ho Shek Chuk');
+  await page.getByTestId('search-palette').getByRole('option').filter({ hasText: 'Ho Shek Chuk' }).first().click();
+  await expect(palette).toBeHidden();
+  await expect(add.getByLabel('Public profile')).toHaveValue('demo-root-a');
+  await expect(add.getByTestId('search-pick-chosen')).toContainText('Chosen: Ho Shek Chuk');
+  // The school to ask is found by name too (not sent here).
+  const ask = page.getByTestId('organization-request-school');
+  const schools = page.getByRole('combobox', { name: 'Choose a school' });
+  await expect(async () => {
+    await ask.getByRole('button', { name: 'Find the school' }).click();
+    await expect(schools).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await schools.fill('Demo Wing Chun Hall Sofia');
+  await page.getByTestId('search-palette').getByRole('option').filter({ hasText: 'Demo Wing Chun Hall Sofia' }).first().click();
+  await expect(ask.getByLabel('School’s public page')).toHaveValue('demo-school-sofia');
   await add.getByRole('button', { name: 'Add member' }).click();
   await expect(visible(page.getByTestId('organization-done'))).toBeVisible();
   await expect(page.getByTestId('organization-member')).toHaveCount(1);
