@@ -162,7 +162,9 @@ function Label({ htmlFor, children, optional }: { htmlFor: string; children: Rea
 /**
  * A phone (below md, 768 px): the names are rows with Edit, one open at a time (role replay
  * 2026-11-25, P3-1: four open name blocks made the editor 8,600 px tall), once the profile has
- * COLLAPSE_FROM saved names. The server and a page without JavaScript draw every row open.
+ * COLLAPSE_FROM saved names. The server draws the rows closed too, with CSS below md, so nothing
+ * moves when the page hydrates (M13 perf:web: CLS 0.24 on /dashboard/profile when rows closed only
+ * after hydration); a page without JavaScript opens them again (FOLD_NOSCRIPT_CSS).
  */
 const PHONE_QUERY = '(max-width: 767.98px)';
 function subscribePhone(onChange: () => void) {
@@ -173,6 +175,9 @@ function subscribePhone(onChange: () => void) {
 const isPhone = () => window.matchMedia(PHONE_QUERY).matches;
 const notPhone = () => false;
 const COLLAPSE_FROM = 3;
+// Without JavaScript Edit cannot open a row, so every row is drawn open there.
+const FOLD_NOSCRIPT_CSS =
+  '@media (width < 48rem) { [data-name-fold-summary] { display: none !important; } [data-name-fold-body] { display: grid !important; } }';
 
 export function ProfileEditor({
   initialValues,
@@ -393,6 +398,11 @@ export function ProfileEditor({
           Chinese characters, Jyutping, pinyin or Cyrillic, are optional and help people find you.
         </p>
         <FieldError id={`${FORM}-names-error`} error={error('names')} />
+        {manyNames ? (
+          <noscript>
+            <style>{FOLD_NOSCRIPT_CSS}</style>
+          </noscript>
+        ) : null}
         <ol className="grid gap-4">
           {rows.map((row, i) => {
             const writing = parseWriting(row.writing);
@@ -408,7 +418,9 @@ export function ProfileEditor({
             const isPrimary = values.primary === i;
             const rowKey = rowKeys[i] ?? `slot-${i}`;
             // P3-1: a phone shows a saved name as a row with Edit unless it is the open one, is new or has an error.
-            const collapsed = hydrated && phone && manyNames && !row.spare && rowKey !== openKey && !(valueError || writingError || primaryError) && row.value.trim() !== '';
+            // `folds`: closed below md by CSS, from the server's page on (no shift at hydration); `collapsed`: closed on this phone.
+            const folds = manyNames && !row.spare && rowKey !== openKey && !(valueError || writingError || primaryError) && row.value.trim() !== '';
+            const collapsed = folds && hydrated && phone;
             const bodyId = `${FORM}-name-${i}-fields`;
             const writingLabel = writings.find((w) => w.value === row.writing)?.label ?? row.writing;
             return (
@@ -426,8 +438,8 @@ export function ProfileEditor({
                 <fieldset className="contents">
                   <legend className="sr-only">Name {i + 1}</legend>
                   {row.spare ? <input type="hidden" name={`names.${i}.spare`} value="1" /> : null}
-                  {collapsed ? (
-                    <div className="flex items-center justify-between gap-3" data-testid="name-summary">
+                  {folds ? (
+                    <div className="flex items-center justify-between gap-3 md:hidden" data-testid="name-summary" data-name-fold-summary="">
                       <p className="grid min-w-0">
                         {/* NameText: Chinese takes the CJK face (.cjk), as everywhere a name is shown. */}
                         <NameText
@@ -453,7 +465,7 @@ export function ProfileEditor({
                     </div>
                   ) : null}
                   {/* The fields stay in the form while the row is closed: the save sends every name. */}
-                  <div id={bodyId} hidden={collapsed} className="grid gap-4">
+                  <div id={bodyId} data-name-fold-body={folds ? '' : undefined} className={cx('grid gap-4', folds && 'max-md:hidden')}>
                     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(15rem,19rem)]">
                       <div data-field="" className="grid grid-cols-[minmax(0,1fr)] content-start gap-1.5">
                         <Label htmlFor={valueId} optional={row.spare}>
