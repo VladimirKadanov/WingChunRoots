@@ -105,6 +105,7 @@
 |---|---|
 | `passport_rank` | Степен: `rank` (текст), `awarded_on` с точност, `organization_id` (одобрена организация, по избор), `teacher_person_id`, предложената поправка `correction_note`, `correction_at` (изчиства се при промяна) |
 | `passport_exam` | Изпит: `exam_on`, `awarded_rank`, `examiner_person_id` (личност от архива, по избор), организация, учител, поправка |
+| `rank_ladder_step` | Стълбата от степени на учителя (ADR 0072): `user_id` (`CASCADE`), `position` (0–29), `name` (до 120 знака); ключ (`user_id`, `position`). Само подсказка за полето за степен в **Grading day**; не е публична |
 | `passport_skill` | Форма или умение: `name`, `progress` (`learning`, `approved`), `since_on`, учител, организация, поправка |
 | `passport_certificate` | Сканиран сертификат: `title`, `issued_on`, `storage_key` (`certificates/<48 hex>`, само в частното хранилище на доказателствата), `sha256`, `width`, `height`, `size_bytes`; по подразбиране `private`. До 20 активни на паспорт (`PASSPORT_CERTIFICATES_MAX`). Отделно от галериите и доказателствата (D13) |
 | `event_attendance` | Участие в минало публикувано събитие: `event_id`, учителят, който го е отбелязал. ADR 0046: и заявка на ученика (`claimed`, `status` `pending` или `refused`, `decided_at`, `decided_by_user_id`); частичният уникален индекс `event_attendance_open_key` (замени `event_attendance_active_key`) пази един активен запис, чакаща или отказана заявка на събитие и личност |
