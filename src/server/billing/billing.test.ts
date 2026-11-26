@@ -190,8 +190,8 @@ describe('the Stripe adapter', () => {
       amountCents: 1900,
       currency: 'usd',
       customerId: null,
-      successUrl: 'http://localhost:3000/dashboard/billing?checkout=0190a5c0-0000-7000-8000-00000000c0de#outcome',
-      cancelUrl: 'http://localhost:3000/dashboard/billing?checkout=0190a5c0-0000-7000-8000-00000000c0de&cancelled=1#outcome',
+      successUrl: 'http://localhost:3000/account/plan?checkout=0190a5c0-0000-7000-8000-00000000c0de#outcome',
+      cancelUrl: 'http://localhost:3000/account/plan?checkout=0190a5c0-0000-7000-8000-00000000c0de&cancelled=1#outcome',
       expiresAt: new Date(Date.now() + 60 * 60_000),
     };
     expect(await stripe.createCheckout(request)).toEqual({ url: 'https://checkout.stripe.com/c/pay/cs_test_Demo0001', sessionId: 'cs_test_Demo0001' });

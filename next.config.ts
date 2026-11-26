@@ -55,7 +55,12 @@ const nextConfig: NextConfig = {
   // plan" was /dashboard/settings; links to it (old e-mails, bookmarks) keep working, with their
   // query and, in the browser, their #fragment (/account/plan#notifications-heading points on to
   // /account/notifications). 308: for good, and a POST stays a POST.
-  redirects: async () => [{ source: '/dashboard/settings', destination: '/account/plan', permanent: true }],
+  // Role replay 2026-11-25 (P2-13, ADR 0068): the billing page is part of "Plan and billing" too;
+  // ?checkout=, ?plan= and ?outcome= go with the redirect, and the browser keeps #outcome.
+  redirects: async () => [
+    { source: '/dashboard/settings', destination: '/account/plan', permanent: true },
+    { source: '/dashboard/billing', destination: '/account/plan', permanent: true },
+  ],
   experimental: {
     // DEFAULT (plan §10.2, row 10): agent feedback needs telemetry, so it stays off.
     // Telemetry itself is disabled with NEXT_TELEMETRY_DISABLED=1 (package.json scripts, CI, hook).

@@ -5,6 +5,7 @@
 // called in-process with this request's session, so the forms and /api/v1 run the same checks.
 // Both end on `next`, /dashboard when there is none (./destination.ts).
 
+import { refresh } from 'next/cache';
 import { headers } from 'next/headers';
 import { redirect, unstable_rethrow } from 'next/navigation';
 
@@ -85,6 +86,9 @@ async function onboard(form: FormData, next: string): Promise<FormState> {
   // Created now, or already there (a second submit): either way the profile exists, and the
   // account type is the one chosen on the form.
   await applyAccountType(client, form);
+  // Role replay 2026-11-25 (P3-5): the shell's account entry (name and initials) is read again, so
+  // the header shows the new name without a reload.
+  refresh();
   redirect(conflict ? '/account' : afterOnboardingFor(form, next));
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-// The forms of /dashboard/billing (milestone M22): choose a paid plan (a test-mode checkout), cancel
+// The forms of the billing part of /account/plan (milestone M22): choose a paid plan (a test-mode checkout), cancel
 // at the end of the period, and resume. Each posts to a thin Server Action and works without
 // JavaScript (src/server/forms/flash.ts). Plain words and a date; no countdown, no urgency
 // (CLAUDE.md §11).

@@ -1,4 +1,4 @@
-// The words of the error state of the account's billing page (/dashboard/billing) (M22; ../load-error.tsx).
+// The words of the error state of the account's billing page (the billing part of /account/plan) (M22; ../load-error.tsx).
 
 export const BILLING_LOAD_ERROR = {
   eyebrow: 'Dashboard',
