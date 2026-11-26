@@ -520,7 +520,7 @@ const STATES: readonly ScreenState[] = [
       await signInAs(page, 'demo-pro-sifu-8');
       // No #student: a full-page capture of a scrolled page draws the sticky rail and the hidden
       // skip link in the middle of the shot.
-      await page.goto(`/dashboard/students?student=${rows.rows[0]!.id}`);
+      await page.goto(`/dashboard/students/${rows.rows[0]!.id}`);
       await expect(page.getByTestId('passport-rank-form').filter({ visible: true })).toBeVisible();
     },
   },

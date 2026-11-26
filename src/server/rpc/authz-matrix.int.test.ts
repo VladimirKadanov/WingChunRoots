@@ -2147,6 +2147,17 @@ const ROWS: Row[] = [
     }),
   ),
   {
+    // ADR 0072: one grading for several students; the student is refused, everyone else 404.
+    path: 'passport.recordGrading',
+    make: async () => {
+      const p = await passportOf();
+      return { owner: p.teacher, party: p.student, input: { awardedRank: 'Demo matrix third level', date: '2022', personIds: [p.student.personId] } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'FORBIDDEN', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  // ADR 0072: every account keeps its own rank ladder (words only).
+  { path: 'passport.setLadder', make: () => ({ input: { steps: ['Demo matrix first level', 'Demo matrix second level'] } }), expect: own() },
+  {
     path: 'passport.updateEntry',
     make: async () => {
       const p = await passportOf();
@@ -2849,6 +2860,13 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     roles: ['anonymous', 'member', 'party', 'owner'],
   },
   { action: 'src/app/dashboard/students/actions.ts#withdrawEntryAction', row: 'passport.withdrawEntry', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  {
+    action: 'src/app/dashboard/students/grading/actions.ts#recordGradingAction',
+    row: 'passport.recordGrading',
+    form: (i) => ({ awardedRank: String(i.awardedRank), date: String(i.date), personId: String((i.personIds as string[])[0]), alsoRank: 'on' }),
+    roles: ['anonymous', 'member', 'party', 'owner'],
+  },
+  { action: 'src/app/dashboard/students/ladder/actions.ts#setLadderAction', row: 'passport.setLadder', form: (i) => ({ steps: (i.steps as string[]).join('\n') }), roles: ['anonymous', 'member'] },
   {
     action: 'src/app/dashboard/students/actions.ts#markAttendanceAction',
     row: 'passport.markAttendance',
