@@ -112,9 +112,9 @@ export default function HomePage() {
           </h2>
           <p className="text-base text-fg-muted">Only confirmed, public records are shown.</p>
         </div>
-        <div className="grid max-w-[46rem] gap-8 lg:max-w-none lg:grid-cols-2 lg:gap-12">
-          <div className="grid content-start gap-4">
-            <form action="/schools" method="get" role="search" aria-labelledby="home-school-heading" className="grid gap-3 rounded-sm border border-border-subtle p-4" data-testid="home-find-school">
+        <div className="grid max-w-[46rem] grid-cols-[minmax(0,1fr)] gap-8 lg:max-w-none lg:grid-cols-2 lg:gap-12">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4">
+            <form action="/schools" method="get" role="search" aria-labelledby="home-school-heading" className="grid min-w-0 gap-3 rounded-sm border border-border-subtle p-4" data-testid="home-find-school">
               <h3 id="home-school-heading" className="flex items-center gap-2 font-display text-xl">
                 <PinIcon size={20} className="shrink-0 text-fg-muted" />
                 Find a school
@@ -131,7 +131,7 @@ export default function HomePage() {
                   autoComplete="address-level2"
                   placeholder="For example, Sofia"
                   maxLength={100}
-                  className="min-h-12 min-w-0 flex-1 basis-48 rounded-sm border border-border-strong bg-surface-1 px-4 text-field text-fg placeholder:text-fg-subtle hover:border-fg-muted focus-visible:border-fg"
+                  className="min-h-12 min-w-0 flex-1 basis-40 rounded-sm border border-border-strong bg-surface-1 px-4 text-field text-fg placeholder:text-fg-subtle hover:border-fg-muted focus-visible:border-fg"
                 />
                 <button type="submit" className={buttonVariants({ variant: 'primary' })}>
                   Show schools
