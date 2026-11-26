@@ -30,9 +30,9 @@ export function placeLine(event: Pick<EventSummaryDto, 'online' | 'city' | 'coun
   return [event.city, countryName(event.countryCode) ?? event.countryCode].filter(Boolean).join(', ');
 }
 
-export function EventRow({ event, headingLevel = 3 }: { event: EventSummaryDto; headingLevel?: 2 | 3 }) {
+export function EventRow({ event, headingLevel = 3 }: { event: EventSummaryDto; headingLevel?: 2 | 3 | 4 }) {
   const when = formatEventWhen(new Date(event.startsAt), new Date(event.endsAt), event.timezone);
-  const Heading = headingLevel === 2 ? 'h2' : 'h3';
+  const Heading = headingLevel === 2 ? 'h2' : headingLevel === 4 ? 'h4' : 'h3';
   const [day, month] = when.short.split(' ').slice(1, 3);
   const cancelled = event.status === 'cancelled';
   return (

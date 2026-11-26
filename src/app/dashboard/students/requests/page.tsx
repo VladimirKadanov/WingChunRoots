@@ -215,7 +215,10 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
                             <span className="text-sm text-fg-muted">
                               Sent {formatDay(view.createdAt)}
                               {view.waitingDays !== null && view.waitingDays > 0 ? (
-                                <span data-testid="waiting-days">{` · waiting ${view.waitingDays === 1 ? '1 day' : `${view.waitingDays} days`}`}</span>
+                                <span data-testid="waiting-days">
+                                  {' · waiting '}
+                                  <span data-visual-days="">{view.waitingDays === 1 ? '1 day' : `${view.waitingDays} days`}</span>
+                                </span>
                               ) : null}
                             </span>
                             <span className="mt-1 flex flex-wrap items-center gap-2">
