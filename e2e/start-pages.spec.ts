@@ -35,10 +35,9 @@ test('@nav the home page passes axe with the new start section', async ({ page }
   await expectNoAxeViolations(page, '/ (start here with Coming up)');
 });
 
-test('@nav the explorer starts with the search and the lineages as cards with root and size (P3-6)', async ({ page }) => {
+test('@nav the explorer starts with a search and the lineages as cards with root and size (P3-6)', async ({ page }) => {
   await page.goto('/explore');
   const main = page.getByRole('main');
-  await expect(main.locator('[data-home-search]')).toBeVisible();
   const cards = main.getByTestId('explore-lineage');
   await expect(cards).toHaveCount(3);
   for (const card of await cards.all()) {
@@ -47,7 +46,18 @@ test('@nav the explorer starts with the search and the lineages as cards with ro
     await expect(card.getByTestId('explore-lineage-size')).toHaveText(/^\d[\d,]* (person|people) on the public record$/);
     await expect(card.getByRole('link', { name: /^Explore Demo Lineage [A-C]$/ })).toHaveAttribute('href', /^\/explore\?focus=.+&lineage=.+$/);
   }
-  // The search opens the palette.
-  await main.locator('[data-home-search]').click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+
+  // A lineage by its name opens the explorer at its root; a person by name opens it around them.
+  const search = main.getByRole('search', { name: 'Search the lineages' });
+  await search.getByLabel('A person or a lineage').fill('Demo Lineage B');
+  await search.getByRole('button', { name: 'Search' }).click();
+  await page.waitForURL((url) => url.pathname === '/explore' && url.searchParams.get('q') === 'Demo Lineage B');
+  const results = main.getByTestId('explore-search-results');
+  await expect(results).toHaveAttribute('data-state', 'shown');
+  await expect(results.locator('[data-kind="lineage"]').first().getByRole('link')).toHaveAttribute('href', /^\/explore\?focus=.+&lineage=.+$/);
+  await expectNoAxeViolations(page, '/explore?q= (results)');
+
+  await search.getByLabel('A person or a lineage').fill('zzzz-nobody');
+  await search.getByRole('button', { name: 'Search' }).click();
+  await expect(results).toHaveAttribute('data-state', 'none');
 });

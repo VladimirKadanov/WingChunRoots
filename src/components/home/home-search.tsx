@@ -4,7 +4,6 @@
 // drawn as a search field that opens the command palette of the app shell (the same palette as
 // the shell's field and Ctrl/⌘+K, M07). The palette's code starts loading as the field is
 // approached, so it adds nothing to the page's first JavaScript (plan §5.8 (c)).
-// The explorer's start page uses it too (role replay 2026-11-25, P3-6).
 
 import { SearchIcon } from '@/components/icons';
 import { openSearch } from '@/components/shell/search-trigger';

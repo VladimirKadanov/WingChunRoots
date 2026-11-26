@@ -15,13 +15,14 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 
-import { HomeSearch } from '@/components/home/home-search';
+import { NameText } from '@/components/account/person-names';
 import { Explorer } from '@/components/lineage/explorer/explorer';
 import { explorerHref, explorerRead, paramsFrom, readKey } from '@/components/lineage/explorer/state';
 import { LineageName } from '@/components/lineage/person-name';
 import { ErrorPanel, ProfileError } from '@/components/lineage/states';
 import { buttonVariants } from '@/components/ui/button-variants';
 import type { ExploreStartDto } from '@/server/dto/explore';
+import type { SearchResultDto } from '@/server/dto/search';
 import type { LineageGraphDto } from '@/server/dto/public';
 import LineageListPage from '../people/[slug]/lineage/page';
 import { failure, lineageClient } from '../people/[slug]/data';
@@ -55,6 +56,77 @@ function listKeysOf(query: Record<string, string | string[] | undefined>): Recor
  */
 const FRAME = 'h-[calc(100dvh-var(--top-h)-1px-env(safe-area-inset-top,0px)-var(--page-clear-bottom))] md:h-dvh';
 
+/** The answer of the explorer's search: people open the explorer around them, lineages at their root. */
+function SearchResults({ q, result, starts }: { q: string; result: SearchResultDto | null; starts: ExploreStartDto['lineages'] }) {
+  if (!result) {
+    return (
+      <p role="status" className="mt-4 text-sm text-fg-muted" data-testid="explore-search-results" data-state="failed">
+        The search could not be run just now. Nothing was changed: try again in a moment.
+      </p>
+    );
+  }
+  const people = result.people.slice(0, 10);
+  const rootOf = new Map(starts.map((l) => [l.id, l.root.id]));
+  if (people.length === 0 && result.lineages.length === 0) {
+    return (
+      <p role="status" className="mt-4 text-sm text-fg-muted" data-testid="explore-search-results" data-state="none">
+        Nobody and no lineage on the public record matches “{q}”. Try another spelling.
+      </p>
+    );
+  }
+  return (
+    <section aria-labelledby="explore-results" className="mt-6" data-testid="explore-search-results" data-state="shown">
+      <h2 id="explore-results" className="font-display text-xl">
+        Found for “{q}”
+      </h2>
+      <ul className="mt-2 grid border-t border-border-subtle">
+        {result.lineages.map((l) => {
+          const root = rootOf.get(l.id);
+          return (
+            <li key={`l-${l.id}`} className="border-b border-border-subtle" data-testid="explore-result" data-kind="lineage">
+              <Link
+                href={root ? `/explore?focus=${root}&lineage=${l.id}` : `/people/${l.root.slug}/lineage`}
+                prefetch={false}
+                className="flex min-h-12 flex-wrap items-baseline gap-x-2 py-2 hover:underline"
+              >
+                <span className="font-display text-lg">
+                  <LineageName name={l.name} />
+                </span>
+                <span className="text-sm text-fg-muted">
+                  Lineage · root <NameText name={l.root.displayName} />
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+        {people.map((p) => (
+          <li key={`p-${p.id}`} className="border-b border-border-subtle" data-testid="explore-result" data-kind="person">
+            <Link href={`/explore?focus=${p.id}`} prefetch={false} className="flex min-h-12 flex-wrap items-baseline gap-x-2 py-2 hover:underline">
+              <span className="font-display text-lg">
+                <NameText name={p.displayName} />
+              </span>
+              {p.matched ? (
+                <span className="text-sm text-fg-muted">
+                  <NameText name={p.matched} />
+                </span>
+              ) : null}
+              {p.lineageName ? (
+                <span className="text-sm text-fg-muted">
+                  <LineageName name={p.lineageName} />
+                </span>
+              ) : null}
+              {p.city ? <span className="text-sm text-fg-muted">{p.city}</span> : null}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {result.morePeople || result.people.length > people.length ? (
+        <p className="mt-2 text-sm text-fg-muted">More people match: add more of the name to narrow it down.</p>
+      ) : null}
+    </section>
+  );
+}
+
 export default async function ExplorePage({ searchParams }: Props) {
   const query = await searchParams;
   const params = paramsFrom(query);
@@ -67,6 +139,16 @@ export default async function ExplorePage({ searchParams }: Props) {
   }
 
   if (!params.focus) {
+    const raw = Array.isArray(query.q) ? query.q[0] : query.q;
+    const q = (raw ?? '').trim().slice(0, 100);
+    let found: SearchResultDto | null = null;
+    if (q) {
+      try {
+        found = await client.search.query({ q });
+      } catch (error) {
+        console.error(`[explore] the search could not be run: ${failure(error)}`);
+      }
+    }
     return (
       <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
         <div className="max-w-[46rem]">
@@ -76,11 +158,29 @@ export default async function ExplorePage({ searchParams }: Props) {
             The explorer draws who taught whom, generation by generation, around one person or a whole lineage. Start from a lineage
             below, or from anyone&apos;s profile.
           </p>
-          {/* Search first (role replay 2026-11-25, P3-6): the palette finds a person by any spelling and a lineage by its name. */}
-          <search className="mt-6 grid gap-2">
-            <HomeSearch />
-            <p className="text-sm text-fg-subtle">Find a person by any spelling of their name, or a lineage by its name.</p>
-          </search>
+          {/* Search first (role replay 2026-11-25, P3-6): a plain form, no script, that finds a person
+              by any spelling and a lineage by its name through search.query, and opens the explorer there. */}
+          <form action="/explore" method="get" role="search" aria-label="Search the lineages" className="mt-6 grid gap-2" data-testid="explore-search">
+            <label htmlFor="explore-q" className="text-sm font-semibold">
+              A person or a lineage
+            </label>
+            <div className="flex flex-wrap gap-3">
+              <input
+                id="explore-q"
+                name="q"
+                type="search"
+                defaultValue={q}
+                maxLength={100}
+                autoComplete="off"
+                className="min-h-12 min-w-0 flex-1 basis-56 rounded-sm border border-border-strong bg-surface-1 px-4 text-field text-fg hover:border-fg-muted focus-visible:border-fg"
+              />
+              <button type="submit" className={buttonVariants({ variant: 'primary' })}>
+                Search
+              </button>
+            </div>
+            <p className="text-sm text-fg-subtle">Any spelling of a name: Latin letters, Chinese characters, Cyrillic, Jyutping or pinyin.</p>
+          </form>
+          {q ? <SearchResults q={q} result={found} starts={starts?.lineages ?? []} /> : null}
           {starts === null ? (
             // A failed read is not an empty record: it says so, with Retry (a plain reload).
             <ErrorPanel title="The lineages could not be loaded." className="mt-8">
