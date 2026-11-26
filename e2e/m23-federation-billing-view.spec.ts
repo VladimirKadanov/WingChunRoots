@@ -62,6 +62,8 @@ test('@M23 the owner of the demo federation: its plan, what it gives now and the
   await expect(shown(page.getByTestId('organization-billing-plan'))).toHaveAttribute('data-plan', 'federation');
   await expect(shown(page.getByTestId('federation-benefits')).getByRole('listitem')).toHaveCount(3);
   await expect(shown(page.getByTestId('organization-billing-page'))).toContainText('Member schools and students keep their own plans');
+  // Role replay P2-6: the demo federation's plan is given by the team, and the page says so.
+  await expect(shown(page.getByTestId('organization-grant-note'))).toContainText('given by the WingChunRoots team');
   await expect(shown(page.getByTestId('offer-federation-month'))).toContainText('$99.00 a month');
   await expect(shown(page.getByTestId('offer-federation-year'))).toContainText('$990.00 a year');
   await expect(shown(page.getByText('Proposed price (not final)'))).toHaveCount(2);
