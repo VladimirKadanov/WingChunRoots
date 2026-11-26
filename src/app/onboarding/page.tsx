@@ -12,6 +12,7 @@
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
+import Link from 'next/link';
 
 import { AuthFrame } from '@/components/account/auth-frame';
 import { PageRedirect } from '@/components/account/page-redirect';
@@ -112,6 +113,15 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
         next={next}
         initial={initial}
       />
+      {/* Role replay 2026-11-25 (P2-6): an account that only manages an organization needs no practitioner profile. */}
+      {me.missingConsents.length === 0 ? (
+        <p data-testid="organization-only" className="mt-8 border-t border-border-subtle pt-5 text-ui text-fg-muted">
+          Only here to manage an organization? You don&apos;t need a practitioner profile.{' '}
+          <Link href="/dashboard/organization" className="link inline-flex min-h-11 items-center">
+            I only manage an organization
+          </Link>
+        </p>
+      ) : null}
     </AuthFrame>
   );
 }
