@@ -169,6 +169,8 @@ export const reviewListInput = z.object({
   /** `waiting`: open, in review or needing information (the default); `all`: every status. */
   status: z.enum(['waiting', 'all', ...REVIEW_CASE_STATUSES]).default('waiting'),
   assigned: z.enum(['any', 'me', 'none']).default('any'),
+  /** Role replay 2026-11-25 (P2-11): `me` keeps only the kinds this reviewer's role decides (DECIDERS). */
+  decide: z.enum(['any', 'me']).default('any'),
   sort: z.enum(['oldest', 'newest']).default('oldest'),
   page: z.coerce.number().int().min(1).max(10_000).default(1),
 });
@@ -527,6 +529,8 @@ export interface ReviewListCounts {
   unassigned: number;
   /** Opened more than REVIEW_LATE_DAYS days ago. */
   late: number;
+  /** Role replay 2026-11-25 (P2-11): the cases of the kinds this reviewer's role decides (DECIDERS). */
+  decide: number;
   kinds: Record<string, number>;
   groups: { value: ReviewGroup; label: string; count: number }[];
 }
@@ -607,6 +611,11 @@ export interface ReviewCaseView {
 
 // --- review.list -------------------------------------------------------------------------------
 
+/** The queue kinds a staff role decides (review-core.ts DECIDERS). */
+function decidableKinds(role: string | null | undefined): ReviewCaseKind[] {
+  return QUEUE_KINDS.filter((k) => DECIDERS[k].some((r) => r === role));
+}
+
 /** review.list: the queue (any reviewer with the second factor). */
 export async function listReviewCases(principal: Principal | null, raw: ReviewListInput = {}): Promise<ReviewList> {
   const p = requireStaff2FA(principal);
@@ -630,19 +639,22 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
     .where(and(...where))
     .groupBy(reviewCase.kind);
   const kindCounts = Object.fromEntries(QUEUE_KINDS.map((k) => [k, 0])) as Record<string, number>;
-  const counts: ReviewListCounts = { all: 0, mine: 0, unassigned: 0, late: 0, kinds: kindCounts, groups: [] };
+  const counts: ReviewListCounts = { all: 0, mine: 0, unassigned: 0, late: 0, decide: 0, kinds: kindCounts, groups: [] };
+  const decidable = decidableKinds(p.user.role);
   for (const row of counted) {
     kindCounts[row.kind] = row.all;
     counts.all += row.all;
     counts.mine += row.mine;
     counts.unassigned += row.unassigned;
     counts.late += row.late;
+    if (decidable.includes(row.kind)) counts.decide += row.all;
   }
   counts.groups = REVIEW_GROUP_KEYS.map((g) => ({ value: g, label: REVIEW_GROUPS[g].label, count: REVIEW_GROUPS[g].kinds.reduce((n, k) => n + (kindCounts[k] ?? 0), 0) }));
   if (filters.kind) where.push(eq(reviewCase.kind, filters.kind as ReviewCaseKind));
   if (filters.group) where.push(inArray(reviewCase.kind, [...REVIEW_GROUPS[filters.group].kinds]));
   if (filters.assigned === 'me') where.push(eq(reviewCase.assignedToUserId, p.user.id));
   else if (filters.assigned === 'none') where.push(isNull(reviewCase.assignedToUserId));
+  if (filters.decide === 'me') where.push(decidable.length > 0 ? inArray(reviewCase.kind, decidable) : sql`false`);
   if (filters.age !== 'any') where.push(sql`${reviewCase.createdAt} < now() - make_interval(days => ${REVIEW_AGES[filters.age]}::int)`);
   const condition = and(...where);
   const [{ total } = { total: 0 }] = await db.select({ total: count() }).from(reviewCase).where(condition);
