@@ -14,6 +14,8 @@ export interface EventFilters {
   school: string | null;
   /** From an organization's page: the events it organizes. */
   organization: string | null;
+  /** Role replay 2026-11-25 (P2-5): from the search's "Events in <city>": the events in one place (its id). */
+  place: string | null;
   view: 'agenda' | 'month';
   /** The month of the Month view ("2027-03"); null = the month of the next event. */
   month: string | null;
@@ -26,6 +28,7 @@ type Params = Record<string, string | string[] | undefined>;
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const MONTH = /^(19|20)\d{2}-(0[1-9]|1[0-2])$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const DAY = /^(19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 const one = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
@@ -51,6 +54,7 @@ export function eventFiltersOf(params: Params): EventFilters {
     person: slugOf(params.person),
     school: slugOf(params.school),
     organization: slugOf(params.organization),
+    place: UUID.test(one(params.place) ?? '') ? one(params.place)! : null,
     view,
     month: view === 'month' ? monthOk : null,
     day: view === 'month' && monthOk && DAY.test(day) && day.startsWith(`${monthOk}-`) ? day : null,
@@ -60,7 +64,7 @@ export function eventFiltersOf(params: Params): EventFilters {
 
 /** The filters that choose events (not the view, the month or the page). */
 export function isFiltered(f: EventFilters): boolean {
-  return f.country !== null || f.kind !== null || f.format !== null || f.person !== null || f.school !== null || f.organization !== null;
+  return f.country !== null || f.kind !== null || f.format !== null || f.person !== null || f.school !== null || f.organization !== null || f.place !== null;
 }
 
 function filterQuery(f: EventFilters): URLSearchParams {
@@ -71,6 +75,7 @@ function filterQuery(f: EventFilters): URLSearchParams {
   if (f.person) q.set('person', f.person);
   if (f.school) q.set('school', f.school);
   if (f.organization) q.set('organization', f.organization);
+  if (f.place) q.set('place', f.place);
   return q;
 }
 

@@ -39,7 +39,7 @@ test('@M00b home page renders in both themes with no axe violations', async ({ p
     backgrounds.add(await page.evaluate(() => getComputedStyle(document.body).backgroundColor));
 
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Every teacher, every student, on the record');
-    await expect(page.getByRole('button', { name: 'Search people, schools and lineages' }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Search people, schools, events and lineages' }).first()).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: 'How a link earns its seal' })).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: /^Jade Lantern Hall/ })).toBeVisible();
     await expectNoAxeViolations(page, `/ (${theme})`);

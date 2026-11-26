@@ -33,7 +33,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { action: 'zoomIn', keys: ['+', '='], key: '+', label: 'Zoom in' },
   { action: 'zoomOut', keys: ['-'], key: '−', label: 'Zoom out' },
   { action: 'fit', keys: ['0'], key: '0', label: 'Fit the whole view' },
-  { action: 'search', keys: ['/'], key: '/', label: 'Search people, schools and lineages' },
+  { action: 'search', keys: ['/'], key: '/', label: 'Search people, schools, events and lineages' },
   { action: 'help', keys: ['?'], key: '?', label: 'Show these keys' },
   { action: 'escape', keys: ['Escape'], key: 'Esc', label: 'Close a list or lower the details, then clear the selection' },
 ];

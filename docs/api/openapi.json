@@ -1657,6 +1657,114 @@
                         ],
                         "additionalProperties": false
                       }
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "startsAt": {
+                            "type": "string"
+                          },
+                          "timezone": {
+                            "type": "string"
+                          },
+                          "city": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "countryCode": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "online": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "slug",
+                          "title",
+                          "startsAt",
+                          "timezone",
+                          "city",
+                          "countryCode",
+                          "online"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "place": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "countryCode": {
+                              "type": "string"
+                            },
+                            "schools": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "events": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "countryCode",
+                            "schools",
+                            "events"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "first": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "schools",
+                            "events",
+                            "organizations",
+                            "lineages"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -1665,7 +1773,10 @@
                     "morePeople",
                     "schools",
                     "organizations",
-                    "lineages"
+                    "lineages",
+                    "events",
+                    "place",
+                    "first"
                   ],
                   "additionalProperties": false
                 }
@@ -18633,6 +18744,17 @@
               "minLength": 1,
               "maxLength": 120,
               "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "place",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
             },
             "allowEmptyValue": true,
             "allowReserved": true

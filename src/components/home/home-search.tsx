@@ -23,7 +23,7 @@ export function HomeSearch() {
       className="flex min-h-12 w-full min-w-0 items-center gap-3 rounded-sm border border-border-strong bg-surface-1 px-4 text-left text-base text-fg-muted transition-colors duration-(--duration-fast) hover:border-fg-muted hover:text-fg"
     >
       <SearchIcon size={20} className="shrink-0" />
-      <span className="min-w-0 flex-1">Search people, schools and lineages</span>
+      <span className="min-w-0 flex-1">Search people, schools, events and lineages</span>
     </button>
   );
 }
