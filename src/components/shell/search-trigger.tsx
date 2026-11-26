@@ -94,9 +94,9 @@ export function SearchField({ variant }: { variant: 'bar' | 'rail' }) {
       )}
     >
       <SearchIcon size={variant === 'bar' ? 18 : 19} className="shrink-0 @max-[3.75rem]:mx-auto" />
-      <span className="min-w-0 flex-1 truncate @max-[3.75rem]:sr-only" data-rail="label">{variant === 'bar' ? 'Find' : 'Find a name'}</span>
+      <span className="min-w-0 flex-1 truncate @max-[3.75rem]:sr-only">{variant === 'bar' ? 'Find' : 'Find a name'}</span>
       {variant === 'rail' ? (
-        <kbd aria-hidden="true" className="shrink-0 rounded-[3px] border border-border-subtle px-1.5 font-sans text-xs text-fg-subtle" data-rail="hide">
+        <kbd aria-hidden="true" className="shrink-0 rounded-[3px] border border-border-subtle px-1.5 font-sans text-xs text-fg-subtle">
           Ctrl K
         </kbd>
       ) : null}

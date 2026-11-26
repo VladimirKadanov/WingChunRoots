@@ -42,7 +42,6 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
               href={item.href}
               prefetch={item.built ? null : false}
               aria-current={current ? 'page' : undefined}
-              data-rail={variant === 'rail' ? 'link' : undefined}
               className={cx(
                 'group relative flex items-center text-fg-subtle transition-colors duration-(--duration-fast) hover:text-fg aria-[current=page]:text-fg',
                 // An inset focus ring: the tab bar ends at the screen edge and would clip an outer one.
@@ -62,7 +61,6 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
                   at 150 % text (a tab of about 3.6 em) it is set an eighth smaller. Only still larger
                   text breaks a word, and then inside its own tab instead of running into the next. */}
               <span
-                data-rail={variant === 'rail' ? 'label' : undefined}
                 className={cx(
                   variant === 'tabs' &&
                     'max-w-full text-center [overflow-wrap:anywhere] @max-[5.75em]/tab:tracking-[0.03em] @max-[5em]/tab:tracking-normal @max-[5em]/tab:normal-case @max-[3.8em]/tab:text-[0.875em]',
@@ -70,12 +68,6 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
               >
                 {variant === 'tabs' ? (item.tabLabel ?? item.label) : item.label}
               </span>
-              {variant === 'rail' ? (
-                // P2-10: the folded rail names each icon beside it on hover and on keyboard focus.
-                <span aria-hidden="true" data-rail="tip">
-                  {item.label}
-                </span>
-              ) : null}
               <span
                 aria-hidden="true"
                 className={cx(

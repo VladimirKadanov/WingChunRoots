@@ -65,9 +65,9 @@ export function ThemeMenu({ variant }: { variant: 'icon' | 'row' }) {
       <Icon size={variant === 'icon' ? 22 : 18} />
       {variant === 'row' ? (
         <>
-          <span aria-hidden="true" data-rail="hide">Theme: {LABEL[theme]}</span>
+          <span aria-hidden="true">Theme: {LABEL[theme]}</span>
           {/* The track: the knob stands right for dark, left for light (position, not colour alone). */}
-          <span aria-hidden="true" data-rail="hide" className="relative ml-1 inline-block h-5 w-9 shrink-0 rounded-full border border-border-strong bg-surface-2">
+          <span aria-hidden="true" className="relative ml-1 inline-block h-5 w-9 shrink-0 rounded-full border border-border-strong bg-surface-2">
             <span
               className={cx(
                 'absolute top-0.5 left-0.5 size-3.5 rounded-full bg-fg transition-transform motion-reduce:transition-none',
