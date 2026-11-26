@@ -96,6 +96,8 @@ export const PERSON_OWNED_TABLES: readonly string[] = [
   'evidence_link',
   'invitation',
   'lineage_membership',
+  // ADR 0074: an organization's claim link to the record (cascade).
+  'organization_claim_link',
   'person_bio',
   'person_claim',
   // ADR 0048: the private follows of the person (cascade).

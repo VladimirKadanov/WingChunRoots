@@ -139,6 +139,8 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/organizations/demo-federation-north', name: 'organization', status: 200, milestone: 'M15' },
   { path: '/organizations/demo-not-an-organization', name: 'organization-not-listed', status: 200, milestone: 'M15' },
   { path: '/dashboard/organization', name: 'dashboard-organization', status: 200, milestone: 'M15', signInAs: 'user' },
+  // ADR 0074: an organization's claim link; an unknown token reads "Claim link not found".
+  { path: `/claim/${'A'.repeat(43)}`, name: 'claim-link-missing', status: 200, milestone: 'M24' },
   { path: '/dashboard/organization/apply', name: 'dashboard-organization-apply', status: 200, milestone: 'M15', signInAs: 'user' },
   { path: '/admin/organizations', name: 'admin-organizations', status: 200, milestone: 'M15', signInAs: 'admin' },
   // M16: galleries. The own gallery's page as demo-two-lineages (its seeded profile photo, at its

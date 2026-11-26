@@ -217,6 +217,9 @@ export const USER_REFERENCES: readonly UserReference[] = [
   { table: 'organization_school', column: 'ended_by_user_id', action: 'clear', why: 'as above' },
   { table: 'organization_teacher_claim', column: 'created_by_user_id', action: 'clear', why: 'a claim an organization’s admin made' },
   { table: 'organization_teacher_claim', column: 'withdrawn_by_user_id', action: 'clear', why: 'as above' },
+  // ADR 0074: a claim link stays with the organization and the record.
+  { table: 'organization_claim_link', column: 'created_by_user_id', action: 'clear', why: 'a claim link an organization’s admin made' },
+  { table: 'organization_claim_link', column: 'used_by_user_id', action: 'clear', why: 'a claim link the account used (its claim is erased with it)' },
   { table: 'passport_certificate', column: 'created_by_user_id', action: 'clear', why: 'passport entries the account wrote' },
   { table: 'passport_certificate', column: 'withdrawn_by_user_id', action: 'clear', why: 'as above' },
   { table: 'passport_certificate', column: 'removed_by_user_id', action: 'clear', why: 'as above' },

@@ -179,6 +179,67 @@ test.describe('@M24 organization tools', () => {
     expect(people.rows).toHaveLength(0);
   });
 
+  test('an imported member claims their record with a link the organization passes on (ADR 0074)', async ({ page, browser }, testInfo) => {
+    const phone = testInfo.project.name.startsWith('mobile');
+    const organizationId = await federationNorth();
+    await freshAllowance(organizationId);
+    await signInAs(page, 'demo-federation-owner');
+    const name = surname();
+    const preview = await apiPost(page, '/organizations/imports/preview', {
+      organizationId,
+      contentBase64: Buffer.from(`First_Name,Last_Name,Email\nDemo,${name},demo-not-read@example.test\n`).toString('base64'),
+    });
+    expect(preview.status(), await preview.text()).toBe(200);
+    const { id: importId } = (await preview.json()) as { id: string };
+    const commit = await apiPost(page, '/organizations/imports/commit', { organizationId, importId });
+    expect(commit.status(), await commit.text()).toBe(200);
+
+    // The import's page leads to the claim links.
+    await page.goto(`/dashboard/organization/${organizationId}/import/${importId}`);
+    await page.getByTestId('organization-import-next').getByRole('link', { name: 'Make claim links' }).click();
+    await expect(page.getByTestId('organization-claim-links')).toBeVisible();
+    const row = page.getByTestId('claim-link-member').filter({ hasText: `Demo ${name}` });
+    await expect(row).toHaveAttribute('data-has-link', 'no');
+    await page.getByTestId('claim-links-make').getByRole('button').click();
+    await expect(page.getByTestId('claim-links-made')).toBeVisible();
+    await expect(row).toHaveAttribute('data-has-link', 'yes');
+    const url = (await row.getByTestId('claim-link-url').textContent())!.trim();
+    expect(url).toMatch(/\/claim\/[A-Za-z0-9_-]{43}$/);
+    await axeInBothThemes(page, '/dashboard/organization/<id>/claim-links');
+    if (phone) await expectTouchTargets(page, '[data-testid="organization-claim-links"] button');
+    const path = new URL(url).pathname;
+
+    // The member, in a browser of their own: a new account without a profile asks to claim it.
+    const member = await browser.newContext();
+    await giveOwnAddress(member);
+    const memberPage = await member.newPage();
+    try {
+      await memberPage.goto(path);
+      await expect(memberPage.getByTestId('claim-link-summary')).toContainText(`Demo ${name}`);
+      await expect(memberPage.getByTestId('claim-link-sign-in')).toBeVisible();
+      await freshAccount(memberPage);
+      await memberPage.goto(path);
+      await axeInBothThemes(memberPage, '/claim/<token>');
+      await memberPage.getByLabel(/Note for the reviewers/).fill('I train on Tuesdays (fictional).');
+      await memberPage.getByRole('button', { name: 'Claim my record' }).click();
+      await expect(memberPage).toHaveURL(/\/dashboard\/cases\/[0-9a-f-]{36}\?claimed=1/);
+      // A link never signs in or makes the record theirs: the reviewers decide.
+      const record = await getDb().execute<{ claimed: string | null }>(sql`
+        SELECT p.claimed_by_user_id::text AS claimed FROM organization_import_row r JOIN person p ON p.id = r.person_id WHERE r.import_id = ${importId}::uuid`);
+      expect(record.rows[0]!.claimed).toBeNull();
+      await memberPage.goto(path);
+      await expect(memberPage.getByTestId('claim-link-yours')).toHaveAttribute('data-claim-status', 'pending');
+    } finally {
+      await member.close();
+    }
+
+    // Used: the link opens nothing for anyone else, and the list shows the waiting claim.
+    await page.goto(path);
+    await expect(page.getByTestId('claim-link-missing')).toBeVisible();
+    await page.goto(`/dashboard/organization/${organizationId}/claim-links`);
+    await expect(row.getByTestId('claim-link-waiting')).toBeVisible();
+  });
+
   test('analytics are counts, and the heatmap never shows a school’s point', async ({ page }, testInfo) => {
     const phone = testInfo.project.name.startsWith('mobile');
     const organizationId = await federationNorth();

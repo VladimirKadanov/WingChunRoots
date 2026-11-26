@@ -120,6 +120,9 @@ export type AuditAction =
   | 'organization.import_preview'
   | 'organization.import_commit'
   | 'organization.import_discard'
+  // Role replay 2026-11-25 (P2-6, ADR 0074): claim links for imported members (counts and ids only).
+  | 'organization.claim_links'
+  | 'organization.claim_link_replace'
   | 'organization.claim_withdraw'
   | 'organization.member_leave'
   // M17: events (docs/adr/0020-events.md). The rows carry ids, the kind, the month and the fields
