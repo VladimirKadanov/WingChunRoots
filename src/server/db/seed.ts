@@ -60,6 +60,7 @@ import {
   notificationPreference,
   organization,
   organizationAdmin,
+  organizationClaimLink,
   organizationImport,
   organizationImportRow,
   organizationMemberRecord,
@@ -141,6 +142,8 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   notificationPreference,
   organization,
   organizationAdmin,
+  // ADR 0074: claim links of imported members (no demo rows).
+  organizationClaimLink,
   // M24: the organization tools (no demo rows; emptied like every table).
   organizationImport,
   organizationImportRow,

@@ -55,6 +55,7 @@ import { reportLineage } from '../services/disputes';
 import { answerNomination, nominateSuccessor } from '../services/succession';
 import { type Account, createUser, key, meta, newLineage, ongoingFrom, principalOf } from '../services/relationships.test-support';
 import { grantOrganizationPlan } from '../services/organization-grants';
+import { listClaimLinks, makeClaimLinks } from '../services/organization-claim-links';
 import { commitImport, previewImport } from '../services/organization-import';
 import { organizationClaims } from '../services/organization-separation';
 import { addOrganizationAdmin, addOrganizationMember, applyOrganization, requestOrganizationSchool } from '../services/organizations';
@@ -417,6 +418,17 @@ async function organizationClaim() {
   await commitImport(imp.org.owner.principal, { organizationId: imp.org.organizationId, importId: imp.importId }, meta);
   const claims = await organizationClaims(imp.org.owner.principal, { organizationId: imp.org.organizationId });
   return { org: imp.org, claimId: claims.claims[0]!.id };
+}
+
+/** ADR 0074: a committed import's member with a claim link; `token` is the link's secret. */
+async function organizationClaimLink() {
+  const imp = await organizationImport();
+  await commitImport(imp.org.owner.principal, { organizationId: imp.org.organizationId, importId: imp.importId }, meta);
+  await makeClaimLinks(imp.org.owner.principal, { organizationId: imp.org.organizationId }, meta);
+  const view = await listClaimLinks(imp.org.owner.principal, { organizationId: imp.org.organizationId });
+  const member = view.members[0]!;
+  const token = member.link!.path.slice('/claim/'.length);
+  return { org: imp.org, personId: member.personId, token };
 }
 
 /** M17: a Professional Sifu's published event in a city (a year ahead, so it is upcoming); with a poster when `poster`. */
@@ -2004,6 +2016,43 @@ const ROWS: Row[] = [
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
+  // ADR 0074: claim links of imported members, the organization's admins only (404 for anyone else).
+  ...(['claimLinks', 'makeClaimLinks'] as const).map(
+    (name): Row => ({
+      path: `organizationTools.${name}`,
+      make: async () => {
+        const imp = await organizationImport();
+        await commitImport(imp.org.owner.principal, { organizationId: imp.org.organizationId, importId: imp.importId }, meta);
+        return { owner: imp.org.owner, party: await otherOrganizationAdmin(), input: { organizationId: imp.org.organizationId } };
+      },
+      expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+    }),
+  ),
+  {
+    path: 'organizationTools.replaceClaimLink',
+    make: async () => {
+      const l = await organizationClaimLink();
+      return { owner: l.org.owner, party: await otherOrganizationAdmin(), input: { organizationId: l.org.organizationId, personId: l.personId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    // The token is the secret: whoever holds the link reads what it is about.
+    path: 'claimLinks.get',
+    make: async () => ({ input: { token: (await organizationClaimLink()).token } }),
+    expect: { ...everyone },
+  },
+  {
+    // Like invitations.accept: an account without a profile of its own asks to claim the record (a
+    // review case the reviewers decide); an account with one (`party`) cannot take another record.
+    path: 'claimLinks.accept',
+    make: async (who) => {
+      await noWaitingClaim(who);
+      const l = await organizationClaimLink();
+      return { owner: await actor('link-claimant', { noPerson: true }), party: await actor('link-profile-holder'), input: { token: l.token, idempotencyKey: key() } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'CONFLICT', party: 'CONFLICT', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
+  },
   { path: 'organizationTools.memberships', make: noInput, expect: own() },
   {
     // The member's own account leaves; the organization's owner ends it with organizations.endMember.
@@ -2842,6 +2891,9 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/organization/tools-actions.ts#discardImportAction', row: 'organizationTools.importDiscard', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/organization/tools-actions.ts#withdrawClaimAction', row: 'organizationTools.withdrawClaim', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/organization/tools-actions.ts#leaveOrganizationAction', row: 'organizationTools.leave', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/tools-actions.ts#makeClaimLinksAction', row: 'organizationTools.makeClaimLinks', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/tools-actions.ts#replaceClaimLinkAction', row: 'organizationTools.replaceClaimLink', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/claim/[token]/actions.ts#acceptClaimLinkAction', row: 'claimLinks.accept', form: same, roles: ['anonymous', 'party', 'member'] },
   // M17: events. The forms post the procedures' fields (a city, not online); `party` is not used.
   { action: 'src/app/dashboard/events/actions.ts#createEventAction', row: 'events.create', form: (i) => ({ ...same(i), where: 'city' }), roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/events/actions.ts#updateEventAction', row: 'events.update', form: (i) => ({ ...same(i), where: 'city' }), roles: ['anonymous', 'member', 'owner'] },

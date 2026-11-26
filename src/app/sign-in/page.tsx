@@ -8,7 +8,7 @@ import Link from 'next/link';
 
 import { AuthFrame, FormFooter, Notice } from '@/components/account/auth-frame';
 import { ForgetRecentSearches } from '@/components/account/forget-recent-searches';
-import { isClaimPath, isInvitationPath, isTeacherRequestPath, isTrialPath } from '@/lib/invitation-path';
+import { isClaimLinkPath, isClaimPath, isInvitationPath, isTeacherRequestPath, isTrialPath } from '@/lib/invitation-path';
 import { safeNextPath } from '@/server/auth/guards';
 import { readFormResult, readSignInEmail } from '@/server/forms/flash';
 import { SignInForm } from './sign-in-form';
@@ -35,6 +35,7 @@ function ledeFor(next: string): string | undefined {
   if (isTrialPath(next)) return 'Sign in, or create an account, to ask this school for a trial lesson. It takes a few minutes, and your profile stays private.';
   if (isTeacherRequestPath(next)) return 'Sign in, or create an account, to ask your teacher to confirm that they teach you.';
   if (isClaimPath(next)) return 'Sign in, or create an account, to ask to claim this profile.';
+  if (isClaimLinkPath(next)) return 'Sign in, or create an account, to ask to claim the record your organization made for you.';
   if (isInvitationPath(next)) return 'Sign in, or create an account, to answer the invitation.';
   return 'Sign in to open the page you asked for.';
 }

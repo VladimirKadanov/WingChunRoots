@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isClaimPath, isInvitationPath, isTeacherRequestPath, isTrialPath, ridesInConfirmationLink, teacherRequestPath } from './invitation-path';
+import { isClaimLinkPath, isClaimPath, isInvitationPath, isTeacherRequestPath, isTrialPath, ridesInConfirmationLink, teacherRequestPath } from './invitation-path';
 
 const TOKEN = 'A'.repeat(43);
 
@@ -10,6 +10,14 @@ describe('the paths that ride in the confirmation link', () => {
     expect(isInvitationPath(`/invite/${TOKEN}x`)).toBe(false);
     expect(isInvitationPath('/invite/short')).toBe(false);
     expect(isInvitationPath(undefined)).toBe(false);
+  });
+
+  it("knows an organization's claim link", () => {
+    expect(isClaimLinkPath(`/claim/${TOKEN}`)).toBe(true);
+    expect(ridesInConfirmationLink(`/claim/${TOKEN}`)).toBe(true);
+    expect(isClaimLinkPath(`/claim/${TOKEN}x`)).toBe(false);
+    expect(isClaimLinkPath('/claim/short')).toBe(false);
+    expect(isClaimLinkPath(`//evil.example/claim/${TOKEN}`)).toBe(false);
   });
 
   it("knows a school's trial lesson page", () => {

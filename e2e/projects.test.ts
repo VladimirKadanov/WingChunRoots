@@ -118,6 +118,7 @@ describe('buildProjects: exclusive (M08 final check)', () => {
         '**/m25-governance.spec.ts',
         '**/m26-archive-editor.spec.ts',
         '**/claim-request.spec.ts',
+        '**/claim-links.spec.ts',
         '**/premium-passport-extras.spec.ts',
         '**/premium-featured-profile.spec.ts',
         '**/premium-supporter-badge.spec.ts',

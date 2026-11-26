@@ -1432,6 +1432,7 @@ pnpm billing:test-clock --subscription <id> --step grace_end
 - `Email` не се чете (DEFAULT M24, въпрос 3). Самият файл не се пази — само отпечатък и размер.
 - След внос, отказ или изтичане полетата на редовете (`organization_import_row.data`) се изчистват. Ежедневната задача `retention.purge` затваря изтеклите прегледи и пише в лога само броя: `retention.purge: ended N expired organization import preview(s)`.
 - Одит: `organization.import_preview`, `organization.import_commit`, `organization.import_discard`, `organization.claim_withdraw` — с броеве и идентификатори, без имена.
+- Връзки за поемане ([ADR 0074](../adr/0074-organization-claim-links.md)): `organizationTools.claimLinks`, `makeClaimLinks`, `replaceClaimLink` (страницата `/dashboard/organization/<id>/claim-links`) и `claimLinks.get`, `claimLinks.accept` (страницата `/claim/<token>`). Таблица `organization_claim_link`; пази се само SHA-256 на токена (токенът е HMAC от `MAIL_SEAL_KEY`, затова смяна на ключа сменя и всички връзки). **Claim my record** отваря обикновено дело `person_claim` в опашката на архивистите (в одита `source: 'organization_claim_link'`); нищо не вписва и нищо не се праща. Одит: `organization.claim_links` (брой) и `organization.claim_link_replace`.
 
 ### Анализи и топлинна карта
 

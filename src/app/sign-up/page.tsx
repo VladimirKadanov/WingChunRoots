@@ -10,7 +10,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { AuthFrame, FormFooter } from '@/components/account/auth-frame';
-import { isClaimPath, isInvitationPath, isTeacherRequestPath } from '@/lib/invitation-path';
+import { isClaimLinkPath, isClaimPath, isInvitationPath, isTeacherRequestPath } from '@/lib/invitation-path';
 import { safeNextPath } from '@/server/auth/guards';
 import { readFormResult } from '@/server/forms/flash';
 import { LEGAL_DOCUMENTS, REQUIRED_SIGN_UP_CONSENTS } from '@/server/legal/documents';
@@ -58,6 +58,16 @@ const CLAIM_NOTES = [
   },
 ] as const;
 
+/** From an organization's claim link of an imported member (ADR 0074). */
+const CLAIM_LINK_NOTES = [
+  ADULTS,
+  CONFIRM,
+  {
+    title: 'Then your claim',
+    text: 'After signing in you go back to the link your organization gave you and ask to claim your record. You do not set up another one: it becomes yours once a reviewer approves the claim.',
+  },
+] as const;
+
 /** From a Sifu's invite link (/join/<slug>): the request to that teacher waits after the profile. */
 const TEACHER_NOTES = [
   ADULTS,
@@ -77,7 +87,7 @@ export default async function SignUpPage({ searchParams }: { searchParams: Searc
   const next = safeNextPath(query.next, '');
   const initial = await readFormResult('sign-up', query.outcome);
   return (
-    <AuthFrame notes={isInvitationPath(next) ? INVITED_NOTES : isClaimPath(next) ? CLAIM_NOTES : isTeacherRequestPath(next) ? TEACHER_NOTES : NOTES} notesLabel="How joining works">
+    <AuthFrame notes={isInvitationPath(next) ? INVITED_NOTES : isClaimPath(next) ? CLAIM_NOTES : isClaimLinkPath(next) ? CLAIM_LINK_NOTES : isTeacherRequestPath(next) ? TEACHER_NOTES : NOTES} notesLabel="How joining works">
       <SignUpForm
         required={REQUIRED_SIGN_UP_CONSENTS}
         terms={doc(LEGAL_DOCUMENTS.terms)}

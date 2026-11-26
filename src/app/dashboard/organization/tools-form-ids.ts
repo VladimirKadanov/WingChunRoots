@@ -9,3 +9,7 @@ export const importForm = (kind: 'commit' | 'discard', importId: string) => `org
 export const claimForm = (claimId: string) => `organization-claim-${claimId}`;
 /** Leave a membership (the account's own, on /dashboard/organization). */
 export const leaveForm = (membershipId: string) => `organization-leave-${membershipId}`;
+/** ADR 0074: "Make claim links" of the imported members. */
+export const MAKE_CLAIM_LINKS_FORM = 'organization-claim-links';
+/** ADR 0074: "Replace the link" of one imported member. */
+export const replaceLinkForm = (personId: string) => `organization-claim-link-${personId}`;
