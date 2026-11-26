@@ -18,7 +18,7 @@ import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { APPLY_FORM } from '../form-ids';
-import { ApplyForm } from '../forms';
+import { ApplyForm } from './apply-form';
 
 export const instant = false;
 

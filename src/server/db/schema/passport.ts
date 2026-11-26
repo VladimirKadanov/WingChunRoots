@@ -36,6 +36,7 @@ import {
   PASSPORT_TITLE_MAX,
   PASSPORT_VISIBILITIES,
   PHOTO_FULL_MAX_SIDE,
+  RANK_LADDER_MAX,
   SKILL_PROGRESSES,
   timestamps,
 } from './common';
@@ -305,5 +306,28 @@ export const eventAttendance = pgTable(
     index('event_attendance_withdrawn_by_user_id_idx').on(t.withdrawnByUserId),
     index('event_attendance_removed_by_user_id_idx').on(t.removedByUserId),
     ...entryChecks('event_attendance', t, ATTENDANCE_STATUSES),
+  ],
+);
+
+/**
+ * Role replay 2026-11-25 (P2-8, ADR 0072): the rank ladder of an account (a teacher, an
+ * organization's admin), set once ("First level", "Second level"…) and offered as the pick list
+ * wherever that account records a rank. Only words: never a person. It goes with the account.
+ */
+export const rankLadderStep = pgTable(
+  'rank_ladder_step',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'cascade' }),
+    /** 0 for the first step, in the order the account set. */
+    position: integer('position').notNull(),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.position] }),
+    check('rank_ladder_step_position_check', sql`${t.position} BETWEEN 0 AND ${sql.raw(String(RANK_LADDER_MAX - 1))}`),
+    textLength('rank_ladder_step_name_length', 'name', PASSPORT_TEXT_MAX),
   ],
 );

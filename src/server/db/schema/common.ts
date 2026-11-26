@@ -314,6 +314,8 @@ export const SKILL_PROGRESSES = ['learning', 'approved'] as const;
 export const PASSPORT_ENTRY_KINDS = ['rank', 'exam', 'skill', 'certificate', 'attendance'] as const;
 /** M19: the longest rank, awarded rank, form or skill. */
 export const PASSPORT_TEXT_MAX = 120;
+/** Role replay 2026-11-25 (P2-8, ADR 0072): the most steps of a rank ladder. */
+export const RANK_LADDER_MAX = 30;
 /** M19: the longest proposed correction and the longest reason of staff. */
 export const PASSPORT_NOTE_MAX = 1000;
 /** M19: the longest title of a certificate. */
