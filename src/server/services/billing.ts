@@ -462,7 +462,13 @@ export async function organizationBilling(principal: Principal | null, raw: unkn
         ? 'Federation can be chosen once the reviewers approve the organization.'
         : !canManage
           ? 'Only an owner of the organization can choose its plan.'
-          : null;
+          : // Role replay 2026-11-25 (P2-6): Federation given by the administrators (a grant, not a
+            // subscription or a running trial) is said as such, with no buy buttons beside it.
+            plan.plan && !live && trialRow?.status !== 'active'
+            ? plan.until
+              ? `Federation is active until ${formatDay(plan.until)}, given by the WingChunRoots team. There is nothing to buy now.`
+              : 'Federation is active, given by the WingChunRoots team. There is nothing to buy now.'
+            : null;
   const offers =
     live || offersNote
       ? []
