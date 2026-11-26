@@ -16,6 +16,7 @@ import { SCHOOLS_LOAD_ERROR } from '@/components/account/load-errors/schools';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { ArrowRightIcon, PlusIcon } from '@/components/icons';
 import { ActivityState } from '@/components/schools/activity-state';
+import { OutcomeNote } from '@/components/relationships/parts';
 import { LocationTag } from '@/components/schools/school-list';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
@@ -24,7 +25,9 @@ import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { linkForm } from '../organization/form-ids';
+import { listingForm } from './form-ids';
 import { PIN_TEXT } from './labels';
+import { ListingAction } from './listing-actions';
 import { LinkAnswer } from './organization-links';
 
 export const instant = false;
@@ -55,6 +58,11 @@ export default async function SchoolsDashboardPage({ searchParams }: { searchPar
   if (!mine || !links) return <LoadError {...SCHOOLS_LOAD_ERROR} retryHref={PAGE} />;
   const linkRows = await Promise.all(links.links.map(async (l) => ({ ...l, initial: await readFormResult(linkForm(l.id), query.outcome) })));
   const linkDone = typeof query.organization === 'string' ? LINK_DONE[query.organization] : undefined;
+  // "This listing is current" from a row (role replay 2026-11-25, P1-4): its outcome comes back here.
+  const confirmed = typeof query.confirmed === 'string' ? mine.schools.find((s) => s.id === query.confirmed) : undefined;
+  const confirmForms = new Map(
+    await Promise.all(mine.schools.filter((s) => s.status === 'active' && s.activity.stage !== 'current').map(async (s) => [s.id, await readFormResult(listingForm(s.id), query.outcome)] as const)),
+  );
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
@@ -96,6 +104,11 @@ export default async function SchoolsDashboardPage({ searchParams }: { searchPar
             </p>
           )}
 
+          {confirmed ? (
+            <OutcomeNote testId="school-confirmed">
+              Confirmed: {confirmed.name} is current as of today{confirmed.pin === 'shown' ? ', and its pin is on the public map' : ''}.
+            </OutcomeNote>
+          ) : null}
           {mine.schools.length === 0 ? (
             <p className="text-ui text-fg-muted" data-testid="no-schools">
               You have not listed a school yet.
@@ -129,6 +142,9 @@ export default async function SchoolsDashboardPage({ searchParams }: { searchPar
                           : `Awaiting confirmation since ${formatDay(s.activity.awaitingSince ?? s.activity.lastActivityAt)}: please confirm the listing is current`}
                       </ActivityState>
                     </p>
+                  ) : null}
+                  {confirmForms.has(s.id) ? (
+                    <ListingAction schoolId={s.id} step="confirm" label="This listing is current" initial={confirmForms.get(s.id) ?? null} variant="primary" back="schools" />
                   ) : null}
                 </li>
               ))}
