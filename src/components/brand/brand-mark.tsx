@@ -48,13 +48,13 @@ export function BrandSeal({ size = 26, className, label }: { size?: number; clas
 }
 
 /** Seal and wordmark. The wordmark is real text in the display face, so it stays accessible. */
-export function BrandMark({ className, size = 'md' }: { className?: string; size?: 'md' | 'lg' }) {
+export function BrandMark({ className, wordClassName, size = 'md' }: { className?: string; wordClassName?: string; size?: 'md' | 'lg' }) {
   return (
     <span className={cn('inline-flex items-center gap-2.5 text-fg', className)}>
       <BrandSealStack height={size === 'lg' ? 46 : 40} />
       <span
         // truncate clips to the line box: leading-tight keeps the descender of the g inside it.
-        className={cn('min-w-0 truncate font-display tracking-[-0.01em]', size === 'lg' ? 'text-xl' : 'text-lg', 'py-0.5 leading-tight')}
+        className={cn('min-w-0 truncate font-display tracking-[-0.01em]', size === 'lg' ? 'text-xl' : 'text-lg', 'py-0.5 leading-tight', wordClassName)}
       >
         WingChunRoots
       </span>

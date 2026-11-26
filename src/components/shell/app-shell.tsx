@@ -58,11 +58,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         data-tab-bar=""
         className="fixed inset-x-0 bottom-0 z-40 border-t border-border-subtle bg-bg md:static md:border-t-0 md:border-r print:hidden"
       >
-        <div className="flex min-h-[calc(var(--tab-h)-1px+env(safe-area-inset-bottom,0px))] pr-[max(0.25rem,env(safe-area-inset-right,0px))] pb-[env(safe-area-inset-bottom,0px)] pl-[max(0.25rem,env(safe-area-inset-left,0px))] md:sticky md:top-0 md:h-dvh md:min-h-0 md:flex-col md:overflow-y-auto md:overscroll-contain md:px-3.5 md:pt-[max(1.5rem,env(safe-area-inset-top,0px))] md:pb-[max(1.125rem,env(safe-area-inset-bottom,0px))] md:pl-[max(0.875rem,env(safe-area-inset-left,0px))]">
-          <Link href="/" className="mb-7 hidden min-h-11 items-center px-2 md:inline-flex" aria-label="WingChunRoots, home">
-            <BrandMark />
+        {/* Folded (rail-compact, P2-10) the rail does not scroll: its labels open beside it on hover and focus. */}
+        <div className="flex min-h-[calc(var(--tab-h)-1px+env(safe-area-inset-bottom,0px))] pr-[max(0.25rem,env(safe-area-inset-right,0px))] pb-[env(safe-area-inset-bottom,0px)] pl-[max(0.25rem,env(safe-area-inset-left,0px))] md:sticky md:top-0 md:h-dvh md:min-h-0 md:flex-col md:overflow-y-auto md:overscroll-contain md:px-3.5 md:pt-[max(1.5rem,env(safe-area-inset-top,0px))] md:pb-[max(1.125rem,env(safe-area-inset-bottom,0px))] md:pl-[max(0.875rem,env(safe-area-inset-left,0px))] rail-compact:items-center rail-compact:overflow-visible rail-compact:px-2 rail-compact:pl-[max(0.5rem,env(safe-area-inset-left,0px))]">
+          <Link href="/" className="mb-7 hidden min-h-11 items-center px-2 md:inline-flex rail-compact:px-0" aria-label="WingChunRoots, home">
+            <BrandMark wordClassName="rail-compact:sr-only" />
           </Link>
-          <div className="mb-5 hidden md:block">
+          <div className="mb-5 hidden md:block rail-compact:w-11">
             <SearchField variant="rail" />
           </div>
           <div className="flex flex-1 md:hidden">
@@ -75,12 +76,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               <NavLinks variant="rail" />
             </Suspense>
           </div>
-          <div className="mt-auto hidden flex-col gap-3.5 px-2 pt-6 md:flex">
+          <div className="mt-auto hidden flex-col gap-3.5 px-2 pt-6 md:flex rail-compact:items-center rail-compact:px-0">
             <Suspense fallback={<AccountSlot variant="rail" />}>
               <AccountEntry variant="rail" />
             </Suspense>
             <ThemeMenu variant="row" />
-            <p className="text-xs text-fg-subtle">{DEMO_NOTICE}</p>
+            {/* Folded, the notice is the badge "Demo" with the whole sentence as its name. */}
+            <p className="text-xs text-fg-subtle rail-compact:sr-only">{DEMO_NOTICE}</p>
+            <p aria-hidden="true" title={DEMO_NOTICE} className="hidden text-caption text-fg-subtle uppercase rail-compact:block">
+              Demo
+            </p>
           </div>
         </div>
         <TabBarRoom />

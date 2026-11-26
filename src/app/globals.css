@@ -238,6 +238,24 @@
   }
 }
 
+/* Role replay 2026-11-25, P2-10: inside /dashboard and /admin, which have their own sidebar, the
+   site rail folds to icons from 1024 px, where their sidebar stands beside it (one sidebar carries
+   the words). The page marks itself with
+   [data-compact-rail] (CompactRail, src/components/shell/compact-rail.tsx); its labels show on
+   hover and focus. --rail-w is set on :root, so the sheets and toasts that offset by it follow. */
+@custom-variant rail-compact {
+  @media (width >= 64rem) {
+    &:where(:root:has([data-compact-rail]) *) {
+      @slot;
+    }
+  }
+}
+@media (width >= 64rem) {
+  :root:has([data-compact-rail]) {
+    --rail-w: 4.75rem;
+  }
+}
+
 /* The search palette as a sheet under the top edge (src/components/ui/search-palette.tsx,
    SHEET_QUERY): from 40rem wide and 32rem high. A phone in landscape (844 x 390) is wide but low,
    so it keeps the full-screen palette, whose field and results get the whole height. */

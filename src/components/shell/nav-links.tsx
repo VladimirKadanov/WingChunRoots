@@ -50,7 +50,7 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
                   ? // Centred with the same room above the icon as below the chop, so the chop never
                     // sits on the screen's bottom edge where there is no home-indicator inset.
                     '@container/tab min-h-11 flex-1 flex-col justify-center gap-1 text-caption uppercase'
-                  : 'min-h-[46px] gap-3.5 rounded-sm px-3 text-ui font-medium hover:bg-surface-3 aria-[current=page]:bg-surface-3 aria-[current=page]:font-semibold',
+                  : 'min-h-[46px] gap-3.5 rounded-sm px-3 text-ui font-medium hover:bg-surface-3 aria-[current=page]:bg-surface-3 aria-[current=page]:font-semibold rail-compact:size-[46px] rail-compact:justify-center rail-compact:px-0',
               )}
             >
               <Icon size={variant === 'tabs' ? 23 : 21} />
@@ -62,17 +62,27 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
                   text breaks a word, and then inside its own tab instead of running into the next. */}
               <span
                 className={cx(
+                  variant === 'rail' && 'rail-compact:sr-only',
                   variant === 'tabs' &&
                     'max-w-full text-center [overflow-wrap:anywhere] @max-[5.75em]/tab:tracking-[0.03em] @max-[5em]/tab:tracking-normal @max-[5em]/tab:normal-case @max-[3.8em]/tab:text-[0.875em]',
                 )}
               >
                 {variant === 'tabs' ? (item.tabLabel ?? item.label) : item.label}
               </span>
+              {variant === 'rail' ? (
+                // P2-10: the folded rail names each icon beside it on hover and on keyboard focus.
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-1/2 left-full z-50 ml-2 hidden -translate-y-1/2 rounded-sm bg-fg px-2.5 py-1.5 text-sm font-medium whitespace-nowrap text-fg-inverse shadow-pop rail-compact:group-hover:block rail-compact:group-focus-visible:block"
+                >
+                  {item.label}
+                </span>
+              ) : null}
               <span
                 aria-hidden="true"
                 className={cx(
                   'size-1.5 scale-0 rotate-[-20deg] rounded-[1px] bg-fg transition-transform duration-(--duration-slow) ease-stamp group-aria-[current=page]:scale-100 group-aria-[current=page]:rotate-[4deg]',
-                  variant === 'tabs' ? 'block' : 'absolute top-1/2 right-3 -mt-[3px]',
+                  variant === 'tabs' ? 'block' : 'absolute top-1/2 right-3 -mt-[3px] rail-compact:right-1',
                 )}
               />
             </Link>
