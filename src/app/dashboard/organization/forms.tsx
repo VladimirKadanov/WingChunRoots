@@ -5,12 +5,12 @@
 // works without JavaScript (src/server/forms/flash.ts). The services decide who may do what; these
 // forms only show what the page's view says the account can do.
 
+import dynamic from 'next/dynamic';
 import { useActionState } from 'react';
 
 import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { TextAreaField } from '@/components/account/textarea-field';
 import { EvidenceUploader, type UploadedEvidenceItem } from '@/components/evidence/uploader';
-import { SearchPick } from '@/components/ui/search-pick';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import { discardEvidenceAction } from '../teachers/historical/actions';
 import {
@@ -24,6 +24,11 @@ import {
   updateOrganizationAction,
 } from './actions';
 import { ADD_ADMIN_FORM, ADD_MEMBER_FORM, APPLY_FORM, DETAILS_FORM, REQUEST_SCHOOL_FORM } from './form-ids';
+
+// Role replay 2026-11-25 (P2-4): "Find by name" loads after the page (next/dynamic), so this form
+// module, shared with /dashboard/organization/apply, keeps its script budget. It renders nothing
+// before hydration anyway.
+const SearchPick = dynamic(() => import('@/components/ui/search-pick').then((m) => m.SearchPick), { ssr: false });
 
 type Option = { value: string; label: string };
 type Country = { code: string; name: string };
