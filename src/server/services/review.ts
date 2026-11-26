@@ -82,6 +82,7 @@ import { establishDeceased, proposalFacts, recordRevisionRow } from './stewardsh
 import { appealFacts, appealOfCase, decidedBeforeAppeal, lineageReportFacts } from './disputes';
 import { decideGovernanceKind, GOVERNANCE_KINDS } from './governance-review';
 import { successionFacts } from './succession';
+import { type CaseConfirmation, confirmationsOfCase, mayAskTeacher } from './claim-confirmations';
 import { assignableRoles, caseById, caseColumns, type CaseRow, caseReplayOf, DECIDERS, isCaseKeyConflict, ownSide, partiesOf, recordCaseEvent } from './review-core';
 import { queueRecomputeForPerson } from './lineage-membership';
 import { ARCHIVE_EDITOR_ONLY, ARCHIVE_EDITOR_ROLES } from './archive-editor';
@@ -168,6 +169,8 @@ export const reviewListInput = z.object({
   /** `waiting`: open, in review or needing information (the default); `all`: every status. */
   status: z.enum(['waiting', 'all', ...REVIEW_CASE_STATUSES]).default('waiting'),
   assigned: z.enum(['any', 'me', 'none']).default('any'),
+  /** Role replay 2026-11-25 (P2-11): `me` keeps only the kinds this reviewer's role decides (DECIDERS). */
+  decide: z.enum(['any', 'me']).default('any'),
   sort: z.enum(['oldest', 'newest']).default('oldest'),
   page: z.coerce.number().int().min(1).max(10_000).default(1),
 });
@@ -526,6 +529,8 @@ export interface ReviewListCounts {
   unassigned: number;
   /** Opened more than REVIEW_LATE_DAYS days ago. */
   late: number;
+  /** Role replay 2026-11-25 (P2-11): the cases of the kinds this reviewer's role decides (DECIDERS). */
+  decide: number;
   kinds: Record<string, number>;
   groups: { value: ReviewGroup; label: string; count: number }[];
 }
@@ -592,7 +597,12 @@ export interface ReviewCaseView {
   } | null;
   /** M10b: the words of the three decisions for this kind (verify, reject, needs_info). */
   decisions: Record<'verify' | 'reject' | 'needs_info', DecisionText>;
-  can: { assignSelf: boolean; unassign: boolean; assignOthers: boolean; verify: boolean; reject: boolean; needsInfo: boolean; note: boolean };
+  can: { assignSelf: boolean; unassign: boolean; assignOthers: boolean; verify: boolean; reject: boolean; needsInfo: boolean; note: boolean; askTeacher: boolean };
+  /**
+   * Role replay 2026-11-25 (P3-8, ADR 0067): a profile claim's verified teachers of the record who
+   * have an account, and what each was asked and answered. Empty for a party and for other kinds.
+   */
+  confirmations: CaseConfirmation[];
   /** Why this reviewer may not decide, when they may not (shown on the card). */
   decideNote: string | null;
   /** For an administrator: the reviewers a case can be given to. */
@@ -600,6 +610,11 @@ export interface ReviewCaseView {
 }
 
 // --- review.list -------------------------------------------------------------------------------
+
+/** The queue kinds a staff role decides (review-core.ts DECIDERS). */
+function decidableKinds(role: string | null | undefined): ReviewCaseKind[] {
+  return QUEUE_KINDS.filter((k) => DECIDERS[k].some((r) => r === role));
+}
 
 /** review.list: the queue (any reviewer with the second factor). */
 export async function listReviewCases(principal: Principal | null, raw: ReviewListInput = {}): Promise<ReviewList> {
@@ -624,19 +639,22 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
     .where(and(...where))
     .groupBy(reviewCase.kind);
   const kindCounts = Object.fromEntries(QUEUE_KINDS.map((k) => [k, 0])) as Record<string, number>;
-  const counts: ReviewListCounts = { all: 0, mine: 0, unassigned: 0, late: 0, kinds: kindCounts, groups: [] };
+  const counts: ReviewListCounts = { all: 0, mine: 0, unassigned: 0, late: 0, decide: 0, kinds: kindCounts, groups: [] };
+  const decidable = decidableKinds(p.user.role);
   for (const row of counted) {
     kindCounts[row.kind] = row.all;
     counts.all += row.all;
     counts.mine += row.mine;
     counts.unassigned += row.unassigned;
     counts.late += row.late;
+    if (decidable.includes(row.kind)) counts.decide += row.all;
   }
   counts.groups = REVIEW_GROUP_KEYS.map((g) => ({ value: g, label: REVIEW_GROUPS[g].label, count: REVIEW_GROUPS[g].kinds.reduce((n, k) => n + (kindCounts[k] ?? 0), 0) }));
   if (filters.kind) where.push(eq(reviewCase.kind, filters.kind as ReviewCaseKind));
   if (filters.group) where.push(inArray(reviewCase.kind, [...REVIEW_GROUPS[filters.group].kinds]));
   if (filters.assigned === 'me') where.push(eq(reviewCase.assignedToUserId, p.user.id));
   else if (filters.assigned === 'none') where.push(isNull(reviewCase.assignedToUserId));
+  if (filters.decide === 'me') where.push(decidable.length > 0 ? inArray(reviewCase.kind, decidable) : sql`false`);
   if (filters.age !== 'any') where.push(sql`${reviewCase.createdAt} < now() - make_interval(days => ${REVIEW_AGES[filters.age]}::int)`);
   const condition = and(...where);
   const [{ total } = { total: 0 }] = await db.select({ total: count() }).from(reviewCase).where(condition);
@@ -862,6 +880,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
       : facts?.takeDown
         ? { ...facts, takeDown: { ...facts.takeDown, allowed: !own && hasStaff2FA(p, TAKEDOWN_ROLES) } }
         : facts;
+  const confirmations = own ? [] : await confirmationsOfCase(db, c);
   const reviewers = can.assignOthers
     ? (
         await db
@@ -902,7 +921,8 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     })),
     subject,
     decisions: c.kind === 'person_claim' && c.relationshipId === null ? SELF_CLAIM_DECISIONS : DECISION_TEXT[c.kind as Exclude<ReviewCaseKind, 'deletion_request'>],
-    can,
+    can: { ...can, askTeacher: confirmations.length > 0 && mayAskTeacher(p, c, own) && !firstDecider },
+    confirmations,
     decideNote,
     reviewers,
   };
