@@ -84,6 +84,8 @@ export const ROUTES: readonly AppRoute[] = [
   // that no test changes (the tests that save use accounts of their own). The search palette is a
   // screen state (e2e/screenshots.spec.ts, e2e/visual.spec.ts, e2e/m07-search.spec.ts).
   { path: '/dashboard/profile', name: 'profile', status: 200, milestone: 'M07', key: true, signInAs: 'demo-pending' },
+  // "My city is missing" (role replay 2026-11-25, P2-12): it sends nothing until submitted.
+  { path: '/dashboard/places/missing?next=/dashboard/profile', name: 'places-missing', status: 200, milestone: 'replay-2026-11', signInAs: 'demo-pending' },
   { path: '/account/privacy', name: 'account-privacy', status: 200, milestone: 'M07', key: true, signInAs: 'demo-pending' },
   // Teacher requests (M09): demo accounts that no test changes. demo-pending has one request
   // waiting; demo-free-sifu-5 has five students, one request at its limit and the upgrade prompt

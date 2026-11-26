@@ -32,7 +32,7 @@ import {
   userIdOf,
 } from './helpers/auth';
 import { openMailbox } from './helpers/mailbox';
-import { expectNoAxeViolations, switchColorScheme } from './helpers/ui';
+import { chooseCity, expectNoAxeViolations, switchColorScheme } from './helpers/ui';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -784,21 +784,24 @@ test('@M02 no axe violations on sign-up, sign-in and onboarding', async ({ page 
 });
 
 /** The onboarding answers that a server error must not lose: script, country and city (H2). */
-async function fillOnboardingWithBadYear(page: Page) {
+async function fillOnboardingWithBadYear(page: Page, { script = true } = {}) {
   await field(page, 'Name in Latin letters').fill('So Chuk-ching');
   await field(page, /^Original script/).selectOption('zh-Hant');
   await field(page, 'Name in the original script').fill('蘇竹晴');
   await field(page, 'Country').selectOption('HK');
-  await field(page, 'City').selectOption({ label: 'Hong Kong' });
+  // With JavaScript the city is a type-ahead (P2-12); without it, the select of the large cities.
+  if (script) await chooseCity(page, 'Hong', 'Hong Kong, HK');
+  else await field(page, 'City').selectOption({ label: 'Hong Kong' });
   await field(page, 'Year you started Wing Chun').fill('1850');
   await page.getByRole('button', { name: 'Save my profile' }).click();
 }
 
-async function expectOnboardingKept(page: Page) {
+async function expectOnboardingKept(page: Page, { script = true } = {}) {
   await expect(page.getByText('1850 is before 1900.').filter({ visible: true }).first()).toBeVisible();
   await expect(field(page, /^Original script/)).toHaveValue('zh-Hant');
   await expect(field(page, 'Country')).toHaveValue('HK');
-  await expect(field(page, 'City').locator('option:checked')).toHaveText('Hong Kong');
+  if (script) await expect(field(page, 'City or town')).toHaveValue('Hong Kong, HK');
+  else await expect(field(page, 'City').locator('option:checked')).toHaveText('Hong Kong');
   await expect(field(page, 'Name in the original script')).toHaveValue('蘇竹晴');
   await expect(field(page, 'Name in the original script')).toHaveAttribute('lang', 'zh-Hant');
 }
@@ -815,11 +818,15 @@ test('@M02 onboarding keeps the chosen script, country and city after a server e
   const account = await signInAs(page, 'new');
   await page.goto('/onboarding');
 
-  // City lists the chosen country's cities; a city picked first sets its country.
+  // The city type-ahead finds the chosen country's places only (P2-12); a city picked first sets its country.
   await field(page, 'Country').selectOption('BG');
-  await expect(field(page, 'City').locator('option')).toHaveText(['Not given', 'Plovdiv', 'Sofia', 'Varna']);
+  await field(page, 'City or town').fill('Berlin');
+  await expect(page.getByRole('listbox', { name: 'Cities and towns' })).toContainText('No city or town by that name.');
+  await field(page, 'City or town').fill('Plov');
+  await expect(page.getByRole('option', { name: 'Plovdiv, BG' })).toBeVisible();
+  await field(page, 'City or town').fill('');
   await field(page, 'Country').selectOption('');
-  await field(page, 'City').selectOption({ label: 'Berlin' });
+  await chooseCity(page, 'Berl', 'Berlin, DE');
   await expect(field(page, 'Country')).toHaveValue('DE');
 
   // The name as the register will show it, while typing.
@@ -858,7 +865,9 @@ test('@M02 a country chosen before the page is interactive is kept', async ({ pa
   release();
   await expect(page.locator('figure').filter({ hasText: 'How your name will appear' })).toBeVisible();
   await expect(field(page, 'Country')).toHaveValue('BG');
-  await expect(field(page, 'City').locator('option')).toHaveText(['Not given', 'Plovdiv', 'Sofia', 'Varna']);
+  // The city type-ahead searches the kept country (P2-12).
+  await field(page, 'City or town').fill('Berlin');
+  await expect(page.getByRole('listbox', { name: 'Cities and towns' })).toContainText('No city or town by that name.');
 });
 
 /** The current code of the otpauth:// link on the security page. */
@@ -1104,9 +1113,9 @@ test.describe('without JavaScript', () => {
   test('@M02 onboarding keeps every answer after a server error', async ({ page }) => {
     await signInAs(page, 'new');
     await page.goto('/onboarding');
-    await fillOnboardingWithBadYear(page);
+    await fillOnboardingWithBadYear(page, { script: false });
     await expect(page).toHaveURL(/\/onboarding\?outcome=/);
-    await expectOnboardingKept(page);
+    await expectOnboardingKept(page, { script: false });
   });
 
   test('@M02 two-factor setup works without JavaScript', async ({ page }) => {

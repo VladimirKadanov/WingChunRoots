@@ -6,6 +6,7 @@
 // attribute and translate="no" when the dashboard renders it (plan §5.3).
 
 import { formatDay, untilPlanEnd } from '../../lib/dates';
+import { countryName } from '../../lib/regions';
 import { PLAN_CODES } from '../db/schema/common';
 import { feature, type FeatureKey, GRANTABLE_PLANS, type PlanCode, PLANS, upgradeBenefits } from '../entitlements/plans';
 import type { NameData } from './email/types';
@@ -281,6 +282,34 @@ const accountDeletionRequested: NotificationTemplate<{ caseId: string }> = {
     action: { label: 'See deletion requests', href: '/admin#deletion-requests' },
   }),
   sample: { caseId: '0190a5c0-0000-7000-8000-000000000002' },
+};
+
+/**
+ * "place.missing": to every admin, when a member says their city or town is not in the GeoNames
+ * extract (role replay 2026-11-25, P2-12; docs/adr/0071-cities-of-launch-countries.md). The payload
+ * holds the place's name as typed and its country; nothing about who asked.
+ */
+const placeMissing: NotificationTemplate<{ name: string; countryCode: string }> = {
+  name: 'place.missing',
+  parse(payload) {
+    const data = payloadObject('place.missing', payload);
+    if (typeof data.name !== 'string' || data.name.length === 0 || data.name.length > 100) {
+      throw new NotificationDataError('place.missing', 'name must be a string of 1 to 100 characters');
+    }
+    if (typeof data.countryCode !== 'string' || !/^[A-Z]{2}$/.test(data.countryCode)) {
+      throw new NotificationDataError('place.missing', 'countryCode must be two capital letters');
+    }
+    return { name: data.name, countryCode: data.countryCode };
+  },
+  render: ({ name, countryCode }) => ({
+    title: 'A city is missing',
+    body: [
+      {
+        text: `A member could not find “${name}” (${countryName(countryCode) ?? countryCode}) in the city list. Places come from the GeoNames extract: add its country or lower its population floor in src/server/geo/geonames.ts, then run pnpm geo:extract and pnpm geo:load (admin guide, the GeoNames section).`,
+      },
+    ],
+  }),
+  sample: { name: 'Demo Town', countryCode: 'FR' },
 };
 
 // --- Teacher requests (M09) ---------------------------------------------------------------------
@@ -2101,6 +2130,7 @@ const claimConfirmationAsked: NotificationTemplate<{ confirmationId: string }> =
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
   'account.deletion-requested': accountDeletionRequested,
+  'place.missing': placeMissing,
   'pilot-access.requested': pilotAccessRequested,
   'pilot-access.closed': pilotAccessClosed,
   'plan.granted': planGranted,

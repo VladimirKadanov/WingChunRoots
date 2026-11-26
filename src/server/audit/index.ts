@@ -199,7 +199,10 @@ export type AuditAction =
   | 'lineage.update'
   // Control panel 2026-11 (docs/adr/0042-archive-link-edit.md): a staff link's years or source
   // corrected in place. The row carries ids, the years and the source's length, never its text.
-  | 'relationship.edit';
+  | 'relationship.edit'
+  // Role replay 2026-11-25, P2-12: "My city is missing". The place's name and country, the
+  // reporting account as the actor; at most five a day per account (services/places.ts).
+  | 'place.missing_report';
 
 export interface AuditEntry {
   action: AuditAction;

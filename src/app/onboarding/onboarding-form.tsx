@@ -23,6 +23,9 @@ import {
   useFormId,
   useHydrated,
 } from '@/components/account/fields';
+import { LazyCityField } from '@/components/account/lazy-city-field';
+import { MissingCityLink } from '@/components/account/missing-city-link';
+import type { CityChoice } from '@/components/account/city-combobox';
 import { NameLine, NameText } from '@/components/account/person-names';
 import { cx } from '@/lib/cx';
 import { IDLE, fieldId, type FormState } from '@/lib/form-state';
@@ -118,6 +121,11 @@ export function OnboardingForm({
   const [originalLang, setOriginalLang] = useState(() => value('originalLang'));
   const [countryCode, setCountryCode] = useState(() => value('countryCode'));
   const [placeId, setPlaceId] = useState(() => value('placeId'));
+  // P2-12: the type-ahead's choice (any place of the extract, not only the listed ones).
+  const [city, setCity] = useState<CityChoice | null>(() => {
+    const listed = options.places.find((p) => p.id === value('placeId'));
+    return listed ? { id: listed.id, name: listed.name, countryCode: listed.countryCode } : null;
+  });
   const [primaryName, setPrimaryName] = useState(() => value('primaryName'));
   const [originalName, setOriginalName] = useState(() => value('originalName'));
   const [jyutping, setJyutping] = useState(() => value('jyutping'));
@@ -146,7 +154,18 @@ export function OnboardingForm({
     setCountryCode(code);
     const place = options.places.find((p) => p.id === placeId);
     if (place && place.countryCode !== code) setPlaceId('');
+    if (city && city.countryCode !== code) {
+      setCity(null);
+      setPlaceId('');
+    }
   };
+  const chooseCity = (choice: CityChoice | null) => {
+    setCity(choice);
+    setPlaceId(choice?.id ?? '');
+    if (choice) setCountryCode(choice.countryCode);
+  };
+  // This form's address, for "My city is missing" to come back to.
+  const here = next === '/dashboard' ? '/onboarding' : `/onboarding?${new URLSearchParams({ next })}`;
   const choosePlace = (id: string) => {
     setPlaceId(id);
     const place = options.places.find((p) => p.id === id);
@@ -388,39 +407,57 @@ export function OnboardingForm({
               ))}
             </optgroup>
           </SelectField>
-          <SelectField
-            form={FORM}
-            name="placeId"
-            label="City"
-            optional
-            autoComplete="off"
-            hint={
-              filtered && places.length === 0
-                ? 'No cities are listed for this country yet. Leave it empty.'
-                : 'Only some cities are listed so far. Leave it empty if yours is not there.'
-            }
-            value={placeId}
-            onValue={choosePlace}
-            state={state}
-            autoFocus={first === 'placeId'}
-          >
-            <option value="">Not given</option>
-            {filtered
-              ? places.map((place) => (
-                  <option key={place.id} value={place.id}>
-                    {place.name}
-                  </option>
-                ))
-              : [...placesByCountry].map(([code, list]) => (
-                  <optgroup key={code} label={countryName.get(code) ?? code}>
-                    {list.map((place) => (
+          <LazyCityField
+              form={FORM}
+              name="placeId"
+              label="City or town"
+              optional
+              hint="Type a few letters, in any spelling: Plovdiv, Пловдив."
+              value={city}
+              onValue={chooseCity}
+              countryCode={countryCode || null}
+              next={here}
+              state={state}
+              autoFocus={first === 'placeId'}
+            fallback={
+              <SelectField
+                form={FORM}
+                name="placeId"
+                label="City"
+                optional
+                autoComplete="off"
+                hint={
+                  <>
+                    {filtered && places.length === 0
+                      ? 'No large cities are listed for this country. Leave it empty, or tell us yours: '
+                      : 'The large cities are listed. Leave it empty if yours is not there, or tell us: '}
+                    <MissingCityLink next={here} countryCode={countryCode || null} />
+                  </>
+                }
+                value={placeId}
+                onValue={choosePlace}
+                state={state}
+                autoFocus={first === 'placeId'}
+              >
+                <option value="">Not given</option>
+                {filtered
+                  ? places.map((place) => (
                       <option key={place.id} value={place.id}>
                         {place.name}
                       </option>
+                    ))
+                  : [...placesByCountry].map(([code, list]) => (
+                      <optgroup key={code} label={countryName.get(code) ?? code}>
+                        {list.map((place) => (
+                          <option key={place.id} value={place.id}>
+                            {place.name}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
-                  </optgroup>
-                ))}
-          </SelectField>
+              </SelectField>
+            }
+          />
         </div>
         <TextField
           form={FORM}

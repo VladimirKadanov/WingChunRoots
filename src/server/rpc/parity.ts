@@ -32,6 +32,8 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   // M08: plans, test plans and notifications.
   'src/app/dashboard/actions.ts#markReadAction': { rpc: ['notifications.markRead', 'notifications.markAllRead'] },
   'src/app/dashboard/actions.ts#requestPilotAccessAction': { rpc: ['plans.requestPilotAccess'] },
+  // Role replay 2026-11-25, P2-12: "My city is missing".
+  'src/app/dashboard/places/missing/actions.ts#reportMissingPlaceAction': { rpc: ['places.reportMissing'] },
   'src/app/account/plan/actions.ts#setAccountTypeAction': { rpc: ['account.setType'] },
   // M18: notice e-mail preferences and the one-press unsubscribe.
   'src/app/account/notifications/actions.ts#setNotificationEmailsAction': { rpc: ['notifications.preferences', 'notifications.setPreference'] },
