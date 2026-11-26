@@ -21,6 +21,7 @@ import type { AdminT } from '@/components/admin/i18n/translate';
 import { AdminPageHeader, AdminViews } from '@/components/admin/table-parts';
 import { ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { FilterDisclosure } from '@/components/ui/filter-disclosure';
 import { guardRoute } from '@/server/auth/web';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
@@ -64,7 +65,7 @@ function FilterSelect({ id, label, name, defaultValue, children }: { id: string;
 
 function returnPath(query: Record<string, string | string[] | undefined>): string {
   const params = new URLSearchParams();
-  for (const key of ['kind', 'group', 'status', 'assigned', 'age', 'sort', 'page'] as const) {
+  for (const key of ['kind', 'group', 'status', 'assigned', 'age', 'decide', 'sort', 'page'] as const) {
     const value = one(query[key]);
     if (value) params.set(key, value);
   }
@@ -75,15 +76,17 @@ function returnPath(query: Record<string, string | string[] | undefined>): strin
 /** The saved views of the queue, with their counts (under the list's status filter, which they keep). */
 function queueViews(t: AdminT, list: ReviewList) {
   const f = list.filters;
-  const base: Pick<ReviewList, 'filters' | 'page'> = { filters: { ...f, kind: undefined, group: undefined, assigned: 'any', age: 'any', sort: 'oldest' }, page: 1 };
+  const base: Pick<ReviewList, 'filters' | 'page'> = { filters: { ...f, kind: undefined, group: undefined, assigned: 'any', age: 'any', decide: 'any', sort: 'oldest' }, page: 1 };
   const plain = !f.kind && f.sort === 'oldest';
   const view = (label: string, count: number, changes: Partial<ReviewList['filters']>, testId?: string) => {
     const next = { ...base, filters: { ...base.filters, ...changes } };
-    const current = plain && (f.group ?? null) === (next.filters.group ?? null) && f.assigned === next.filters.assigned && f.age === next.filters.age;
+    const current = plain && (f.group ?? null) === (next.filters.group ?? null) && f.assigned === next.filters.assigned && f.age === next.filters.age && f.decide === next.filters.decide;
     return { label, count, href: queueHref(next, {}), current, testId };
   };
   return [
     view(f.status === 'waiting' ? t('All waiting') : t('All'), list.counts.all, {}, 'view-all'),
+    // Role replay 2026-11-25 (P2-11): the cases of the kinds this reviewer's role decides.
+    view(t('Yours to decide'), list.counts.decide, { decide: 'me' }, 'view-decide'),
     view(t('Assigned to me'), list.counts.mine, { assigned: 'me' }, 'view-mine'),
     view(t('Nobody assigned'), list.counts.unassigned, { assigned: 'none' }, 'view-unassigned'),
     view(t('Waiting over 3 days'), list.counts.late, { age: '3d' }, 'view-late'),
@@ -143,6 +146,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
     age: one(query.age) || undefined,
     status: one(query.status) || undefined,
     assigned: one(query.assigned) || undefined,
+    decide: one(query.decide) || undefined,
     sort: one(query.sort) || undefined,
     page: one(query.page) || undefined,
   } as ReviewListInput;
@@ -153,6 +157,8 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
 
   const { counts } = list;
   const statusCount = statusCountText(t, list);
+  const f = list.filters;
+  const activeFilters = [f.group, f.kind, f.status !== 'waiting', f.assigned !== 'any', f.age !== 'any'].filter(Boolean).length;
 
   return (
     <div className="mx-auto max-w-[96rem] px-page pt-6 pb-10 md:pt-8 md:pb-14">
@@ -165,7 +171,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
         title={t('Review queue')}
         summary={
           <span data-testid="queue-summary">
-            {withStrong(statusCount, counts.all)} · {withStrong(t('{n} assigned to you'), counts.mine)} · {withStrong(t('{n} with nobody'), counts.unassigned)} ·{' '}
+            {withStrong(t('{n} for you to decide'), counts.decide)} · {withStrong(statusCount, counts.all)} · {withStrong(t('{n} assigned to you'), counts.mine)} · {withStrong(t('{n} with nobody'), counts.unassigned)} ·{' '}
             {counts.late > 0 ? (
               <span className="font-semibold text-danger">
                 <span aria-hidden="true">! </span>
@@ -190,51 +196,63 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
 
         <div className="grid min-w-0 content-start gap-5">
           <form method="get" action="/admin/review" role="search" aria-label={t('Filter the queue')} className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,11rem),1fr))] items-end gap-3" data-testid="queue-filters">
-            <FilterSelect id="filter-group" name="group" label={t('Group')} defaultValue={list.filters.group ?? ''}>
-              <option value="">{t('Every group')}</option>
-              {counts.groups.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {t(g.label)} ({g.count})
-                </option>
-              ))}
-            </FilterSelect>
-            <FilterSelect id="filter-kind" name="kind" label={t('Kind')} defaultValue={list.filters.kind ?? ''}>
-              <option value="">{t('Any kind')}</option>
-              {list.kinds.map((kind) => (
-                <option key={kind.value} value={kind.value}>
-                  {t(kind.label)} ({counts.kinds[kind.value] ?? 0})
-                </option>
-              ))}
-            </FilterSelect>
-            <FilterSelect id="filter-status" name="status" label={t('Status')} defaultValue={list.filters.status}>
-              {list.statuses.map((status) => (
-                <option key={status.value} value={status.value}>
-                  {t(status.label)}
-                </option>
-              ))}
-            </FilterSelect>
-            <FilterSelect id="filter-assigned" name="assigned" label={t('Assigned to')} defaultValue={list.filters.assigned}>
-              <option value="any">{t('Anyone')}</option>
-              <option value="me">{t('Me')}</option>
-              <option value="none">{t('Nobody yet')}</option>
-            </FilterSelect>
-            <FilterSelect id="filter-age" name="age" label={t('Waiting')} defaultValue={list.filters.age}>
-              <option value="any">{t('Any time')}</option>
-              <option value="1d">{t('Over 1 day')}</option>
-              <option value="3d">{t('Over 3 days')}</option>
-              <option value="7d">{t('Over a week')}</option>
-            </FilterSelect>
-            {list.filters.sort !== 'oldest' ? <input type="hidden" name="sort" value={list.filters.sort} /> : null}
-            <div className="flex flex-wrap items-center gap-3">
-              <button type="submit" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
-                {t('Show cases')}
-              </button>
-              {returnPath(query) !== '/admin/review' ? (
-                <Link href="/admin/review" className="link inline-flex min-h-12 items-center text-ui">
-                  {t('Clear')}
-                </Link>
-              ) : null}
-            </div>
+            {/* Role replay 2026-11-25 (P2-11): on a phone the saved views above stay as chips and the
+                dropdowns fold behind "More filters" (ADR 0053's disclosure, open from 64rem). */}
+            <FilterDisclosure
+              active={activeFilters}
+              from="lg"
+              label={t('More filters')}
+              setText={(n) => t('{n} set', { n })}
+              className="col-span-full"
+              panelClassName="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,11rem),1fr))] items-end gap-3"
+            >
+              <FilterSelect id="filter-group" name="group" label={t('Group')} defaultValue={list.filters.group ?? ''}>
+                <option value="">{t('Every group')}</option>
+                {counts.groups.map((g) => (
+                  <option key={g.value} value={g.value}>
+                    {t(g.label)} ({g.count})
+                  </option>
+                ))}
+              </FilterSelect>
+              <FilterSelect id="filter-kind" name="kind" label={t('Kind')} defaultValue={list.filters.kind ?? ''}>
+                <option value="">{t('Any kind')}</option>
+                {list.kinds.map((kind) => (
+                  <option key={kind.value} value={kind.value}>
+                    {t(kind.label)} ({counts.kinds[kind.value] ?? 0})
+                  </option>
+                ))}
+              </FilterSelect>
+              <FilterSelect id="filter-status" name="status" label={t('Status')} defaultValue={list.filters.status}>
+                {list.statuses.map((status) => (
+                  <option key={status.value} value={status.value}>
+                    {t(status.label)}
+                  </option>
+                ))}
+              </FilterSelect>
+              <FilterSelect id="filter-assigned" name="assigned" label={t('Assigned to')} defaultValue={list.filters.assigned}>
+                <option value="any">{t('Anyone')}</option>
+                <option value="me">{t('Me')}</option>
+                <option value="none">{t('Nobody yet')}</option>
+              </FilterSelect>
+              <FilterSelect id="filter-age" name="age" label={t('Waiting')} defaultValue={list.filters.age}>
+                <option value="any">{t('Any time')}</option>
+                <option value="1d">{t('Over 1 day')}</option>
+                <option value="3d">{t('Over 3 days')}</option>
+                <option value="7d">{t('Over a week')}</option>
+              </FilterSelect>
+              {list.filters.sort !== 'oldest' ? <input type="hidden" name="sort" value={list.filters.sort} /> : null}
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="submit" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
+                  {t('Show cases')}
+                </button>
+                {returnPath(query) !== '/admin/review' ? (
+                  <Link href="/admin/review" className="link inline-flex min-h-12 items-center text-ui">
+                    {t('Clear')}
+                  </Link>
+                ) : null}
+              </div>
+            </FilterDisclosure>
+            {list.filters.decide !== 'any' ? <input type="hidden" name="decide" value={list.filters.decide} /> : null}
           </form>
 
           <ReviewTable list={list} t={t} />
