@@ -199,3 +199,44 @@ export const organizationTeacherClaim = pgTable(
     check('organization_teacher_claim_withdraw_reason_check', sql`${t.withdrawReason} IS NULL OR ${inList(t.withdrawReason.name, ORGANIZATION_CLAIM_END_REASONS)}`),
   ],
 );
+
+/** Role replay 2026-11-25 (P2-6, ADR 0074): the states of an organization's claim link. */
+export const ORGANIZATION_CLAIM_LINK_STATUSES = ['active', 'used', 'revoked'] as const;
+
+/**
+ * Role replay 2026-11-25 (P2-6, ADR 0074): a claim link an organization's admin passes on to one
+ * imported member, outside WingChunRoots (we send no e-mail; the import never reads the Email
+ * column). The token is derived from the row's id with the server's key, so the admin can see the
+ * link again; only its SHA-256 is stored for the lookup. Opening it lets a signed-in account ask
+ * to claim the record: a review case, as with any claim, never an automatic sign-in (Phase 3
+ * completion condition). One active link per person; a new one revokes the old.
+ */
+export const organizationClaimLink = pgTable(
+  'organization_claim_link',
+  {
+    id: idColumn(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    status: text('status', { enum: ORGANIZATION_CLAIM_LINK_STATUSES }).notNull().default('active'),
+    createdByUserId: uuid('created_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    usedByUserId: uuid('used_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex('organization_claim_link_token_hash_key').on(t.tokenHash),
+    uniqueIndex('organization_claim_link_one_active_key').on(t.personId).where(sql`${t.status} = 'active'`),
+    index('organization_claim_link_organization_id_idx').on(t.organizationId),
+    index('organization_claim_link_person_id_idx').on(t.personId),
+    index('organization_claim_link_created_by_user_id_idx').on(t.createdByUserId),
+    index('organization_claim_link_used_by_user_id_idx').on(t.usedByUserId),
+    check('organization_claim_link_status_check', inList(t.status.name, ORGANIZATION_CLAIM_LINK_STATUSES)),
+    check('organization_claim_link_token_hash_format', sql`${t.tokenHash} ~ '^[0-9a-f]{64}$'`),
+    check('organization_claim_link_used', sql`(${t.status} = 'used') = (${t.usedAt} IS NOT NULL)`),
+  ],
+);

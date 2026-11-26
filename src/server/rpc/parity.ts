@@ -86,6 +86,7 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/teachers/invite/actions.ts#inviteTeacherAction': { rpc: ['relationships.invite'] },
   'src/app/dashboard/teachers/invite/actions.ts#sendInvitationAction': { rpc: ['invitations.send'] },
   'src/app/invite/[token]/actions.ts#acceptInvitationAction': { rpc: ['invitations.accept'] },
+  'src/app/claim/[token]/actions.ts#acceptClaimLinkAction': { rpc: ['claimLinks.accept'] },
   // ADR 0040: "Ask to claim this profile" on a public record.
   'src/app/people/[slug]/claim/actions.ts#requestClaimAction': { rpc: ['claims.request'] },
   'src/app/dashboard/instructor/actions.ts#requestInstructorAction': { rpc: ['instructor.request'] },
@@ -131,6 +132,8 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/organization/tools-actions.ts#previewImportAction': { rpc: ['organizationTools.importPreview'] },
   'src/app/dashboard/organization/tools-actions.ts#commitImportAction': { rpc: ['organizationTools.importCommit'] },
   'src/app/dashboard/organization/tools-actions.ts#discardImportAction': { rpc: ['organizationTools.importDiscard'] },
+  'src/app/dashboard/organization/tools-actions.ts#makeClaimLinksAction': { rpc: ['organizationTools.makeClaimLinks'] },
+  'src/app/dashboard/organization/tools-actions.ts#replaceClaimLinkAction': { rpc: ['organizationTools.replaceClaimLink'] },
   'src/app/dashboard/organization/tools-actions.ts#withdrawClaimAction': { rpc: ['organizationTools.withdrawClaim'] },
   'src/app/dashboard/organization/tools-actions.ts#leaveOrganizationAction': { rpc: ['organizationTools.leave'] },
   // M17: events (the poster is uploaded and removed from the browser through /api/rpc).

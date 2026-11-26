@@ -98,7 +98,9 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
   // The teacher chosen on a profile ("I trained with", docs/adr/0039-member-navigation.md) survives
   // signing in and onboarding: both come back to this address with it.
   const chosenSlug = SLUG.test(one(query.teacher)) ? one(query.teacher) : null;
-  const here = chosenSlug ? `${PAGE}?${new URLSearchParams({ teacher: chosenSlug })}` : PAGE;
+  // ADR 0073: from the teacher's own invite link (/join/<slug>): kept through sign-in and onboarding.
+  const fromInvite = chosenSlug !== null && one(query.from) === 'invite';
+  const here = chosenSlug ? `${PAGE}?${new URLSearchParams({ teacher: chosenSlug, ...(fromInvite ? { from: 'invite' } : {}) })}` : PAGE;
   const guard = await guardRoute(PAGE, here);
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
@@ -193,6 +195,8 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
           teacherHasLineage: chosen.lineages.length > 0 ? 'yes' : 'no',
           // ADR 0056: not on WingChunRoots yet, so the request goes with an invitation.
           teacherInvitable: !chosen.limited && chosen.claimState === 'unclaimed' && chosen.kind === 'living' && chosen.lifeStatus !== 'deceased' ? 'yes' : 'no',
+          // ADR 0073: the teacher whose invite link brought the student; marks the request only for them.
+          ...(fromInvite ? { viaInviteFor: chosen.id } : {}),
         }
       : {};
 

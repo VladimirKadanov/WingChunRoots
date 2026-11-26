@@ -9,7 +9,7 @@ import { useActionState } from 'react';
 import { FieldError, FieldLabel, fieldClassName, FormMessage, Hint, SubmitButton, useFocusOnError, useFormId } from '@/components/account/fields';
 import { cx } from '@/lib/cx';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
-import { commitImportAction, discardImportAction, leaveOrganizationAction, previewImportAction, withdrawClaimAction } from './tools-actions';
+import { commitImportAction, discardImportAction, leaveOrganizationAction, makeClaimLinksAction, previewImportAction, replaceClaimLinkAction, withdrawClaimAction } from './tools-actions';
 import { IMPORT_FORM } from './tools-form-ids';
 
 export function ImportUploadForm({ organizationId, maxKb, maxRows, initial }: { organizationId: string; maxKb: number; maxRows: number; initial?: FormState | null }) {
@@ -53,6 +53,8 @@ const ONE_BUTTON = {
   discard: discardImportAction,
   claim: withdrawClaimAction,
   leave: leaveOrganizationAction,
+  makeLinks: makeClaimLinksAction,
+  replaceLink: replaceClaimLinkAction,
 } as const;
 
 /** A one-button form: import or discard a preview, withdraw a claim, leave a membership. */

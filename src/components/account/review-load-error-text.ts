@@ -30,6 +30,12 @@ export const REVIEW_LOAD_ERRORS = {
     message: "We couldn't load this invitation. Nothing was changed.",
     back: { href: '/', label: 'Back to the home page' },
   },
+  claimLink: {
+    eyebrow: 'Claim link',
+    title: 'Claim your record',
+    message: "We couldn't load this claim link. Nothing was changed.",
+    back: { href: '/', label: 'Back to the home page' },
+  },
   instructor: {
     eyebrow: 'Dashboard',
     title: 'Instructor verification',

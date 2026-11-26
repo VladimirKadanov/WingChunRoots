@@ -6,6 +6,7 @@
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
+import Link from 'next/link';
 
 import { LoadError } from '@/components/account/load-error';
 import { ORGANIZATION_LOAD_ERRORS } from '@/components/account/organization-load-error-text';
@@ -122,6 +123,15 @@ export default async function ImportDetailPage({ params, searchParams }: Props) 
             />
           ) : null}
         </div>
+      ) : null}
+
+      {imp.status === 'committed' && imp.importedCount > 0 ? (
+        <p className="max-w-[62ch] text-ui" data-testid="organization-import-next">
+          Each imported member can claim their record with a link you pass on yourself. We send nothing.{' '}
+          <Link href={`/dashboard/organization/${id}/claim-links`} className="link inline-flex min-h-11 items-center font-semibold">
+            Make claim links
+          </Link>
+        </p>
       ) : null}
 
       <Section id="import-rows" title="Rows" testId="organization-import-rows">

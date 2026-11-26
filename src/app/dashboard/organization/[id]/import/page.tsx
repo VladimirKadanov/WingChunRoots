@@ -120,6 +120,14 @@ export default async function ImportPage({ params, searchParams }: Props) {
         ) : (
           <p className="text-ui text-fg-muted">No file has been checked yet.</p>
         )}
+        {list.imports.some((imp) => imp.status === 'committed') ? (
+          <p className="mt-4 max-w-[62ch] text-ui">
+            Imported members can claim their records with a link you pass on yourself.{' '}
+            <Link href={`/dashboard/organization/${org.id}/claim-links`} className="link inline-flex min-h-11 items-center font-semibold" data-testid="organization-claim-links-link">
+              Claim links
+            </Link>
+          </p>
+        ) : null}
       </Section>
 
       <Section id="import-claims" title="Teacher claims" testId="organization-claims">

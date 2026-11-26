@@ -17,7 +17,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { claimForm, IMPORT_FORM, importForm, leaveForm } from './tools-form-ids';
+import { claimForm, IMPORT_FORM, importForm, leaveForm, MAKE_CLAIM_LINKS_FORM, replaceLinkForm } from './tools-form-ids';
 
 const HOME = '/dashboard/organization';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -106,4 +106,32 @@ export async function leaveOrganizationAction(_previous: FormState, form: FormDa
     return failed(error, leaveForm(membershipId), HOME);
   }
   redirect(atOutcome(`${HOME}?done=membership-left`));
+}
+
+const claimLinksOf = (id: string) => (UUID.test(id) ? `${HOME}/${id}/claim-links` : HOME);
+
+/** "Make claim links" (organizationTools.makeClaimLinks, ADR 0074): one for each imported member without one. */
+export async function makeClaimLinksAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const organizationId = textValue(form, 'organizationId', 40);
+  const page = claimLinksOf(organizationId);
+  let made: number;
+  try {
+    made = (await (await client()).organizationTools.makeClaimLinks({ organizationId })).made;
+  } catch (error) {
+    return failed(error, MAKE_CLAIM_LINKS_FORM, page);
+  }
+  redirect(atOutcome(`${page}?made=${made}`));
+}
+
+/** "Replace the link" (organizationTools.replaceClaimLink, ADR 0074): the old link stops working. */
+export async function replaceClaimLinkAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const organizationId = textValue(form, 'organizationId', 40);
+  const personId = textValue(form, 'personId', 40);
+  const page = claimLinksOf(organizationId);
+  try {
+    await (await client()).organizationTools.replaceClaimLink({ organizationId, personId });
+  } catch (error) {
+    return failed(error, replaceLinkForm(personId), page);
+  }
+  redirect(atOutcome(`${page}?replaced=${UUID.test(personId) ? personId : ''}`));
 }

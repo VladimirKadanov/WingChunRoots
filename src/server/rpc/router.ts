@@ -58,6 +58,17 @@ import {
 } from '../services/grants';
 import { historicalClaimInput, requestHistoricalTeacher } from '../services/historical';
 import {
+  acceptClaimLink,
+  acceptClaimLinkInput,
+  claimLinksInput,
+  claimLinkTokenInput,
+  getClaimLink,
+  listClaimLinks,
+  makeClaimLinks,
+  replaceClaimLink,
+  replaceClaimLinkInput,
+} from '../services/organization-claim-links';
+import {
   addExam,
   addExamInput,
   addRank,
@@ -812,6 +823,21 @@ export const router = {
       })
       .input(claimRequestInput)
       .handler(({ context, input }) => requestProfileClaim(context.principal, input, context.meta)),
+  },
+  // ADR 0074: the claim link an organization's admin passes on to an imported member.
+  claimLinks: {
+    get: base
+      .route({ method: 'POST', path: '/claim-links/view', summary: 'What an organization’s claim link is about and whether the signed-in account can use it (404 for an unknown, used or revoked link)' })
+      .input(claimLinkTokenInput)
+      .handler(({ context, input }) => getClaimLink(context.principal, input)),
+    accept: signedIn
+      .route({
+        method: 'POST',
+        path: '/claim-links/accept',
+        summary: 'Ask to claim the imported record of an organization’s claim link: a review case the reviewers decide (never an automatic sign-in); single use',
+      })
+      .input(acceptClaimLinkInput)
+      .handler(({ context, input }) => acceptClaimLink(context.principal, input, context.meta)),
   },
   // M10b: instructor verification of a Sifu (plan §6.5, DEFAULT D04/D13).
   instructor: {
@@ -1608,6 +1634,22 @@ export const router = {
       .route({ method: 'POST', path: '/organizations/imports/discard', summary: 'End a preview without importing anything; its rows are cleared (audited)' })
       .input(importIdInput)
       .handler(({ context, input }) => discardImport(context.principal, input, context.meta)),
+    claimLinks: base
+      .route({
+        method: 'GET',
+        path: '/organizations/mine/{organizationId}/claim-links',
+        summary: 'The members your imports created whose records are still unclaimed, each with its claim link to pass on yourself (ADR 0074; its admins only, approved with Federation)',
+      })
+      .input(claimLinksInput)
+      .handler(({ context, input }) => listClaimLinks(context.principal, input)),
+    makeClaimLinks: signedIn
+      .route({ method: 'POST', path: '/organizations/claim-links/make', summary: 'Make a claim link for every imported, unclaimed member without one; WingChunRoots sends nothing (audited, counts only)' })
+      .input(claimLinksInput)
+      .handler(({ context, input }) => makeClaimLinks(context.principal, input, context.meta)),
+    replaceClaimLink: signedIn
+      .route({ method: 'POST', path: '/organizations/claim-links/replace', summary: 'A new claim link for one imported member; the old one stops working (audited)' })
+      .input(replaceClaimLinkInput)
+      .handler(({ context, input }) => replaceClaimLink(context.principal, input, context.meta)),
     claims: base
       .route({ method: 'GET', path: '/organizations/mine/{organizationId}/claims', summary: "The organization's teacher claims from its imports: claimed by the organization, never verified (its admins only)" })
       .input(claimsInput)
