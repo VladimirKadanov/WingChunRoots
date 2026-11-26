@@ -16,7 +16,20 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { setTestAuthEnv, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
-import { auditLog, authUser, entitlementGrant, event, notification, organizationAdmin, organizationMembership, passportExam, passportRank, person, teachingRelationship } from '../db/schema';
+import {
+  auditLog,
+  authUser,
+  entitlementGrant,
+  event,
+  notification,
+  organizationAdmin,
+  organizationMembership,
+  passportExam,
+  passportRank,
+  person,
+  rankLadderStep,
+  teachingRelationship,
+} from '../db/schema';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { createObjectStore, type ObjectStore } from '../storage';
 import { plainImage } from '../storage/test-images';
@@ -30,7 +43,9 @@ import {
   openCertificate,
   passportGet,
   passportStudents,
+  recordGrading,
   removeCertificate,
+  setLadder,
   removePassportEntry,
   setVisibility,
   STUDENT_CANNOT_RECORD,
@@ -380,5 +395,97 @@ describe('the demo passports (In scope 9)', () => {
            + (SELECT count(*) FROM passport_exam r JOIN person p ON p.id = r.person_id WHERE p.slug = 'demo-two-lineages' AND r.status = 'active')
            + (SELECT count(*) FROM passport_skill r JOIN person p ON p.id = r.person_id WHERE p.slug = 'demo-two-lineages' AND r.status = 'active') AS n`);
     expect(Number(kept.rows[0]!.n)).toBe(4);
+  });
+});
+
+describe('a grading for several students, and the rank ladder (role replay 2026-11-25, P2-8, ADR 0072)', () => {
+  it('records the examination and the rank for every ticked student; each is told once', async () => {
+    const teacher = await member('grading-teacher', { sifu: true });
+    const first = await member('grading-first');
+    const second = await member('grading-second');
+    await relate(teacher.personId, first.personId);
+    await relate(teacher.personId, second.personId);
+    const result = await recordGrading(
+      teacher.principal,
+      { awardedRank: 'Demo second level', date: '2024-06-01', examinerPersonId: teacher.personId, personIds: [first.personId, second.personId, first.personId] },
+      meta,
+    );
+    expect(result.recorded).toBe(2);
+    expect(result.entries.filter((e) => e.kind === 'exam')).toHaveLength(2);
+    expect(result.entries.filter((e) => e.kind === 'rank')).toHaveLength(2);
+    for (const student of [first, second]) {
+      const exams = await getDb().select().from(passportExam).where(eq(passportExam.personId, student.personId));
+      expect(exams.map((e) => [e.awardedRank, e.examinerPersonId, e.teacherPersonId])).toEqual([['Demo second level', teacher.personId, teacher.personId]]);
+      const ranks = await getDb().select().from(passportRank).where(eq(passportRank.personId, student.personId));
+      expect(ranks.map((r) => r.rank)).toEqual(['Demo second level']);
+      const notices = await getDb().select().from(notification).where(and(eq(notification.userId, student.account.id), eq(notification.template, 'passport.entry-added')));
+      expect(notices).toHaveLength(1);
+      const mine = await myPassport(student.principal);
+      expect(mine.currentRankId).toBe(ranks[0]!.id);
+    }
+    const audits = await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'passport.add'), eq(auditLog.actorUserId, teacher.account.id)));
+    expect(audits).toHaveLength(4);
+    expect(JSON.stringify(audits.map((a) => a.after))).not.toContain('Demo second level');
+  });
+
+  it('without alsoRank records only the examination', async () => {
+    const { teacher, student } = await pair('grading-exam-only');
+    await recordGrading(teacher.principal, { awardedRank: 'Demo third level', date: '2024', personIds: [student.personId], alsoRank: false }, meta);
+    expect(await getDb().select().from(passportExam).where(eq(passportExam.personId, student.personId))).toHaveLength(1);
+    expect(await getDb().select().from(passportRank).where(eq(passportRank.personId, student.personId))).toHaveLength(0);
+  });
+
+  it('one student who is not theirs refuses the whole grading: nothing is written', async () => {
+    const { teacher, student } = await pair('grading-all-or-nothing');
+    const stranger = await member('grading-stranger');
+    const refused = await refusal(recordGrading(teacher.principal, { awardedRank: 'Demo level', date: '2024', personIds: [student.personId, stranger.personId] }, meta));
+    expect(refused.code).toBe('NOT_FOUND');
+    expect(await getDb().select().from(passportExam).where(eq(passportExam.personId, student.personId))).toHaveLength(0);
+    expect(await getDb().select().from(passportRank).where(eq(passportRank.personId, student.personId))).toHaveLength(0);
+  });
+
+  it('a student never grades themself, and a relationship in arbitration reads only', async () => {
+    const { teacher, student } = await pair('grading-self');
+    const self = await refusal(recordGrading(student.principal, { awardedRank: 'Demo level', date: '2024', personIds: [student.personId] }, meta));
+    expect(self).toEqual({ code: 'FORBIDDEN', message: STUDENT_CANNOT_RECORD });
+    const other = await member('grading-arbitration');
+    await relate(teacher.personId, other.personId, 'in_arbitration');
+    const arbitration = await refusal(recordGrading(teacher.principal, { awardedRank: 'Demo level', date: '2024', personIds: [other.personId] }, meta));
+    expect(arbitration).toEqual({ code: 'FORBIDDEN', message: ARBITRATION_READ_ONLY });
+  });
+
+  it('asks for at least one student, a rank and a date that is not after today', async () => {
+    const { teacher } = await pair('grading-fields');
+    const none = await refusal(recordGrading(teacher.principal, { awardedRank: 'Demo level', date: '2024', personIds: [] }, meta));
+    expect(none.code).toBe('BAD_REQUEST');
+    const later = await refusal(recordGrading(teacher.principal, { awardedRank: 'Demo level', date: '2999', personIds: [teacher.personId] }, meta));
+    expect(later.code).toBe('BAD_REQUEST');
+  });
+
+  it('keeps a rank ladder per account, in order, without blanks or repeats; offers it on passport.students; an empty list clears it', async () => {
+    const { teacher } = await pair('ladder');
+    const saved = await setLadder(teacher.principal, { steps: [' Demo first level ', '', 'Demo second  level', 'demo FIRST level', 'Demo third level'] }, meta);
+    expect(saved.steps).toEqual(['Demo first level', 'Demo second level', 'Demo third level']);
+    expect((await passportStudents(teacher.principal, {})).ladder).toEqual(saved.steps);
+    const other = await member('ladder-other', { sifu: true });
+    expect((await passportStudents(other.principal, {})).ladder).toEqual([]);
+    const tooMany = await refusal(setLadder(teacher.principal, { steps: Array.from({ length: 31 }, (_, i) => `Demo level ${i + 1}`) }, meta));
+    expect(tooMany.code).toBe('BAD_REQUEST');
+    expect((await passportStudents(teacher.principal, {})).ladder).toEqual(saved.steps);
+    await setLadder(teacher.principal, { steps: [] }, meta);
+    expect(await getDb().select().from(rankLadderStep).where(eq(rankLadderStep.userId, teacher.account.id))).toHaveLength(0);
+    const audits = await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'passport.ladder'), eq(auditLog.actorUserId, teacher.account.id)));
+    expect(audits.map((a) => a.after)).toEqual([{ steps: 3 }, { steps: 0 }]);
+  });
+
+  it('offers the grading examiners: the account itself and its teachers', async () => {
+    const { teacher } = await pair('grading-examiners');
+    const own = await member('grading-examiners-sifu', { sifu: true });
+    await relate(own.personId, teacher.personId);
+    const view = await passportStudents(teacher.principal, {});
+    expect(view.gradingExaminers.map((e) => [e.personId, e.note])).toEqual([
+      [teacher.personId, 'You'],
+      [own.personId, 'Your teacher'],
+    ]);
   });
 });
