@@ -1129,36 +1129,43 @@ export async function createSchool(principal: Principal | null, raw: z.input<typ
       if (row) return { ...row, replayed: true };
     }
     const { ownId, instructorIds } = await checkFields(tx, p.user.id, input);
-    const [created] = await tx
-      .insert(school)
-      .values({
-        slug: schoolSlug(input.name),
-        name: input.name,
-        placeId: input.placeId,
-        locationPrivacy: input.locationPrivacy,
-        publicPoint: sql`(SELECT centroid FROM place WHERE id = ${input.placeId}::uuid)` as never,
-        status: 'draft',
-        websiteUrl: input.websiteUrl,
-        contactEmail: input.contactEmail,
-        contactPhone: input.contactPhone,
-        description: input.description,
-        formsTaught: input.formsTaught,
-        createdByUserId: p.user.id,
-      })
-      .returning({ id: school.id, slug: school.slug, status: school.status });
-    await writeLocation(tx, created!.id, input);
-    await writeInstructors(tx, created!.id, ownId, instructorIds);
+    // The slug's random suffix can repeat one already taken (3 bytes; the authorization matrix met it
+    // in CI): draw again instead of failing the save.
+    let created: { id: string; slug: string; status: (typeof school.$inferSelect)['status'] } | undefined;
+    for (let attempt = 0; !created && attempt < 5; attempt += 1) {
+      [created] = await tx
+        .insert(school)
+        .values({
+          slug: schoolSlug(input.name),
+          name: input.name,
+          placeId: input.placeId,
+          locationPrivacy: input.locationPrivacy,
+          publicPoint: sql`(SELECT centroid FROM place WHERE id = ${input.placeId}::uuid)` as never,
+          status: 'draft',
+          websiteUrl: input.websiteUrl,
+          contactEmail: input.contactEmail,
+          contactPhone: input.contactPhone,
+          description: input.description,
+          formsTaught: input.formsTaught,
+          createdByUserId: p.user.id,
+        })
+        .onConflictDoNothing({ target: school.slug })
+        .returning({ id: school.id, slug: school.slug, status: school.status });
+    }
+    if (!created) throw new Error('school.create: no free slug after 5 draws');
+    await writeLocation(tx, created.id, input);
+    await writeInstructors(tx, created.id, ownId, instructorIds);
     await writeAudit(tx, {
       action: 'school.create',
       actorUserId: p.user.id,
       actorRole: p.user.role,
       subjectType: 'school',
-      subjectId: created!.id,
+      subjectId: created.id,
       after: { status: 'draft', locationPrivacy: input.locationPrivacy, pinDropped: input.point != null, instructors: instructorIds.length + 1, idempotencyKey: input.idempotencyKey },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
-    return { ...created!, replayed: false };
+    return { ...created, replayed: false };
   });
 }
 
