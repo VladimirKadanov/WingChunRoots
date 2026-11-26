@@ -133,13 +133,14 @@ interface PublicSchoolRow extends Record<string, unknown> {
   name: string;
   owner: string | null;
   first_trial_free: boolean;
+  location_privacy: 'exact' | 'city_only';
 }
 
 /** A school v_public_school shows (on the public map and list), with its listing account. */
 async function publicSchool(db: Executor, where: { id: string } | { slug: string }): Promise<PublicSchoolRow | null> {
   const condition = 'id' in where ? sql`v.id = ${where.id}::uuid` : sql`v.slug = ${where.slug}`;
   const result = await db.execute<PublicSchoolRow>(sql`
-    SELECT v.id, v.slug, v.name, s.created_by_user_id AS owner, s.first_trial_free
+    SELECT v.id, v.slug, v.name, s.created_by_user_id AS owner, s.first_trial_free, s.location_privacy
       FROM v_public_school v JOIN school s ON s.id = v.id
      WHERE ${condition}`);
   return result.rows[0] ?? null;
@@ -197,7 +198,9 @@ async function refusalOf(db: Executor, p: Principal, s: PublicSchoolRow): Promis
 // --- The sender's side ---------------------------------------------------------------------------
 
 export interface TrialOptions {
-  school: { id: string; slug: string; name: string; firstTrialFree: boolean };
+  /** privateClub: a city-only school ("Private club, by invitation"), whose request reads "Ask to
+   * visit" (role replay 2026-11-25, P3-7). */
+  school: { id: string; slug: string; name: string; firstTrialFree: boolean; privateClub: boolean };
   /** `sign_in` without a session; `ready` when this account may send a request now. */
   state: 'sign_in' | 'ready' | Refusal;
   /** Why not, in a sentence (null when ready or not signed in). */
@@ -218,7 +221,7 @@ export async function trialOptions(principal: Principal | null, raw: z.input<typ
   const db = getDb();
   const s = await publicSchool(db, { slug: parsed.data.slug });
   if (!s) throw new ServiceError('NOT_FOUND', NO_SCHOOL);
-  const schoolView = { id: s.id, slug: s.slug, name: s.name, firstTrialFree: s.first_trial_free };
+  const schoolView = { id: s.id, slug: s.slug, name: s.name, firstTrialFree: s.first_trial_free, privateClub: s.location_privacy === 'city_only' };
   if (!principal) return { school: schoolView, state: 'sign_in', reason: null, openInquiryId: null, sender: null, limits: LIMITS };
   const { refusal, name, openId } = await refusalOf(db, principal, s);
   return {
