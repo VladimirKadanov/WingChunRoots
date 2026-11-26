@@ -104,6 +104,9 @@ test('@M20 the owner sees "Hidden from the map", confirms with "This listing is 
   const own = visible(page.locator(`[data-testid="own-school"][data-activity="hidden"]`)).filter({ hasText: school.name });
   await expect(own).toHaveCount(1);
   await expect(own.getByTestId('own-school-activity')).toContainText('Hidden from the map');
+  // One status, in words, that says the same as the note (role replay 2026-11-25, P1-4).
+  await expect(own).toContainText('Hidden from the map until you confirm it');
+  await expect(own).not.toContainText('· Listed ·');
   await own.getByRole('link', { name: school.name }).click();
   await page.waitForURL(new RegExp(`/dashboard/schools/${id}$`));
   const activity = visible(page.getByTestId('school-activity'));
@@ -138,4 +141,48 @@ test('@M20 the owner sees "Hidden from the map", confirms with "This listing is 
   await mapSettled(page);
   await expect(marker(page, slug)).toHaveCount(1);
   expect(await (await request.get(`${BASE_URL}/sitemap.xml`)).text()).toContain(`/schools/${slug}</loc>`);
+});
+
+test('@M20 "This listing is current" in one tap from the dashboard home and from Your schools (role replay 2026-11-25, P1-4)', async ({ page, browser, request }) => {
+  const sifu = await sifuAccount(page, 'One Tap Sifu');
+  const admin = await signedIn(browser, 'admin');
+  let school: { id: string; slug: string; name: string };
+  try {
+    await grantProSifu(admin.page, sifu.email);
+    school = await createSchool(page);
+    const submitted = await apiPost(page, '/schools/submit', { id: school.id });
+    expect(submitted.status(), await submitted.text()).toBe(200);
+    await approveListing(admin.page, school.id);
+  } finally {
+    await admin.context.close();
+  }
+  await hideAsTheJobDoes(request, school.id);
+
+  // The home's My schools: the school the Sifu listed, its status in words, and the button.
+  await page.goto('/dashboard');
+  const row = visible(page.getByTestId('schools')).getByRole('listitem').filter({ hasText: school.name });
+  await expect(row.getByTestId('home-school-status')).toHaveText('Hidden from the map until you confirm it');
+  await row.getByRole('button', { name: 'This listing is current' }).click();
+  await page.waitForURL((u) => u.pathname === '/dashboard' && u.searchParams.get('confirmed') === school.id);
+  await expect(visible(page.getByTestId('home-school-confirmed'))).toContainText(`Confirmed: ${school.name} is current as of today.`);
+  await expect(visible(page.getByTestId('schools')).getByRole('listitem').filter({ hasText: school.name }).getByTestId('home-school-status')).toHaveText('Listed');
+  for (const theme of THEMES) {
+    await openInTheme(page, `/dashboard?confirmed=${school.id}`, theme);
+    await expectNoAxeViolations(page, `/dashboard (school confirmed, ${theme})`);
+  }
+
+  // Hidden again: Your schools offers the same button on the row, without JavaScript too.
+  await hideAsTheJobDoes(request, school.id);
+  const noScript = await browser.newContext({ baseURL: BASE_URL, javaScriptEnabled: false, storageState: await page.context().storageState() });
+  try {
+    await giveOwnAddress(noScript);
+    const plain = await noScript.newPage();
+    await plain.goto('/dashboard/schools');
+    const own = visible(plain.locator('[data-testid="own-school"][data-activity="hidden"]')).filter({ hasText: school.name });
+    await own.getByRole('button', { name: 'This listing is current' }).click();
+    await plain.waitForURL((u) => u.pathname === '/dashboard/schools' && u.searchParams.get('confirmed') === school.id);
+    await expect(visible(plain.getByTestId('school-confirmed'))).toContainText(`Confirmed: ${school.name} is current as of today, and its pin is on the public map.`);
+  } finally {
+    await noScript.close();
+  }
 });

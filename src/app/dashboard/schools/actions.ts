@@ -22,7 +22,7 @@ import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { linkForm } from '../organization/form-ids';
-import { SCHEDULE_FORM, SCHOOL_ACTION_FORM, SCHOOL_FORM, trialForm } from './form-ids';
+import { LISTING_BACK, type ListingBack, listingForm, SCHEDULE_FORM, SCHOOL_ACTION_FORM, SCHOOL_FORM, trialForm } from './form-ids';
 
 /** M21: the rows of the schedule form at most (the 30 slots a schedule holds, and none more). */
 const SCHEDULE_ROWS_MAX = 30;
@@ -135,7 +135,11 @@ export async function updateSchoolAction(_previous: FormState, form: FormData): 
 /** The one-button forms of the listing: "Send for review" (schools.submit) and "This listing is current" (schools.confirm). */
 async function listingStep(form: FormData, step: 'submit' | 'confirm'): Promise<FormState> {
   const id = textValue(form, 'id', 40);
-  const page = UUID.test(id) ? pageOf(id) : LIST;
+  // A form in a list of schools comes back to that list, under its own id (form-ids.ts).
+  const backName = textValue(form, 'back', 10);
+  const back = Object.hasOwn(LISTING_BACK, backName) && UUID.test(id) ? LISTING_BACK[backName as ListingBack] : null;
+  const page = back ?? (UUID.test(id) ? pageOf(id) : LIST);
+  const formId = back ? listingForm(id) : SCHOOL_ACTION_FORM;
   try {
     const client = serverClient(await headers(), await getRequestPrincipal());
     if (step === 'submit') await client.schools.submit({ id });
@@ -147,8 +151,9 @@ async function listingStep(form: FormData, step: 'submit' | 'confirm'): Promise<
     // The id is a hidden field: its error is said as the form's message.
     const field = Object.values(state.fields ?? {})[0];
     const shown: FormState = field ? { status: 'error', message: field } : state;
-    return formResult({ form: SCHOOL_ACTION_FORM, page, anchor: outcomeTarget(SCHOOL_ACTION_FORM, shown, true) }, shown);
+    return formResult({ form: formId, page, anchor: outcomeTarget(formId, shown, true) }, shown);
   }
+  if (back) redirect(`${back}?${new URLSearchParams({ confirmed: id })}#outcome`);
   redirect(`${page}?${step === 'submit' ? 'sent' : 'confirmed'}=1#outcome`);
 }
 
