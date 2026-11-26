@@ -385,17 +385,19 @@ export async function searchPlace(tx: Executor, forms: readonly QueryForm[], fil
   if (latin.length === 0 || filters.lineageId !== null) return null;
   const result = await tx.execute<PlaceRow>(sql`
     WITH f AS (${formsTable(latin)}),
+    -- Only the public views (scripts/verify.d/M07.sh): the city of a listed school or of an upcoming
+    -- in-person event, by the name the views carry.
     used AS (
-      SELECT s.place_id FROM v_public_school s
+      SELECT s.place_id, s.city_name, s.country_code FROM v_public_school s
       UNION
-      SELECT v.place_id FROM v_public_event v WHERE v.status = 'published' AND NOT v.online AND v.ends_at > now() AND v.place_id IS NOT NULL
+      SELECT v.place_id, v.city_name, v.country_code FROM v_public_event v
+       WHERE v.status = 'published' AND NOT v.online AND v.ends_at > now() AND v.place_id IS NOT NULL AND v.city_name IS NOT NULL
     ),
     c AS (
-      SELECT DISTINCT pl.id, pl.name, pl.country_code
-        FROM place pl
-        JOIN used u ON u.place_id = pl.id
-        JOIN f ON ${folded(sql.raw('pl.name'))} = f.text OR ${folded(sql.raw('pl.ascii_name'))} = f.text
-       WHERE (${filters.countryCode}::text IS NULL OR pl.country_code = ${filters.countryCode})
+      SELECT DISTINCT u.place_id AS id, u.city_name AS name, u.country_code
+        FROM used u
+        JOIN f ON ${folded(sql.raw('u.city_name'))} = f.text
+       WHERE (${filters.countryCode}::text IS NULL OR u.country_code = ${filters.countryCode})
     )
     SELECT c.id, c.name, c.country_code,
            (SELECT count(*)::int FROM v_public_school s WHERE s.place_id = c.id) AS schools,
