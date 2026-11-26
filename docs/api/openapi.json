@@ -9631,6 +9631,20 @@
             "allowReserved": true
           },
           {
+            "name": "decide",
+            "in": "query",
+            "schema": {
+              "default": "any",
+              "type": "string",
+              "enum": [
+                "any",
+                "me"
+              ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
             "name": "sort",
             "in": "query",
             "schema": {

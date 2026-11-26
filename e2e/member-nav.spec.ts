@@ -79,6 +79,10 @@ test('@nav a Sifu gets teaching tools, and a new member gets next steps that sta
     await expect(steps).toContainText('0 of 4 done');
     await expect(fresh.getByTestId('next-step-profile')).toHaveAttribute('data-done', 'false');
     await expect(steps.getByRole('link', { name: 'Set up your profile' })).toHaveAttribute('href', '/onboarding?next=%2Fdashboard');
+    // Role replay P2-6: someone who only manages an organization can leave onboarding for it.
+    await fresh.goto('/onboarding');
+    await fresh.getByTestId('organization-only').getByRole('link', { name: 'I only manage an organization' }).click();
+    await expect(fresh).toHaveURL(/\/dashboard\/organization$/);
   } finally {
     await context.close();
   }

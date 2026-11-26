@@ -16,6 +16,8 @@ export function FilterDisclosure({
   className,
   summaryClassName,
   panelClassName,
+  label = 'Filters',
+  setText = (n) => (n === 1 ? '1 set' : `${n} set`),
   children,
 }: {
   /** How many filters are set (shown on the button as "Filters · 2"). */
@@ -25,6 +27,10 @@ export function FilterDisclosure({
   className?: string;
   summaryClassName?: string;
   panelClassName?: string;
+  /** The button's words ("Filters"); the control panel passes its own, translated (ADR 0043). */
+  label?: string;
+  /** The screen-reader words for the number set ("2 set"). */
+  setText?: (n: number) => string;
   children: ReactNode;
 }) {
   return (
@@ -37,12 +43,12 @@ export function FilterDisclosure({
       >
         <FilterIcon size={18} />
         <span>
-          Filters
+          {label}
           {active > 0 ? (
             <>
               {' '}
               <span aria-hidden="true">· {active}</span>
-              <span className="sr-only">({active === 1 ? '1 set' : `${active} set`})</span>
+              <span className="sr-only">({setText(active)})</span>
             </>
           ) : null}
         </span>

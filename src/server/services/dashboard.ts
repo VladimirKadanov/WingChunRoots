@@ -29,6 +29,7 @@ import {
 import { effectivePlan, type Executor, requireEntitlement } from '../entitlements/access';
 import { feature, type Benefit, type FeatureKey, upgradeBenefits } from '../entitlements/plans';
 import type { NameData } from '../templates/email/types';
+import { administersOrganization } from './account';
 import { listNotifications, type NotificationList } from './notifications';
 import { type NextStep, nextSteps } from './next-steps';
 import { listingLabel } from './school-activity';
@@ -138,6 +139,8 @@ export interface DashboardOverview {
    * always have two-factor authentication on: auth_user_staff_needs_2fa). Null for everyone else.
    */
   staff: { role: StaffRole; secondFactorVerified: boolean; openPilotRequests: number | null } | null;
+  /** Role replay 2026-11-25 (P2-6): an organization's admin without a practitioner profile, asked for none. */
+  organizationOnly: boolean;
   student: { teachers: TeacherItem[]; requests: RequestItem[] } | null;
   sifu: {
     requests: StudentRequestItem[];
@@ -274,7 +277,9 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
     }
     staff = { role: p.user.role, secondFactorVerified: hasStaff2FA(p), openPilotRequests };
   }
+  const organizationOnly = !own && (await administersOrganization(p.user.id));
   const base = {
+    organizationOnly,
     accountType: effective.accountType,
     instructor: { status, label: INSTRUCTOR_LABELS[status] },
     plan: planSummary(effective.plan),
@@ -340,7 +345,7 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       teachers = teachers.sort((a, b) => a.teacher.name.value.localeCompare(b.teacher.name.value, 'en'));
       requests = requests.slice(0, 50);
     }
-    const steps = nextSteps({ accountType: 'student', instructor: status, hasProfile: Boolean(own), staffOnly: staff !== null && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: teachers.length + requests.length, schools: 0, ...looks });
+    const steps = nextSteps({ accountType: 'student', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: teachers.length + requests.length, schools: 0, ...looks });
     return { ...base, student: { teachers, requests }, sifu: null, nextSteps: steps };
   }
 
@@ -405,6 +410,6 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   }
 
   const { approved, limit, upgrade } = await approvalOffer(db, p.user.id, waiting);
-  const steps = nextSteps({ accountType: 'sifu', instructor: status, hasProfile: Boolean(own), staffOnly: staff !== null && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: 0, schools: schools.length, ...looks });
+  const steps = nextSteps({ accountType: 'sifu', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: 0, schools: schools.length, ...looks });
   return { ...base, student: null, sifu: { requests, students: { approved, limit }, schools, upgrade }, nextSteps: steps };
 }

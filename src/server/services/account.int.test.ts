@@ -2,6 +2,8 @@
 // consent.record and account.onboard procedures over /api/v1 with a bearer session (the future
 // native app) and over /api/rpc with the cookie (the web), against a migrated throwaway database.
 
+import { randomBytes, randomUUID } from 'node:crypto';
+
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -24,6 +26,7 @@ import { secretFromTotpUri } from '../auth/otp';
 import { principalFromHeaders } from '../auth/session';
 import { handleApiRequest } from '../rpc/handler';
 import { landingPath as landingPathOf } from './account';
+import { applyOrganization } from './organizations';
 
 let testDb: TestDatabase | undefined;
 let hongKong: string;
@@ -279,6 +282,32 @@ describe('landingPath', () => {
 
     expect((await call(token, 'POST', '/consent/record', { kinds: ['terms'] })).data!.recorded).toEqual(['terms']);
     expect(await landingPath(account.id, '/schools')).toBe('/schools');
+  });
+
+  it('lets an account that only manages an organization past onboarding (role replay P2-6)', async () => {
+    const { token } = await readyAccount('landing-org');
+    const principal = await principalFromHeaders(new Headers({ authorization: `Bearer ${token}` }));
+    // Its organization pages never need a profile, even before it administers one.
+    expect(await landingPathOf(principal, '/dashboard/organization/apply')).toBe('/dashboard/organization/apply');
+    expect(await landingPathOf(principal, '/dashboard')).toBe('/onboarding');
+    await applyOrganization(
+      principal,
+      {
+        kind: 'federation',
+        name: `Demo ${randomBytes(3).toString('hex')} Federation`,
+        leaderName: 'Demo Leader Person',
+        leaderTitle: 'President',
+        websiteUrl: 'https://example.test/demo',
+        countryCode: 'BG',
+        schoolsEstimate: 2,
+        evidenceIds: [],
+        note: 'A fictional organization.',
+        idempotencyKey: randomUUID(),
+      },
+      { requestId: 'p2-6-int-test', ipHmac: null },
+    );
+    expect(await landingPathOf(principal, '/dashboard')).toBe('/dashboard');
+    expect(await landingPathOf(principal, undefined)).toBe('/dashboard');
   });
 
   it('is the account.landing procedure under /api/v1, which needs a session', async () => {

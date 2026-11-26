@@ -13,7 +13,7 @@ import { requireUser, safeNextPath } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { listedPlaces } from '../geo/places';
-import { authTwoFactor, person, personClaim, personName, place } from '../db/schema';
+import { authTwoFactor, organizationAdmin, person, personClaim, personName, place } from '../db/schema';
 import { writePersonKeys } from '../search/store';
 import { grantConsents, missingRequiredConsents } from './consent';
 import type { RequestMeta } from './context';
@@ -245,6 +245,22 @@ export async function pendingClaimOf(userId: string): Promise<string | null> {
   return row ? (row.caseId ?? 'pending') : null;
 }
 
+/**
+ * Role replay 2026-11-25 (P2-6): whether the account administers an organization (an
+ * organization_admin row not revoked). Such an account may have no practitioner profile at all.
+ */
+export async function administersOrganization(userId: string): Promise<boolean> {
+  const [row] = await getDb()
+    .select({ id: organizationAdmin.id })
+    .from(organizationAdmin)
+    .where(and(eq(organizationAdmin.userId, userId), isNull(organizationAdmin.revokedAt)))
+    .limit(1);
+  return Boolean(row);
+}
+
+/** The organization pages, where an account that only manages an organization works (P2-6). */
+const ORGANIZATION_PAGES = /^\/dashboard\/organization(?:[/?#]|$)/;
+
 /** ADR 0040: the page where an account asks to claim a public profile. */
 const CLAIM_PAGE = /^\/people\/[a-z0-9]+(?:-[a-z0-9]+)*\/claim(?:[?#]|$)/;
 
@@ -261,6 +277,10 @@ export async function landingPath(principal: Principal | null, next: unknown): P
   // so does the claim page of a public profile (/people/<slug>/claim): onboarding would make the
   // account a profile of its own, and then it could claim none.
   if (confirmed && (target.startsWith('/invite/') || CLAIM_PAGE.test(target) || (await pendingClaimOf(user.id)))) return target;
+  // Role replay 2026-11-25 (P2-6): an account that only manages an organization ("I only manage
+  // an organization" in onboarding, or an organization's admin) is never sent to set up a
+  // practitioner profile; the documents are still confirmed first.
+  if (confirmed && (ORGANIZATION_PAGES.test(target) || (await administersOrganization(user.id)))) return target;
   // Onboarding without a `next` ends on the dashboard; any other target is kept for after it.
   return `/onboarding${target === LANDING ? '' : `?next=${encodeURIComponent(target)}`}`;
 }
