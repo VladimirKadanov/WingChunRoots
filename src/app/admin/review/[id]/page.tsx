@@ -30,8 +30,8 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from '../form-ids';
-import { AssignForm, DecideForm, NoteForm, RemoveGalleryPhotoForm, RemovePhotoForm, TakeDownForm } from '../forms';
+import { askTeacherForm, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from '../form-ids';
+import { AskTeacherForm, AssignForm, DecideForm, NoteForm, RemoveGalleryPhotoForm, RemovePhotoForm, TakeDownForm } from '../forms';
 import { lifeStatusChoice } from '../life-status-choice';
 import { ListingSection } from '../listing';
 import { OrganizationSection } from '../organization';
@@ -64,6 +64,8 @@ const doneText = (t: AdminT): Record<string, string> => ({
   assigned: t('The case is assigned. You can open its evidence and decide it.'),
   unassigned: t('The case is unassigned and back in the queue.'),
   noted: t('The note is added.'),
+  // ADR 0067: review.askTeacher.
+  'teacher-asked': t('The teacher is asked. Their answer will appear on this case.'),
   // M14: photos.remove from the case of a reported profile.
   'photo-removed': t('The profile photo is removed. The removal and your reason are in the audit log.'),
   // M16: gallery.remove and schoolPhotos.remove from the case.
@@ -164,6 +166,13 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
   const [assignResult, unassignResult, chooseResult, noteResult, verifyResult, rejectResult, askResult, photoResult, galleryResult, schoolPhotoResult, takeDownResult, restoreResult] = results.map((state) =>
     state ? translateState(t, state) : state,
   );
+  // ADR 0067: a refused "Ask <teacher> to confirm" comes back to that teacher's form.
+  const askTeacherResults = new Map<string, NonNullable<typeof assignResult>>();
+  for (const c of view.confirmations) {
+    if (c.ask) continue;
+    const state = await readFormResult(askTeacherForm(c.relationshipId), query.outcome);
+    if (state) askTeacherResults.set(c.relationshipId, translateState(t, state));
+  }
   const decisions = { verify: decisionText(t, view.decisions.verify), reject: decisionText(t, view.decisions.reject), needs_info: decisionText(t, view.decisions.needs_info) };
   const decided = typeof query.done === 'string' && Object.hasOwn(DECIDED, query.done) ? DECIDED[query.done as keyof typeof DECIDED] : null;
   const done = decided ? decisions[decided].done : typeof query.done === 'string' ? doneText(t)[query.done] : undefined;
@@ -262,6 +271,37 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
                 {view.resolutionReason}
               </p>
             ) : null}
+          </Section>
+        ) : null}
+
+        {/* Role replay 2026-11-25 (P3-8, ADR 0067): the record's verified teachers who have an account. */}
+        {view.confirmations.length > 0 ? (
+          <Section id="teachers" title={t('Ask the record’s teacher')}>
+            <p className="max-w-[60ch] text-ui text-fg-muted">
+              {t('A verified teacher of the record can tell you whether the claim is their student’s. They see their student’s name and nothing of the claimant; only reviewers read the answer.')}
+            </p>
+            <ul className="grid gap-4" data-testid="case-confirmations">
+              {view.confirmations.map((c) => (
+                <li key={c.relationshipId} className="grid gap-2 border-l-4 border-border-subtle pl-4" data-testid="case-confirmation" data-state={c.ask ? (c.ask.answer ?? 'asked') : 'not-asked'}>
+                  <PersonName person={c.teacher} />
+                  {c.ask ? (
+                    c.ask.answer ? (
+                      <p className="text-ui">
+                        <span className="font-semibold">{t(c.ask.answerLabel!)}</span>{' '}
+                        <span className="text-fg-muted">· {t('answered on {day}', { day: t.day(c.ask.answeredAt!) })}</span>
+                        {c.ask.note ? <span className="mt-1 block whitespace-pre-line">{c.ask.note}</span> : null}
+                      </p>
+                    ) : (
+                      <p className="text-ui text-fg-muted">{t('Asked on {day}. No answer yet.', { day: t.day(c.ask.askedAt) })}</p>
+                    )
+                  ) : view.can.askTeacher ? (
+                    <AskTeacherForm caseId={view.id} relationshipId={c.relationshipId} teacher={c.teacher.name} initial={askTeacherResults.get(c.relationshipId) ?? null} />
+                  ) : (
+                    <p className="text-ui text-fg-muted">{t('Not asked.')}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
           </Section>
         ) : null}
 

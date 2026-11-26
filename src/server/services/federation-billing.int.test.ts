@@ -214,6 +214,21 @@ describe('Federation checkout', () => {
       expect(started?.payload).toMatchObject({ organizationId });
     }
   });
+
+  it('Federation given by the administrators is said as such; the offers stay for paying later (role replay P2-6)', async () => {
+    const { owner, organizationId } = await approvedOrganization('m23-granted');
+    const a = await anAdmin();
+    await grantOrganizationPlan(a.principal, { organizationId, reason: 'P2-6 test (fictional)' }, meta);
+    const open = await organizationBilling(owner.principal, { organizationId });
+    expect(open.offers.map((o) => o.interval)).toEqual(['month', 'year']);
+    expect(open.grantNote).toBe('Federation is active, given by the WingChunRoots team, so there is nothing you need to buy.');
+    const [grant] = await getDb().select({ id: entitlementGrant.id }).from(entitlementGrant).where(eq(entitlementGrant.subjectOrganizationId, organizationId));
+    await revokeOrganizationPlan(a.principal, { grantId: grant!.id, reason: 'P2-6 test over (fictional)' }, meta);
+    const until = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 15));
+    await grantOrganizationPlan(a.principal, { organizationId, endsOn: until.toISOString().slice(0, 10), reason: 'P2-6 dated (fictional)' }, meta);
+    const dated = await organizationBilling(owner.principal, { organizationId });
+    expect(dated.grantNote).toMatch(/^Federation is active until .+, given by the WingChunRoots team, so there is nothing you need to buy\.$/);
+  });
 });
 
 describe('switching plans and billing periods (DEFAULT M23, question 2)', () => {
