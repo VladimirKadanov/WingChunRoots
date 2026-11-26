@@ -72,6 +72,10 @@ interface SearchAnswer {
   /** ADR 0051: approved organizations. Optional: an answer cached before it had them still reads. */
   organizations?: { id: string; slug: string; name: string; kindLabel: string; countryCode: string | null }[];
   lineages: { id: string; slug: string; name: string; root: { slug: string; displayName: SearchName } }[];
+  /** Role replay 2026-11-25 (P2-5). Optional: an answer cached before they existed still reads. */
+  events?: { id: string; slug: string; title: string; startsAt: string; timezone: string; city: string | null; countryCode: string | null; online: boolean }[];
+  place?: { id: string; name: string; countryCode: string; schools: number; events: number } | null;
+  first?: 'schools' | 'events' | 'organizations' | 'lineages' | null;
 }
 
 /** A person result, as select mode hands it over (M09). */
@@ -84,6 +88,8 @@ type Item =
   | { kind: 'school'; key: string; label: string; href: string; hit: SearchAnswer['schools'][number] }
   | { kind: 'organization'; key: string; label: string; href: string; hit: NonNullable<SearchAnswer['organizations']>[number] }
   | { kind: 'lineage'; key: string; label: string; href: string; hit: SearchAnswer['lineages'][number] }
+  | { kind: 'event'; key: string; label: string; href: string; hit: NonNullable<SearchAnswer['events']>[number] }
+  | { kind: 'place'; key: string; label: string; href: string; note: string }
   | { kind: 'page'; key: string; label: string; href: string }
   | { kind: 'recent'; key: string; label: string };
 
@@ -164,11 +170,11 @@ type SelectKind = 'person' | 'school' | null;
 
 function groupsOf(answer: SearchAnswer | null, query: string, selecting: SelectKind = null): Group[] {
   const select = selecting !== null;
-  const groups: Group[] = [];
   const pages = select ? [] : pagesFor(query);
   if (!answer) return pages.length > 0 ? [{ value: 'Pages', items: pages }] : [];
+  const byKey: Partial<Record<'people' | 'schools' | 'events' | 'organizations' | 'lineages', Group>> = {};
   if (selecting !== 'school' && answer.people.length > 0) {
-    groups.push({
+    byKey.people = {
       value: 'People',
       items: answer.people.map((hit) => ({
         kind: 'person' as const,
@@ -178,37 +184,64 @@ function groupsOf(answer: SearchAnswer | null, query: string, selecting: SelectK
         explore: `/explore?focus=${hit.id}`,
         hit,
       })),
-    });
+    };
   }
-  if (selecting === 'school' && answer.schools.length > 0) {
-    groups.push({
+  // Role replay 2026-11-25 (P2-5): every school opens its own page (they exist since M11).
+  if ((selecting === 'school' || !select) && answer.schools.length > 0) {
+    byKey.schools = {
       value: 'Schools',
       items: answer.schools.map((hit) => ({ kind: 'school' as const, key: `school:${hit.id}`, label: hit.name, href: `/schools/${hit.slug}`, hit })),
-    });
+    };
   }
-  if (!select && answer.schools.length > 0) {
-    groups.push({
-      value: 'Schools',
-      // Until the school pages open (M11), a school leads to its instructor's profile.
-      items: answer.schools
-        .filter((hit) => hit.instructor)
-        .map((hit) => ({ kind: 'school' as const, key: `school:${hit.id}`, label: hit.name, href: `/people/${hit.instructor!.slug}`, hit })),
-    });
+  if (!select && answer.events && answer.events.length > 0) {
+    byKey.events = {
+      value: 'Events',
+      items: answer.events.map((hit) => ({ kind: 'event' as const, key: `event:${hit.id}`, label: hit.title, href: `/events/${hit.slug}`, hit })),
+    };
   }
   if (!select && answer.organizations && answer.organizations.length > 0) {
-    groups.push({
+    byKey.organizations = {
       value: 'Organizations',
       items: answer.organizations.map((hit) => ({ kind: 'organization' as const, key: `organization:${hit.id}`, label: hit.name, href: `/organizations/${hit.slug}`, hit })),
-    });
+    };
   }
   if (!select && answer.lineages.length > 0) {
-    groups.push({
+    byKey.lineages = {
       value: 'Lineages',
       items: answer.lineages.map((hit) => ({ kind: 'lineage' as const, key: `lineage:${hit.id}`, label: hit.name, href: `/people/${hit.root.slug}/lineage`, hit })),
-    });
+    };
+  }
+  const groups: Group[] = [];
+  // The city the query names comes first: its schools and its events, each with how many.
+  const place = !select ? answer.place : null;
+  if (place) {
+    const items: Item[] = [];
+    if (place.schools > 0) {
+      items.push({ kind: 'place', key: `place-schools:${place.id}`, label: `Schools in ${place.name}`, href: `/schools?${new URLSearchParams({ near: place.name })}`, note: String(place.schools) });
+    }
+    if (place.events > 0) {
+      items.push({ kind: 'place', key: `place-events:${place.id}`, label: `Events in ${place.name}`, href: `/events?${new URLSearchParams({ place: place.id })}`, note: String(place.events) });
+    }
+    if (items.length > 0) groups.push({ value: place.name, items });
+  }
+  // A multi-word query that names a school, an event, an organization or a lineage exactly puts it before People.
+  const order = ['people', 'schools', 'events', 'organizations', 'lineages'] as const;
+  const first = answer.first ?? null;
+  for (const key of first ? [first, ...order.filter((k) => k !== first)] : order) {
+    const group = byKey[key];
+    if (group) groups.push(group);
   }
   if (pages.length > 0) groups.push({ value: 'Pages', items: pages });
   return groups.filter((g) => g.items.length > 0);
+}
+
+/** The day an event starts, in its own zone ("13 Mar 2027"). */
+function eventDay(startsAt: string, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: timezone }).format(new Date(startsAt));
+  } catch {
+    return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(startsAt));
+  }
 }
 
 function ItemBody({ item, select = false }: { item: Item; select?: boolean }) {
@@ -283,6 +316,25 @@ function ItemBody({ item, select = false }: { item: Item; select?: boolean }) {
               <Name name={hit.instructor.displayName} />
             </>
           ) : null}
+        </span>
+      </span>
+    );
+  }
+  if (item.kind === 'place') {
+    return (
+      <span className="flex min-w-0 items-center justify-between gap-3">
+        <span className="text-ui font-semibold [overflow-wrap:anywhere]">{item.label}</span>
+        <span className="shrink-0 text-sm text-fg-muted">({item.note})</span>
+      </span>
+    );
+  }
+  if (item.kind === 'event') {
+    const { hit } = item;
+    return (
+      <span className="grid min-w-0 gap-0.5">
+        <span className="font-display text-lg leading-snug [overflow-wrap:anywhere]">{hit.title}</span>
+        <span className="text-sm text-fg-subtle [overflow-wrap:anywhere]">
+          {[eventDay(hit.startsAt, hit.timezone), hit.online ? 'Online' : [hit.city, countryName(hit.countryCode)].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
         </span>
       </span>
     );
@@ -614,7 +666,7 @@ function Palette({ open, onOpenChange, onSelect, onSelectSchool, selectLabel = '
                 <SearchIcon size={20} className="shrink-0 text-fg-subtle" />
                 <Autocomplete.Input
                   ref={input}
-                  aria-label={select ? selectLabel : 'Search people, schools and lineages'}
+                  aria-label={select ? selectLabel : 'Search people, schools, events and lineages'}
                   placeholder="Any name, any script"
                   autoComplete="off"
                   autoCorrect="off"
