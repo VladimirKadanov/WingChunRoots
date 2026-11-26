@@ -94,6 +94,9 @@ test('@M21 the request form, with what the school will see; 44 px targets on a p
   await expect(shown(page.getByTestId('trial-privacy-notice'))).toContainText('your profile name');
   // "By phone" shows the phone field; "By e-mail" hides it again.
   await expect(shown(page.getByTestId('trial-phone'))).toHaveCount(0);
+  // The timetable's classes, ticked instead of typed (role replay P3-2).
+  await expect(form.getByTestId('trial-classes').getByTestId('trial-class')).toHaveCount(4);
+  await expect(form.getByTestId('trial-class').first()).toContainText(/(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) \d{2}:\d{2}/);
   await form.getByTestId('trial-contact-phone').check();
   await expect(shown(page.getByTestId('trial-phone'))).toHaveCount(1);
   await axeBothThemes(page, `/schools/${SOFIA}/trial`);
@@ -158,4 +161,19 @@ test("@M21 the owner's inbox, schedule and statistics of demo-school-sofia; 44 p
   await expect(shown(page.getByTestId('stats-later'))).toBeVisible();
   await axeBothThemes(page, '/dashboard/schools/[id]/stats');
   if (testInfo.project.name.startsWith('mobile')) await expectTouchTargets(page, '[data-testid="school-stats"] nav a');
+});
+
+test('@M21 a private club is asked for a visit, on its page and on the form (role replay P3-7)', async ({ page }) => {
+  await page.goto('/schools/demo-school-city-only');
+  const trial = shown(page.getByTestId('school-trial'));
+  await expect(trial.getByRole('heading', { level: 2, name: 'Visit' })).toBeVisible();
+  await expect(shown(page.getByTestId('school-trial-sign-in'))).toHaveText('Sign in to ask to visit');
+  await signInAs(page, 'demo-pending');
+  await page.goto('/schools/demo-school-city-only');
+  await expect(shown(page.getByTestId('school-trial-request'))).toHaveText('Ask to visit');
+  await shown(page.getByTestId('school-trial-request')).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Ask to visit' })).toBeVisible();
+  // demo-pending has a profile and no request at either school. A school with an exact address still offers a trial lesson.
+  await page.goto('/schools/demo-school-sofia');
+  await expect(shown(page.getByTestId('school-trial-request'))).toHaveText('Request a trial lesson');
 });

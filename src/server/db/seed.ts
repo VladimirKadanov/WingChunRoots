@@ -41,6 +41,7 @@ import {
   billingInvoice,
   billingSubscription,
   billingTestSubscription,
+  claimConfirmation,
   consentRecord,
   contentReport,
   decisionAppeal,
@@ -117,6 +118,8 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   billingInvoice,
   billingSubscription,
   billingTestSubscription,
+  // ADR 0067: a reviewer's questions to a teacher about a claim (no demo rows).
+  claimConfirmation,
   consentRecord,
   contentReport,
   decisionAppeal,

@@ -1084,6 +1084,29 @@
         }
       }
     },
+    "/profile/publish": {
+      "post": {
+        "operationId": "profile.publish",
+        "summary": "\"Show my profile publicly\": the publication consent and a public own profile, as in the profile editor; audited",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family": {
       "get": {
         "operationId": "family.get",
@@ -6847,6 +6870,17 @@
                     "default": false,
                     "type": "boolean"
                   },
+                  "note": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 280
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "idempotencyKey": {
                     "type": "string",
                     "pattern": "^[A-Za-z0-9_-]{8,64}$"
@@ -6969,6 +7003,17 @@
                   "displayPrimary": {
                     "default": false,
                     "type": "boolean"
+                  },
+                  "note": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 280
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "idempotencyKey": {
                     "type": "string",
@@ -7143,6 +7188,64 @@
       "post": {
         "operationId": "relationships.withdraw",
         "summary": "Withdraw a request that waits or was declined (the student)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "relationshipId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "idempotencyKey": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{8,64}$"
+                  }
+                },
+                "required": [
+                  "relationshipId",
+                  "idempotencyKey"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/relationships/remind": {
+      "post": {
+        "operationId": "relationships.remind",
+        "summary": "Send the teacher a reminder of a request that has waited 14 days or more (the student; at most once every 14 days)",
         "requestBody": {
           "required": true,
           "content": {
@@ -10036,6 +10139,176 @@
                   "caseId",
                   "body",
                   "idempotencyKey"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/review/ask-teacher": {
+      "post": {
+        "operationId": "review.askTeacher",
+        "summary": "Ask a verified teacher (with an account) of the record a profile claim is about whether the claim is their student’s (the reviewer who may ask the claimant); the teacher is notified; once per case and teacher; audited",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "caseId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "relationshipId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": [
+                  "caseId",
+                  "relationshipId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/claim-confirmations/{id}": {
+      "get": {
+        "operationId": "claimConfirmations.get",
+        "summary": "A reviewers’ question to you, as a teacher, about a claim of your student’s profile; 404 for anyone else",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/claim-confirmations/answer": {
+      "post": {
+        "operationId": "claimConfirmations.answer",
+        "summary": "Answer the reviewers’ question once (yes, no or not sure, with an optional note only they read); the assigned reviewer is told; audited",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "answer": {
+                    "type": "string",
+                    "enum": [
+                      "yes",
+                      "no",
+                      "unsure"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "id",
+                  "answer"
                 ]
               }
             }
@@ -14719,6 +14992,15 @@
                       }
                     ]
                   },
+                  "classes": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
                   "message": {
                     "anyOf": [
                       {
@@ -18717,6 +18999,45 @@
                         "null"
                       ]
                     },
+                    "priceNote": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "openTo": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "all_levels",
+                            "members_only",
+                            "instructors_only"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openToLabel": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "registrationUrl": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "registrationEmail": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "cancelledAt": {
                       "type": [
                         "string",
@@ -18843,6 +19164,11 @@
                     "description",
                     "venue",
                     "externalUrl",
+                    "priceNote",
+                    "openTo",
+                    "openToLabel",
+                    "registrationUrl",
+                    "registrationEmail",
                     "cancelledAt",
                     "cancellationNote",
                     "school",
@@ -18966,6 +19292,54 @@
                       {
                         "type": "string",
                         "maxLength": 1200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "priceNote": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 240
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "openTo": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "all_levels",
+                          "members_only",
+                          "instructors_only"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "registrationUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 1200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "registrationEmail": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 508
                       },
                       {
                         "type": "null"
@@ -19132,6 +19506,54 @@
                       {
                         "type": "string",
                         "maxLength": 1200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "priceNote": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 240
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "openTo": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "all_levels",
+                          "members_only",
+                          "instructors_only"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "registrationUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 1200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "registrationEmail": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 508
                       },
                       {
                         "type": "null"

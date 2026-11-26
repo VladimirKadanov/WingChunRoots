@@ -13,7 +13,7 @@
 // its own one-plan table behind a closed disclosure at every width (final check, requirements-4).
 //
 // M22 (docs/adr/0025-billing.md): a paid plan that exists now (Premium Student, Professional Sifu)
-// has "Choose this plan", a link to /dashboard/billing, where a signed-in account of that type
+// has "Choose this plan", a link to /account/plan, where a signed-in account of that type
 // starts a checkout in test mode (no real charge). The page stays static: the link is the same for
 // every visitor, and the billing page decides who may buy what.
 //
@@ -77,7 +77,7 @@ function PlanEntry({ plan, plannedLabel }: { plan: PlanSummary; plannedLabel: st
       <p className="max-w-[48ch] text-ui text-fg-muted">{plan.summary}</p>
       {plan.availability === 'now' && billingPrice(plan.code, 'month') ? (
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <Link href={`/dashboard/billing?plan=${plan.code}`} className="link inline-flex min-h-11 items-center font-semibold" data-testid={`choose-${plan.code}`}>
+          <Link href={`/account/plan?plan=${plan.code}`} className="link inline-flex min-h-11 items-center font-semibold" data-testid={`choose-${plan.code}`}>
             Choose this plan
           </Link>
           <span className="text-sm text-fg-muted">{TEST_MODE_LABEL}</span>

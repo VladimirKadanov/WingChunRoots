@@ -76,7 +76,7 @@ test('@nav a Sifu gets teaching tools, and a new member gets next steps that sta
     await fresh.goto('/dashboard');
     const steps = fresh.getByTestId('next-steps');
     await expect(steps.getByRole('heading', { level: 2, name: 'Get started' })).toBeVisible();
-    await expect(steps).toContainText('0 of 2 done');
+    await expect(steps).toContainText('0 of 4 done');
     await expect(fresh.getByTestId('next-step-profile')).toHaveAttribute('data-done', 'false');
     await expect(steps.getByRole('link', { name: 'Set up your profile' })).toHaveAttribute('href', '/onboarding?next=%2Fdashboard');
     // Role replay P2-6: someone who only manages an organization can leave onboarding for it.
@@ -97,4 +97,19 @@ test('@nav the home page offers a member their dashboard instead of signing up',
   await expect(shown(page.getByTestId('home-account'))).toHaveAttribute('data-signed-in', 'true');
   await expect(shown(page.getByTestId('home-account')).getByRole('link', { name: 'Open your dashboard' })).toHaveAttribute('href', '/dashboard');
   await expect(shown(page.getByTestId('home-account')).getByRole('link', { name: 'Create an account' })).toHaveCount(0);
+});
+
+test('@nav a Premium Student sees "Your Premium" with the pages the plan adds; a free account does not (role replay P3-3)', async ({ page }) => {
+  await signInAs(page, 'demo-premium-student');
+  await page.goto('/dashboard');
+  const strip = shown(page.getByTestId('your-premium'));
+  await expect(strip.getByRole('heading', { level: 2 })).toHaveText('Your Premium Student');
+  await expect(strip.getByRole('link', { name: /Your passport timeline/ })).toHaveAttribute('href', '/dashboard/passport');
+  await expect(strip.getByRole('link', { name: /Kung fu family/ })).toHaveAttribute('href', '/dashboard/family');
+  await expect(strip.getByRole('link', { name: /Your lineage card/ })).toHaveAttribute('href', /^\/people\/demo-[a-z0-9-]+\/card$/);
+  await page.context().clearCookies();
+  await signInAs(page, 'demo-root-a');
+  await page.goto('/dashboard');
+  await expect(page.getByTestId('next-steps').or(page.getByTestId('plan-name')).first()).toBeVisible();
+  await expect(page.getByTestId('your-premium')).toHaveCount(0);
 });

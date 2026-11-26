@@ -51,10 +51,13 @@ import { getDb, getPublicDb } from '../db';
 import { uuidv7 } from '../db/ids';
 import { event, eventInstructor, organization, organizationAdmin, organizationSchool, person, place, school } from '../db/schema';
 import {
+  EVENT_AUDIENCES,
   EVENT_DESCRIPTION_MAX,
+  EVENT_EMAIL_MAX,
   EVENT_INSTRUCTORS_MAX,
   EVENT_KINDS,
   EVENT_MAX_DAYS,
+  EVENT_PRICE_MAX,
   EVENT_REASON_MAX,
   EVENT_TITLE_MAX,
   EVENT_URL_MAX,
@@ -62,6 +65,7 @@ import {
   PUBLIC_RELATIONSHIP_STATUSES,
 } from '../db/schema/common';
 import {
+  EVENT_AUDIENCE_LABELS,
   EVENT_KIND_LABELS,
   type EventKind,
   type EventListDto,
@@ -198,6 +202,11 @@ const eventFields = z.object({
   venue: text(EVENT_VENUE_MAX),
   schoolId: z.uuid({ error: 'Choose a school from the list.' }).nullish(),
   externalUrl: text(EVENT_URL_MAX),
+  // P2-9 (ADR 0062): how to join, each optional.
+  priceNote: text(EVENT_PRICE_MAX),
+  openTo: z.enum(EVENT_AUDIENCES, { error: 'Choose who the event is open to.' }).nullish(),
+  registrationUrl: text(EVENT_URL_MAX),
+  registrationEmail: text(EVENT_EMAIL_MAX),
   instructorIds: z.array(z.uuid({ error: 'Choose instructors from the list.' })).max(EVENT_INSTRUCTORS_MAX * 2).default([]),
 });
 
@@ -235,6 +244,10 @@ const FIELD_LABELS: Record<string, string> = {
   venue: `At most ${EVENT_VENUE_MAX} characters.`,
   schoolId: 'Choose a school from the list.',
   externalUrl: 'Give a link that starts with https://.',
+  priceNote: `At most ${EVENT_PRICE_MAX} characters.`,
+  openTo: 'Choose who the event is open to.',
+  registrationUrl: 'Give a link that starts with https://.',
+  registrationEmail: 'Give an e-mail address, like name@example.org.',
   instructorIds: `Choose at most ${EVENT_INSTRUCTORS_MAX} instructors from the list.`,
   organizationId: 'Choose whom to publish as.',
   note: `At most ${EVENT_REASON_MAX} characters.`,
@@ -271,6 +284,9 @@ function newSlug(title: string): string {
   return `${base || 'event'}-${randomBytes(3).toString('hex')}`;
 }
 
+/** An address with one @ and a dot after it, no spaces: the form's check, as the column's. */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function safeUrl(raw: string | null | undefined): string | null | 'bad' {
   const value = oneLine(raw);
   if (value === '') return null;
@@ -302,6 +318,10 @@ interface PublicRow extends Record<string, unknown> {
   city_name: string | null;
   country_code: string | null;
   external_url: string | null;
+  price_note: string | null;
+  open_to: (typeof EVENT_AUDIENCES)[number] | null;
+  registration_url: string | null;
+  registration_email: string | null;
   status: 'published' | 'cancelled';
   cancelled_at: Date | string | null;
   cancellation_note: string | null;
@@ -363,7 +383,8 @@ function personTags(rows: readonly PublicRow[]): string[] {
 const COLUMNS = sql.raw(`v.id, v.slug, v.title, v.kind, v.description, v.starts_at, v.ends_at, v.timezone, v.online, v.venue, v.city_name, v.country_code,
   v.external_url, v.status, v.cancelled_at, v.cancellation_note, v.organizer_person_id, v.organizer_person_slug, v.organizer_person_name,
   v.organizer_person_lang, v.organization_id, v.organization_slug, v.organization_name, v.school_slug, v.school_name, v.school_city,
-  v.instructors, v.poster_sha256, v.poster_width, v.poster_height, v.revision, v.updated_at`);
+  v.instructors, v.poster_sha256, v.poster_width, v.poster_height, v.revision, v.updated_at,
+  v.price_note, v.open_to, v.registration_url, v.registration_email`);
 
 const MONTH_MARGIN_MS = 14 * 3_600_000;
 
@@ -442,6 +463,11 @@ async function cachedEventPage(eventSlug: string): Promise<EventPageDto | null> 
     description: row.description,
     venue: row.online ? null : row.venue,
     externalUrl: row.external_url,
+    priceNote: row.price_note,
+    openTo: row.open_to,
+    openToLabel: row.open_to ? EVENT_AUDIENCE_LABELS[row.open_to] : null,
+    registrationUrl: row.registration_url,
+    registrationEmail: row.registration_email,
     cancelledAt: row.cancelled_at === null ? null : iso(row.cancelled_at),
     cancellationNote: row.cancellation_note,
     school: row.school_slug && row.school_name && row.school_city ? { slug: row.school_slug, name: row.school_name, city: row.school_city } : null,
@@ -576,6 +602,10 @@ interface CleanFields {
   venue: string | null;
   schoolId: string | null;
   externalUrl: string | null;
+  priceNote: string | null;
+  openTo: (typeof EVENT_AUDIENCES)[number] | null;
+  registrationUrl: string | null;
+  registrationEmail: string | null;
   instructorIds: string[];
 }
 
@@ -590,6 +620,12 @@ async function cleanFields(db: Executor, input: z.output<typeof eventFields>, no
   if (venue && venue.length > EVENT_VENUE_MAX) fields.venue = FIELD_LABELS.venue!;
   const externalUrl = safeUrl(input.externalUrl);
   if (externalUrl === 'bad') fields.externalUrl = FIELD_LABELS.externalUrl!;
+  const priceNote = oneLine(input.priceNote) || null;
+  if (priceNote && priceNote.length > EVENT_PRICE_MAX) fields.priceNote = FIELD_LABELS.priceNote!;
+  const registrationUrl = safeUrl(input.registrationUrl);
+  if (registrationUrl === 'bad') fields.registrationUrl = FIELD_LABELS.registrationUrl!;
+  const registrationEmail = oneLine(input.registrationEmail) || null;
+  if (registrationEmail && (registrationEmail.length > EVENT_EMAIL_MAX || !EMAIL_PATTERN.test(registrationEmail))) fields.registrationEmail = FIELD_LABELS.registrationEmail!;
   const instructorIds = [...new Set(input.instructorIds)];
   if (instructorIds.length > EVENT_INSTRUCTORS_MAX) fields.instructorIds = FIELD_LABELS.instructorIds!;
 
@@ -642,6 +678,10 @@ async function cleanFields(db: Executor, input: z.output<typeof eventFields>, no
     venue,
     schoolId: input.schoolId ?? null,
     externalUrl: externalUrl as string | null,
+    priceNote,
+    openTo: input.openTo ?? null,
+    registrationUrl: registrationUrl as string | null,
+    registrationEmail,
     instructorIds,
   };
 }
@@ -779,6 +819,10 @@ async function publishEvent(principal: Principal | null, raw: z.input<typeof eve
       venue: f.venue,
       schoolId: f.schoolId,
       externalUrl: f.externalUrl,
+      priceNote: f.priceNote,
+      openTo: f.openTo,
+      registrationUrl: f.registrationUrl,
+      registrationEmail: f.registrationEmail,
       organizerUserId: 'userId' in organizer ? organizer.userId : null,
       organizerPersonId: 'personId' in organizer ? organizer.personId : null,
       organizationId: 'organizationId' in organizer ? organizer.organizationId : null,
@@ -864,6 +908,10 @@ async function changeEvent(principal: Principal | null, raw: z.input<typeof even
         venue: f.venue,
         schoolId: f.schoolId,
         externalUrl: f.externalUrl,
+        priceNote: f.priceNote,
+        openTo: f.openTo,
+        registrationUrl: f.registrationUrl,
+        registrationEmail: f.registrationEmail,
         revision: sql`${event.revision} + 1`,
         updatedAt: now,
       })
@@ -1314,6 +1362,10 @@ export interface EventEditor {
     venue: string | null;
     schoolId: string | null;
     externalUrl: string | null;
+    priceNote: string | null;
+    openTo: (typeof EVENT_AUDIENCES)[number] | null;
+    registrationUrl: string | null;
+    registrationEmail: string | null;
     instructorIds: string[];
     organizationId: string | null;
     organizationName: string | null;
@@ -1359,6 +1411,10 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
         venue: event.venue,
         schoolId: event.schoolId,
         externalUrl: event.externalUrl,
+        priceNote: event.priceNote,
+        openTo: event.openTo,
+        registrationUrl: event.registrationUrl,
+        registrationEmail: event.registrationEmail,
         organizationId: event.organizationId,
         organizationName: organization.name,
         status: event.status,

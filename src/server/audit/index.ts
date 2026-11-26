@@ -24,6 +24,7 @@ export type AuditAction =
   | 'pilot_access.close'
   // M07: profiles, consents and account deletion (plan §6.6).
   | 'person.update'
+  | 'person.publish'
   // ADR 0047: the links of a featured profile, set by the owner or removed by staff with a reason.
   | 'person.links'
   | 'person.link_remove'
@@ -41,6 +42,7 @@ export type AuditAction =
   | 'relationship.approve'
   | 'relationship.reject'
   | 'relationship.withdraw'
+  | 'relationship.remind'
   | 'relationship.end'
   // M10a: evidence, historical teachers, the review queue and archival edits (plan §6.6).
   | 'evidence.upload'
@@ -50,6 +52,9 @@ export type AuditAction =
   | 'review.assign'
   | 'review.needs_info'
   | 'review.note'
+  // Role replay 2026-11-25 (P3-8, ADR 0067): a reviewer asks a teacher about a claim; the teacher answers.
+  | 'review.ask_teacher'
+  | 'claim_confirmation.answer'
   | 'review.resolve'
   // M11: schools (plan §6.6). The rows name the fields that changed, never a point or a contact.
   | 'school.create'

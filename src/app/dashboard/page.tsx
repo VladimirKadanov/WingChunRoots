@@ -68,6 +68,35 @@ function Section({ id, title, aside, children }: { id: string; title: string; as
   );
 }
 
+/**
+ * Role replay 2026-11-25 (P3-3): "Your Premium", one strip of what the paid plan adds, each a link
+ * to its page (only pages that exist now, CLAUDE.md §11).
+ */
+function YourPremium({ links, plan }: { links: { passportHref: string; familyHref: string; cardHref: string }; plan: string }) {
+  const items = [
+    { href: links.passportHref, title: 'Your passport timeline', text: 'Your training year by year, on one timeline.' },
+    { href: links.familyHref, title: 'Kung fu family', text: 'Your classmates and cousins, and the weekly digest of what is new.' },
+    { href: links.cardHref, title: 'Your lineage card', text: 'Your line from the roots, to share, print or save as a PDF.' },
+  ];
+  return (
+    <section aria-labelledby="your-premium-heading" className="mt-8 rounded-md border border-border-subtle bg-surface-1 p-5" data-testid="your-premium">
+      <h2 id="your-premium-heading" className="font-display text-xl">
+        Your {plan}
+      </h2>
+      <ul className="mt-3 grid gap-3 sm:grid-cols-3">
+        {items.map((item) => (
+          <li key={item.href}>
+            <Link href={item.href} className="group grid min-h-11 gap-1 rounded-sm p-2 -m-2 hover:bg-surface-2">
+              <span className="font-semibold underline-offset-4 group-hover:underline">{item.title}</span>
+              <span className="text-sm text-fg-muted">{item.text}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** Why the list is empty and what comes next; a link only where there is a real next step (plan §5.6). */
 function Empty({ testId, children, action }: { testId: string; children: ReactNode; action?: { href: string; label: string } }) {
   return (
@@ -204,6 +233,12 @@ function SifuLists({
                   meta={
                     <>
                       {item.lineage} · sent {formatDay(item.createdAt)}
+                      {item.waitingDays > 0 ? (
+                        <>
+                          {' · waiting '}
+                          <span data-visual-days="">{item.waitingDays === 1 ? '1 day' : `${item.waitingDays} days`}</span>
+                        </>
+                      ) : null}
                     </>
                   }
                   status={<StatusBadge state="unconfirmed" label="Sent to you" />}
@@ -293,9 +328,14 @@ const VERIFY_FOR_DASHBOARD = '/account/security?next=%2Fdashboard';
  * in order, with the first open one as the button. Done steps show a tick and the word "Done", so
  * the state is never colour alone. The card disappears once every step is done.
  */
+const OPTIONAL_STEPS: ReadonlySet<NextStep['key']> = new Set(['public', 'photo']);
+
 function NextSteps({ steps, sifu }: { steps: NextStep[]; sifu: boolean }) {
   const done = steps.filter((step) => step.done).length;
   const first = steps.find((step) => !step.done)!;
+  // Two or more steps done fold into one line ("Done: …"), so the open ones lead.
+  const folded = done >= 2;
+  const shown = folded ? steps.filter((step) => !step.done) : steps;
   return (
     <section aria-labelledby="next-steps-heading" data-testid="next-steps" className="grid gap-4 rounded-sm border border-border-subtle bg-surface-2 px-4 py-4 sm:px-5">
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -306,8 +346,13 @@ function NextSteps({ steps, sifu }: { steps: NextStep[]; sifu: boolean }) {
           {done} of {steps.length} done
         </p>
       </header>
+      {folded ? (
+        <p className="text-sm text-fg-muted" data-testid="next-steps-done">
+          <span aria-hidden="true">✓ </span>Done: {steps.filter((step) => step.done).map((step) => step.label).join(', ')}
+        </p>
+      ) : null}
       <ol className="grid gap-3">
-        {steps.map((step, index) => (
+        {shown.map((step) => (
           <li key={step.key} data-testid={`next-step-${step.key}`} data-done={step.done ? 'true' : 'false'} className="flex items-start gap-3">
             <span
               aria-hidden="true"
@@ -316,7 +361,7 @@ function NextSteps({ steps, sifu }: { steps: NextStep[]; sifu: boolean }) {
                 step.done ? 'border-verified bg-verified text-on-verified' : 'border-border-strong text-fg',
               )}
             >
-              {step.done ? '✓' : index + 1}
+              {step.done ? '✓' : steps.indexOf(step) + 1}
             </span>
             <span className="grid gap-0.5">
               <span className={cx('text-ui', step === first && 'font-semibold')}>
@@ -420,6 +465,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
     overview.instructor.status === 'verified' ? 'verified' : overview.instructor.status === 'unverified' ? 'unconfirmed' : null;
   // A staff account without a profile has no teachers or students: one quiet line, no lists.
   const staffOnly = overview.staff !== null && !overview.hasProfile;
+  // Role replay 2026-11-25 (P2-2, ADR 0060): when only the optional steps are left (a public
+  // profile, a photo), the card comes after the lists, so waiting requests stay on the first screen.
+  const stepsLater = overview.nextSteps.every((step) => step.done || OPTIONAL_STEPS.has(step.key));
 
   return (
     <NotificationsProvider list={overview.notifications}>
@@ -460,11 +508,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
           </p>
         </header>
 
+        {overview.premium ? <YourPremium links={overview.premium} plan={overview.plan.name} /> : null}
+
         <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-x-14">
           <div className="grid content-start gap-10">
             {pilotOutcome && !offer ? <FormMessage form={PILOT_ACCESS_FORM} state={pilotOutcome} single /> : null}
             {overview.staff ? <StaffWork staff={overview.staff} /> : null}
-            {overview.nextSteps.length > 0 ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
+            {overview.nextSteps.length > 0 && !stepsLater ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
             {!sifu && !staffOnly && overview.hasProfile ? <TeachPrompt /> : null}
 
             {staffOnly ? (
@@ -518,6 +568,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
             ) : (
               <StudentLists overview={overview} />
             )}
+            {overview.nextSteps.length > 0 && stepsLater ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
           </div>
           <Notifications allHref="/dashboard/notifications" />
         </div>

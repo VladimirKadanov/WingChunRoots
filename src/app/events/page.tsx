@@ -287,7 +287,8 @@ async function AgendaView({ filters }: { filters: Filters }) {
         <>
           {next ? <NextEvent event={next} /> : null}
           <div data-testid="event-list">
-            {byMonth(list.items, filters.when).map((group) => (
+            {/* Role replay 2026-11-25 (P2-9, ADR 0062): the event under "Next up" is not repeated below it. */}
+            {byMonth(next ? list.items.filter((e) => e.slug !== next.slug) : list.items, filters.when).map((group) => (
               <section key={group.month} aria-labelledby={`month-${group.month}`} className="mt-10">
                 <div className="flex items-baseline gap-3 border-b border-border-strong pb-2">
                   <h2 id={`month-${group.month}`} className="font-display text-2xl">

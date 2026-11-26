@@ -107,7 +107,9 @@ test('@M02 sign up, confirm the email from the outbox and sign in', async ({ pag
   expect(link, 'the confirmation link in the e-mail').toBeDefined();
   expect(new URL(link!).origin).toBe(BASE_URL);
 
-  // The link opens a page that asks for a button press (a mail scanner cannot confirm).
+  // The link opens a page that asks for a button press (a mail scanner cannot confirm). Opened as
+  // another browser would (no sign-up mark, ADR 0069): confirmed, and the sign-in form follows.
+  await page.context().clearCookies({ name: 'wcr.confirm_browser' });
   await page.goto(new URL(link!).pathname + new URL(link!).search);
   await page.getByRole('button', { name: 'Confirm my address' }).click();
   await expect(page).toHaveURL(/\/sign-in\?verified=1$/);
@@ -494,6 +496,8 @@ test('@M02 onboarding creates a person linked to the account', async ({ page }) 
 
   // Without a `next`, onboarding ends on the dashboard, as a normal sign-in does.
   await expect(page).toHaveURL(/\/dashboard$/);
+  // Role replay P3-5: the header knows the new name at once, without a reload.
+  await expect(page.getByTestId('account-menu-trigger').filter({ visible: true })).toContainText('Demo Newcomer');
   expect(await accountTypeOf(account.email)).toBe('student');
   await page.goto('/account');
   // The account's overview of Settings (usability review 2026-11): the name heads its Profile section.
@@ -685,13 +689,8 @@ test.describe('at 390x844', () => {
 
     const link = new URL(await emailLinkFromOutbox('verify-email', email));
     await page.goto(link.pathname + link.search);
+    // The phone that signed up is signed in by the confirmation (ADR 0069).
     await page.getByRole('button', { name: 'Confirm my address' }).tap();
-    await expect(page).toHaveURL(/\/sign-in\?verified=1$/);
-    await noHorizontalScroll();
-    await expect(field(page, 'E-mail address')).toHaveValue(email);
-    await field(page, 'Password', true).fill(NEW_ACCOUNT_PASSWORD);
-    await page.getByRole('button', { name: 'Sign in' }).tap();
-
     await expect(page).toHaveURL(/\/onboarding$/);
     await noHorizontalScroll();
     await targetsAtLeast44();

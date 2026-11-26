@@ -48,6 +48,8 @@ import { inviteTeacher } from '../services/invitations';
 import { requestPilotAccess } from '../services/plans';
 import { approveRelationship, rejectRelationship, requestTeacher } from '../services/relationships';
 import { assignReviewCase, decideReviewCase } from '../services/review';
+import { askTeacherToConfirm } from '../services/claim-confirmations';
+import { requestProfileClaim } from '../services/profile-claims';
 import { addArchiveLink, createArchiveLineage, createArchiveRecord } from '../services/archive-editor';
 import { reportLineage } from '../services/disputes';
 import { answerNomination, nominateSuccessor } from '../services/succession';
@@ -549,6 +551,21 @@ async function claimableRecord() {
   return { id, slug };
 }
 
+/** ADR 0067: a profile claim whose record has a verified teacher with an account. */
+async function claimWithTeacher(opts: { asked?: boolean } = {}) {
+  const record = await claimableRecord();
+  const teacher = await actor('claim-teacher', { sifu: true });
+  const lineageId = await newLineage('m13-authz');
+  const [rel] = await getDb()
+    .insert(teachingRelationship)
+    .values({ teacherPersonId: teacher.personId!, studentPersonId: record.id, lineageId, status: 'verified', visibility: 'public' })
+    .returning({ id: teachingRelationship.id });
+  const claimant = await actor('claim-asker', { noPerson: true });
+  const claim = await requestProfileClaim(claimant.principal, { personId: record.id, note: 'A fictional note for the reviewers.', idempotencyKey: key() }, meta);
+  const confirmationId = opts.asked ? (await askTeacherToConfirm(world.admin.principal, { caseId: claim.caseId, relationshipId: rel!.id }, meta)).id : null;
+  return { teacher, claimant, caseId: claim.caseId, relationshipId: rel!.id, confirmationId };
+}
+
 /**
  * ADR 0040: one waiting claim per account. The world's staff accept invitations in the rows above
  * (invitations.accept), so their waiting claims are set aside before each call of a claim row.
@@ -654,6 +671,8 @@ const ROWS: Row[] = [
     },
     expect: { ...signedInOnly, owner: 'ok', member: 'FORBIDDEN', moderator: 'FORBIDDEN', archivist: 'FORBIDDEN', admin: 'FORBIDDEN', adminNo2fa: 'FORBIDDEN' },
   },
+  // Role replay 2026-11-25 (P2-2, ADR 0060): "Show my profile publicly" publishes the account's own profile only.
+  { path: 'profile.publish', make: async () => ({ owner: await actor('publishing'), input: undefined }), expect: { ...signedInOnly, owner: 'ok' } },
   // ADR 0047: the links of a featured profile. Own links for every account with a profile; saving
   // needs the plan (a member without it is refused at the plan); staff remove one with a reason.
   { path: 'profile.links', make: async () => ({ owner: await actor('links-own'), input: undefined }), expect: { ...signedInOnly, owner: 'ok', member: 'ok' } },
@@ -855,6 +874,19 @@ const ROWS: Row[] = [
     path: 'relationships.withdraw',
     make: async () => {
       const r = await pendingRequest();
+      return { owner: r.student, party: r.teacher, input: { relationshipId: r.relationshipId, idempotencyKey: key() } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'FORBIDDEN', member: 'NOT_FOUND', moderator: 'FORBIDDEN', archivist: 'FORBIDDEN', admin: 'FORBIDDEN', adminNo2fa: 'NOT_FOUND' },
+  },
+  // Role replay 2026-11-25 (P2-1, ADR 0060): a reminder of a request that has waited 14 days, by its student.
+  {
+    path: 'relationships.remind',
+    make: async () => {
+      const r = await pendingRequest();
+      await getDb()
+        .update(teachingRelationship)
+        .set({ createdAt: sql`now() - make_interval(days => 15)`, updatedAt: sql`now() - make_interval(days => 15)` })
+        .where(eq(teachingRelationship.id, r.relationshipId));
       return { owner: r.student, party: r.teacher, input: { relationshipId: r.relationshipId, idempotencyKey: key() } };
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'FORBIDDEN', member: 'NOT_FOUND', moderator: 'FORBIDDEN', archivist: 'FORBIDDEN', admin: 'FORBIDDEN', adminNo2fa: 'NOT_FOUND' },
@@ -1284,6 +1316,32 @@ const ROWS: Row[] = [
       return { owner: c.student, input: { caseId: c.caseId, body: 'A fictional note.', idempotencyKey: key() } };
     },
     expect: { ...staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  // ADR 0067: the reviewer who may ask the claimant may ask the record's teacher (an administrator,
+  // or the archivist the case is assigned to); the asked teacher alone reads and answers.
+  {
+    path: 'review.askTeacher',
+    make: async () => {
+      const c = await claimWithTeacher();
+      return { owner: c.claimant, input: { caseId: c.caseId, relationshipId: c.relationshipId } };
+    },
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  {
+    path: 'claimConfirmations.get',
+    make: async () => {
+      const c = await claimWithTeacher({ asked: true });
+      return { owner: c.teacher, party: c.claimant, input: { id: c.confirmationId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'claimConfirmations.answer',
+    make: async () => {
+      const c = await claimWithTeacher({ asked: true });
+      return { owner: c.teacher, party: c.claimant, input: { id: c.confirmationId, answer: 'yes', note: 'A fictional note.' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
   {
     path: 'archive.get',
@@ -2672,6 +2730,8 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/teachers/actions.ts#requestTeacherAction', row: 'relationships.request', form: (i) => ({ ...same(i), ...periodsForm }), roles: ['anonymous', 'member'] },
   { action: 'src/app/dashboard/teachers/actions.ts#resubmitRequestAction', row: 'relationships.resubmit', form: (i) => ({ ...same(i), ...periodsForm }), roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/teachers/actions.ts#withdrawRequestAction', row: 'relationships.withdraw', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/teachers/actions.ts#remindTeacherAction', row: 'relationships.remind', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/teachers/actions.ts#showProfilePubliclyAction', row: 'profile.publish', form: () => ({ page: 'teachers' }), roles: ['anonymous', 'owner'] },
   { action: 'src/app/dashboard/teachers/actions.ts#endTrainingAction', row: 'relationships.end', form: (i) => ({ ...same(i), endYear: '2024' }), roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/students/requests/actions.ts#approveRequestAction', row: 'relationships.approve', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/students/requests/actions.ts#rejectRequestAction', row: 'relationships.reject', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
@@ -2690,6 +2750,8 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/admin/review/actions.ts#assignCaseAction', row: 'review.assign', form: (i) => ({ ...same(i), mode: 'take' }), roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'] },
   { action: 'src/app/admin/review/actions.ts#decideCaseAction', row: 'review.decide', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'] },
   { action: 'src/app/admin/review/actions.ts#addNoteAction', row: 'review.note', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'moderator'] },
+  { action: 'src/app/admin/review/actions.ts#askTeacherAction', row: 'review.askTeacher', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'moderator'] },
+  { action: 'src/app/dashboard/confirmations/[id]/actions.ts#answerConfirmationAction', row: 'claimConfirmations.answer', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/admin/review/actions.ts#arbitrateAction', row: 'review.arbitrate', form: same, roles: ['anonymous', 'member', 'owner', 'archivist', 'adminNo2fa', 'moderator'] },
   // M14: a moderator's "Remove photo" on a case card; the owner's own removal is the same procedure.
   {
@@ -2836,13 +2898,13 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'admin'],
   },
   // M22: the billing forms post the procedures' fields; the checkout redirects to its page.
-  { action: 'src/app/dashboard/billing/actions.ts#startCheckoutAction', row: 'billing.checkout', form: same, roles: ['anonymous', 'member', 'owner'] },
-  { action: 'src/app/dashboard/billing/actions.ts#cancelSubscriptionAction', row: 'billing.cancel', form: same, roles: ['anonymous', 'member', 'owner'] },
-  { action: 'src/app/dashboard/billing/actions.ts#resumeSubscriptionAction', row: 'billing.resume', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/account/plan/_billing/actions.ts#startCheckoutAction', row: 'billing.checkout', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/account/plan/_billing/actions.ts#cancelSubscriptionAction', row: 'billing.cancel', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/account/plan/_billing/actions.ts#resumeSubscriptionAction', row: 'billing.resume', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/billing/test-checkout/[id]/actions.ts#testPayAction', row: 'billing.testPay', form: same, roles: ['anonymous', 'member', 'owner'] },
   // M23: the plan change forms and the administrators' trial forms post the procedures' fields.
-  { action: 'src/app/dashboard/billing/actions.ts#changePlanAction', row: 'billing.changePlan', form: (i) => ({ ...same(i), organizationId: '' }), roles: ['anonymous', 'member', 'party', 'owner'] },
-  { action: 'src/app/dashboard/billing/actions.ts#cancelChangeAction', row: 'billing.cancelChange', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/account/plan/_billing/actions.ts#changePlanAction', row: 'billing.changePlan', form: (i) => ({ ...same(i), organizationId: '' }), roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/account/plan/_billing/actions.ts#cancelChangeAction', row: 'billing.cancelChange', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/admin/organizations/actions.ts#startTrialAction', row: 'federationTrials.start', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/organizations/actions.ts#endTrialAction', row: 'federationTrials.end', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/billing/[id]/actions.ts#moveTestClockAction', row: 'billing.testClock', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },

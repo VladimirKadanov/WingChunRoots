@@ -175,6 +175,7 @@ import {
   resubmitRelationship,
   studentRequests,
   withdrawRelationship,
+  remindRelationship,
 } from '../services/relationships';
 import {
   addArchiveLink,
@@ -218,7 +219,7 @@ import { listSuspended, suspendAccount, suspendInput, unsuspendAccount, unsuspen
 import { restoreInput, restoreProfile, takeDownInput, takeDownProfile } from '../services/takedown';
 import { systemStatus } from '../services/system';
 import { twoFactorOverview } from '../services/two-factor';
-import { profileGet, profileUpdate, profileUpdateInput } from '../services/profile';
+import { profilePublish, profileGet, profileUpdate, profileUpdateInput } from '../services/profile';
 import { consentWithdraw, consentWithdrawInput, privacyOverview, requestAccountDeletion, requestDeletionInput } from '../services/privacy';
 import { searchInput, searchQuery } from '../services/search';
 import { searchResultSchema } from '../dto/search';
@@ -264,6 +265,14 @@ import {
   trialWithdrawInput,
   withdrawTrial,
 } from '../services/trial-lessons';
+import {
+  answerClaimConfirmation,
+  askTeacherToConfirm,
+  claimConfirmationAnswerInput,
+  claimConfirmationAskInput,
+  claimConfirmationIdInput,
+  getClaimConfirmation,
+} from '../services/claim-confirmations';
 import {
   adminBillingGet,
   adminBillingList,
@@ -509,6 +518,10 @@ export const router = {
       .route({ method: 'POST', path: '/profile/supporter/set', summary: 'Show or hide the Supporter badge on the own profile (showing needs Premium Student or Professional Sifu); audited' })
       .input(setSupporterInput)
       .handler(({ context, input }) => setSupporter(context.principal, input, context.meta)),
+    // Role replay 2026-11-25 (P2-2, ADR 0060): one tap from a confirmed link that is not public yet.
+    publish: signedIn
+      .route({ method: 'POST', path: '/profile/publish', summary: '"Show my profile publicly": the publication consent and a public own profile, as in the profile editor; audited' })
+      .handler(({ context }) => profilePublish(context.principal, context.meta)),
   },
   // ADR 0048: the kung fu family and its private follows (Premium Student, Professional Sifu).
   family: {
@@ -722,6 +735,11 @@ export const router = {
       .route({ method: 'POST', path: '/relationships/withdraw', summary: 'Withdraw a request that waits or was declined (the student)' })
       .input(relationshipActionInput)
       .handler(({ context, input }) => withdrawRelationship(context.principal, input, context.meta)),
+    // Role replay 2026-11-25 (P2-1, ADR 0060).
+    remind: signedIn
+      .route({ method: 'POST', path: '/relationships/remind', summary: 'Send the teacher a reminder of a request that has waited 14 days or more (the student; at most once every 14 days)' })
+      .input(relationshipActionInput)
+      .handler(({ context, input }) => remindRelationship(context.principal, input, context.meta)),
     end: signedIn
       .route({ method: 'POST', path: '/relationships/end', summary: 'Mark the training as ended (the student or the teacher): the link stays, as historical' })
       .input(endInput)
@@ -985,6 +1003,26 @@ export const router = {
       .route({ method: 'POST', path: '/review/note', summary: 'Add an internal note to a case (reviewers only); audited' })
       .input(reviewNoteInput)
       .handler(({ context, input }) => addReviewNote(context.principal, input, context.meta)),
+    // Role replay 2026-11-25 (P3-8, docs/adr/0067-ask-teacher-to-confirm.md).
+    askTeacher: staffWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/review/ask-teacher',
+        summary: 'Ask a verified teacher (with an account) of the record a profile claim is about whether the claim is their student’s (the reviewer who may ask the claimant); the teacher is notified; once per case and teacher; audited',
+      })
+      .input(claimConfirmationAskInput)
+      .handler(({ context, input }) => askTeacherToConfirm(context.principal, input, context.meta)),
+  },
+  // ADR 0067: the asked teacher's side.
+  claimConfirmations: {
+    get: signedIn
+      .route({ method: 'GET', path: '/claim-confirmations/{id}', summary: 'A reviewers’ question to you, as a teacher, about a claim of your student’s profile; 404 for anyone else' })
+      .input(claimConfirmationIdInput)
+      .handler(({ context, input }) => getClaimConfirmation(context.principal, input)),
+    answer: signedIn
+      .route({ method: 'POST', path: '/claim-confirmations/answer', summary: 'Answer the reviewers’ question once (yes, no or not sure, with an optional note only they read); the assigned reviewer is told; audited' })
+      .input(claimConfirmationAnswerInput)
+      .handler(({ context, input }) => answerClaimConfirmation(context.principal, input, context.meta)),
   },
   // M25 (docs/adr/0028-governance.md): governance. Succession, lineage dispute reports, appeals and
   // proposed changes to the shared archival records; every decision is a case of the review queue

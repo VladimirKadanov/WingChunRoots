@@ -66,13 +66,13 @@ test('@M22 a Sifu pays Professional Sifu in test mode, cancels, and keeps its re
   // /plans → the billing page with the chosen plan.
   await page.goto('/plans');
   await visible(page.getByTestId('choose-pro_sifu')).click();
-  await page.waitForURL(/\/dashboard\/billing\?plan=pro_sifu/);
+  await page.waitForURL(/\/account\/plan\?plan=pro_sifu/);
   await expect(visible(page.getByTestId('test-mode-banner'))).toContainText('Test mode, no real charge');
   await expect(visible(page.getByTestId('billing-plan'))).toContainText('Free Sifu');
   await expect(visible(page.getByTestId('no-payments'))).toBeVisible();
   const offer = visible(page.getByTestId('offer-pro_sifu'));
   await expect(offer).toBeVisible();
-  await axeBothThemes(page, '/dashboard/billing (Free Sifu)');
+  await axeBothThemes(page, '/account/plan (Free Sifu)');
 
   // The checkout of the test provider.
   await offer.getByRole('button', { name: 'Choose Professional Sifu' }).click();
@@ -105,14 +105,14 @@ test('@M22 a Sifu pays Professional Sifu in test mode, cancels, and keeps its re
 
   // The card that succeeds: back on the billing page, confirmed once the worker applied the event.
   await pay(page, 'Test card that succeeds', '$19.00');
-  await page.waitForURL(new RegExp(`/dashboard/billing\\?checkout=${checkoutId}`));
+  await page.waitForURL(new RegExp(`/account/plan\\?checkout=${checkoutId}`));
   await expect(visible(page.getByTestId('checkout-done'))).toContainText('Your plan is now Professional Sifu', { timeout: 30_000 });
   const subscription = visible(page.getByTestId('billing-subscription'));
   await expect(subscription).toHaveAttribute('data-status', 'active');
   await expect(subscription.getByTestId('subscription-status')).toContainText('Active');
   await expect(visible(page.getByTestId('payment-history'))).toContainText('$19.00');
   await expect(visible(page.getByTestId('payment-history'))).toContainText('Paid (test)');
-  await axeBothThemes(page, '/dashboard/billing (active)');
+  await axeBothThemes(page, '/account/plan (active)');
 
   // A second checkout of the same account is refused while the subscription renews.
   const again = await apiPost(page, '/billing/checkout', { planCode: 'pro_sifu', interval: 'month' });
@@ -121,12 +121,12 @@ test('@M22 a Sifu pays Professional Sifu in test mode, cancels, and keeps its re
   // The plan, in the settings; the account type cannot change while the subscription renews.
   await page.goto('/account/plan');
   await expect(visible(page.getByTestId('settings-plan'))).toContainText('Professional Sifu');
-  await expect(visible(page.getByTestId('settings-paid-plan'))).toBeVisible();
+  await expect(visible(page.getByTestId('billing-subscription'))).toHaveAttribute('data-status', 'active');
   const type = await apiPost(page, '/account/type', { accountType: 'student' });
   expect(type.status(), await type.text()).toBe(409);
 
   // Cancel at the end of the period: the plan stays until then.
-  await page.goto('/dashboard/billing');
+  await page.goto('/account/plan');
   await visible(page.getByTestId('billing-subscription')).getByRole('button', { name: 'Cancel at the end of the period' }).click();
   await expect(visible(page.getByTestId('subscription-status')).first()).toContainText('Cancels at the period end');
   await expect(visible(page.getByTestId('billing-plan'))).toContainText('Professional Sifu');
@@ -152,7 +152,7 @@ test('@M22 a Sifu pays Professional Sifu in test mode, cancels, and keeps its re
   await expect
     .poll(
       async () => {
-        await page.goto('/dashboard/billing');
+        await page.goto('/account/plan');
         return (await visible(page.getByTestId('billing-plan')).textContent()) ?? '';
       },
       { timeout: 30_000 },
@@ -162,14 +162,14 @@ test('@M22 a Sifu pays Professional Sifu in test mode, cancels, and keeps its re
   await expect(earlier).toHaveCount(1);
   await expect(earlier.getByTestId('subscription-status')).toContainText('Ended');
   await expect(visible(page.getByTestId('payment-history'))).toContainText('$19.00');
-  await axeBothThemes(page, '/dashboard/billing (ended)');
+  await axeBothThemes(page, '/account/plan (ended)');
   await page.goto('/account/plan');
   await expect(visible(page.getByTestId('settings-plan'))).toContainText('Free Sifu');
 });
 
 test('@M22 a failed renewal keeps the plan for the grace period, then the plan ends', async ({ page, browser }) => {
   const student = await freshAccount(page, { name: 'Demo Billing Student' });
-  await page.goto('/dashboard/billing?plan=premium_student');
+  await page.goto('/account/plan?plan=premium_student');
   await visible(page.getByTestId('offer-premium_student')).getByRole('button', { name: 'Choose Premium Student' }).click();
   await page.waitForURL(/\/billing\/test-checkout\//);
   await pay(page, 'Test card that fails at renewal', '$4.00');
@@ -183,7 +183,7 @@ test('@M22 a failed renewal keeps the plan for the grace period, then the plan e
     await expect
       .poll(
         async () => {
-          await page.goto('/dashboard/billing');
+          await page.goto('/account/plan');
           return (await visible(page.getByTestId('billing-subscription')).getAttribute('data-status').catch(() => null)) ?? '';
         },
         { timeout: 30_000 },
@@ -192,7 +192,7 @@ test('@M22 a failed renewal keeps the plan for the grace period, then the plan e
     await expect(visible(page.getByTestId('subscription-status')).first()).toContainText('Payment failed');
     await expect(visible(page.getByTestId('billing-plan'))).toContainText('Premium Student');
     await expect(visible(page.getByTestId('payment-history'))).toContainText('Failed (test)');
-    await axeBothThemes(page, '/dashboard/billing (payment failed)');
+    await axeBothThemes(page, '/account/plan (payment failed)');
 
     // The end of the grace period: the plan ends; the records stay.
     await moveClock(admin.page, subscriptionId, 'Move to the end of the grace period');
@@ -202,7 +202,7 @@ test('@M22 a failed renewal keeps the plan for the grace period, then the plan e
   await expect
     .poll(
       async () => {
-        await page.goto('/dashboard/billing');
+        await page.goto('/account/plan');
         return (await visible(page.getByTestId('billing-plan')).textContent()) ?? '';
       },
       { timeout: 30_000 },

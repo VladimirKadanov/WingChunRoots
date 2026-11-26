@@ -69,12 +69,7 @@ test('@invite a new student opens the link, signs up, and lands on the request f
   expect(link.searchParams.get('next')).toBe(target);
   await page.goto(`${link.pathname}${link.search}`);
   await visible(page.getByRole('button', { name: 'Confirm my address' })).click();
-  await page.waitForURL((u) => u.pathname === '/sign-in' && u.searchParams.get('next') === target, { timeout: 15_000 });
-  await expect(visible(page.getByText('to ask your teacher to confirm that they teach you'))).toBeVisible();
-  await visible(page.getByLabel('Password', { exact: true })).fill(NEW_ACCOUNT_PASSWORD);
-  await visible(page.getByRole('button', { name: 'Sign in' })).click();
-
-  // Onboarding first (a teacher confirms a name), then the form with the teacher chosen.
+  // The browser that signed up is signed in by the confirmation (ADR 0069). Onboarding first (a teacher confirms a name), then the form with the teacher chosen.
   await page.waitForURL((u) => u.pathname === '/onboarding' && u.searchParams.get('next') === target, { timeout: 15_000 });
   await visible(page.getByLabel(/^Name in Latin letters/)).fill(`Demo Invited ${letters().replace(/^./, (c) => c.toUpperCase())}`);
   await visible(page.getByRole('button', { name: 'Save my profile' })).click();
@@ -103,4 +98,35 @@ test("@invite \"I'm new to Wing Chun\" ends onboarding on the school finder; the
   await visible(page.getByLabel('I’m new to Wing Chun')).check();
   await visible(page.getByRole('button', { name: 'Save my profile' })).click();
   await page.waitForURL((u) => u.pathname === '/schools', { timeout: 15_000 });
+});
+
+test('@invite a visitor asking a school for a trial lesson signs up, is signed in by the confirmation and gives only a name (ADR 0069)', async ({ page }) => {
+  test.setTimeout(120_000);
+  const trial = '/schools/demo-school-sofia/trial';
+  await page.goto(`/sign-up?next=${encodeURIComponent(trial)}`);
+  const email = uniqueEmail('trial-visitor');
+  await visible(page.getByLabel('E-mail address')).fill(email);
+  await visible(page.getByLabel('Password', { exact: true })).fill(NEW_ACCOUNT_PASSWORD);
+  for (const label of ['I am 18 or older.', 'I accept the terms of use.', /I will record only what I believe to be true/, /I have read the privacy notice\./]) {
+    await visible(page.getByLabel(label)).check();
+  }
+  await visible(page.getByRole('button', { name: 'Create account' })).click();
+  await expect(visible(page.getByRole('heading', { level: 1, name: 'Check your inbox' }))).toBeVisible();
+
+  // The browser that signed up: the confirmation signs in and asks only the name.
+  const link = new URL(await emailLinkFromOutbox('verify-email', email));
+  expect(link.searchParams.get('next')).toBe(trial);
+  await page.goto(`${link.pathname}${link.search}`);
+  await visible(page.getByRole('button', { name: 'Confirm my address' })).click();
+  await page.waitForURL((u) => u.pathname === '/onboarding' && u.searchParams.get('next') === trial, { timeout: 15_000 });
+  await expect(visible(page.getByRole('heading', { level: 1 }))).toHaveText('One thing first: your name');
+  await expect(visible(page.getByTestId('onboarding-short'))).toBeVisible();
+  for (const absent of ['Original script', 'Country', 'Show my profile publicly']) await expect(visible(page.getByLabel(absent))).toHaveCount(0);
+  await expect(visible(page.getByTestId('organization-only'))).toHaveCount(0);
+  await expectNoAxeViolations(page, '/onboarding?next=<trial> (name only)');
+  await visible(page.getByLabel(/^Name in Latin letters/)).fill(`Demo Visitor ${letters().replace(/^./, (c) => c.toUpperCase())}`);
+  await visible(page.getByRole('button', { name: 'Continue to the request' })).click();
+  await page.waitForURL((u) => u.pathname === trial, { timeout: 15_000 });
+  await expect(visible(page.getByRole('heading', { level: 1, name: 'Request a trial lesson' }))).toBeVisible();
+  await expect(page.getByTestId('trial-refused')).toHaveCount(0);
 });

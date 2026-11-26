@@ -28,6 +28,10 @@ const LABELS: Record<string, string> = {
   venue: 'Venue',
   schoolId: 'School',
   externalUrl: 'Link',
+  priceNote: 'Price',
+  openTo: 'Open to',
+  registrationUrl: 'Registration link',
+  registrationEmail: 'Registration e-mail',
   instructorIds: 'Instructors',
   description: 'About the event',
 };
@@ -246,6 +250,52 @@ export function EventForm({ editor, publishAs, cityQuery, initial }: EventFormPr
         hint="Your own page about the event, with https://. It opens in the same window."
         defaultValue={current?.externalUrl ?? ''}
       />
+
+      {/* Role replay 2026-11-25 (P2-9, ADR 0062): how to join, all optional and public. */}
+      <fieldset className="grid gap-4" data-testid="event-join-fields">
+        <legend className="mb-1 font-display text-xl">How to join</legend>
+        <TextField
+          form={form}
+          name="priceNote"
+          label={LABELS.priceNote}
+          state={state}
+          optional
+          autoComplete="off"
+          maxLength={120}
+          hint="In your own words, for example “Free” or “EUR 25, members EUR 20”."
+          defaultValue={current?.priceNote ?? ''}
+        />
+        <SelectField form={form} name="openTo" label={LABELS.openTo} state={state} optional autoComplete="off" defaultValue={values?.openTo ?? current?.openTo ?? ''}>
+          <option value="">Not said</option>
+          <option value="all_levels">Open to all levels</option>
+          <option value="members_only">Members only</option>
+          <option value="instructors_only">Instructors only</option>
+        </SelectField>
+        <TextField
+          form={form}
+          name="registrationUrl"
+          label={LABELS.registrationUrl}
+          state={state}
+          optional
+          autoComplete="url"
+          maxLength={600}
+          placeholder="https://"
+          hint="Where people sign up, with https://."
+          defaultValue={current?.registrationUrl ?? ''}
+        />
+        <TextField
+          form={form}
+          name="registrationEmail"
+          type="email"
+          label={LABELS.registrationEmail}
+          state={state}
+          optional
+          autoComplete="email"
+          maxLength={254}
+          hint="An address people can write to about the event. It is shown on the event’s public page."
+          defaultValue={current?.registrationEmail ?? ''}
+        />
+      </fieldset>
 
       <fieldset className="grid gap-1" data-field="">
         <legend className="mb-1 text-sm font-semibold">

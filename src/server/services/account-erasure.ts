@@ -50,7 +50,7 @@
 // drops the public cache with `tags` when it runs in the web process; the command line cannot (it
 // says to restart the web server).
 
-import { and, eq, inArray, isNull, or, type SQL, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, or, type SQL, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
@@ -179,6 +179,9 @@ export const USER_REFERENCES: readonly UserReference[] = [
   { table: 'review_case', column: 'opened_by_user_id', action: 'clear', why: 'cases the account opened keep no link to it' },
   { table: 'review_case', column: 'assigned_to_user_id', action: 'clear', why: 'cases assigned to the account' },
   { table: 'review_note', column: 'author_user_id', action: 'clear', why: 'notes the account wrote are blanked first' },
+  // ADR 0067: a reviewer's question to a teacher about a claim: the teacher's asks go, the reviewer's stay without them.
+  { table: 'claim_confirmation', column: 'teacher_user_id', action: 'delete', why: 'questions to the account as a teacher, and its answers' },
+  { table: 'claim_confirmation', column: 'asked_by_user_id', action: 'clear', why: 'questions the account asked as a reviewer' },
   { table: 'evidence_file', column: 'uploaded_by_user_id', action: 'clear', why: 'files the account uploaded: names and hashes cleared, unused ones deleted first' },
   { table: 'evidence_link', column: 'created_by_user_id', action: 'clear', why: 'links the account made: their notes are cleared first' },
   { table: 'invitation', column: 'invited_by_user_id', action: 'clear', why: 'invitations the account sent are revoked first' },
@@ -392,6 +395,12 @@ async function dismissCases(
  * disputed and revoked relationships are the historical record and stay.
  */
 async function withdrawOpenRequests(tx: Transaction, personId: string, actor: Principal | null, userId: string): Promise<{ withdrawn: number; cases: number; invitations: string[] }> {
+  // P2-3 (ADR 0060): the notes the student wrote to their teachers go with the account, whatever
+  // the link's state; the link itself stays when it is part of the record.
+  await tx
+    .update(teachingRelationship)
+    .set({ requestNote: null })
+    .where(and(eq(teachingRelationship.studentPersonId, personId), isNotNull(teachingRelationship.requestNote)));
   const rows = await tx
     .select({ id: teachingRelationship.id, status: teachingRelationship.status })
     .from(teachingRelationship)

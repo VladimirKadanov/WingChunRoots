@@ -32,7 +32,7 @@ const SLUG = /^[a-z0-9-]{1,120}$/;
 
 type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
-function Shell({ slug, name, children }: { slug: string; name: string | null; children: React.ReactNode }) {
+function Shell({ slug, name, privateClub = false, children }: { slug: string; name: string | null; privateClub?: boolean; children: React.ReactNode }) {
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <div className="max-w-[46rem]">
@@ -42,7 +42,7 @@ function Shell({ slug, name, children }: { slug: string; name: string | null; ch
             {name ?? 'Schools'}
           </Link>
         </p>
-        <h1 className="mt-2 font-display text-feature [overflow-wrap:anywhere]">Request a trial lesson</h1>
+        <h1 className="mt-2 font-display text-feature [overflow-wrap:anywhere]">{privateClub ? 'Ask to visit' : 'Request a trial lesson'}</h1>
         <div className="mt-6 grid gap-6">{children}</div>
       </div>
     </div>
@@ -76,7 +76,7 @@ export default async function TrialRequestPage({ params, searchParams }: Props) 
 
   if (options.state !== 'ready' || !options.sender) {
     return (
-      <Shell slug={school.slug} name={school.name}>
+      <Shell slug={school.slug} name={school.name} privateClub={school.privateClub}>
         <p className="max-w-[56ch]" data-testid="trial-refused" data-state={options.state}>
           {options.reason}
         </p>
@@ -108,12 +108,12 @@ export default async function TrialRequestPage({ params, searchParams }: Props) 
   }
 
   return (
-    <Shell slug={school.slug} name={school.name}>
+    <Shell slug={school.slug} name={school.name} privateClub={school.privateClub}>
       <p className="max-w-[60ch] text-ui text-fg-muted">
         Ask {school.name} for a first lesson. {school.firstTrialFree ? 'The school says the first trial lesson is free. ' : ''}You can send up to{' '}
         {options.limits.perDay} requests a day, one at a time to each school.
       </p>
-      <TrialForm school={school} sender={options.sender} limits={options.limits} initial={outcome} />
+      <TrialForm school={school} sender={options.sender} limits={options.limits} classes={options.classes} initial={outcome} />
     </Shell>
   );
 }

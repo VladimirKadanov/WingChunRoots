@@ -128,11 +128,15 @@ export const NOTIFICATION_CATALOG = {
   'relationship.approved': mailed('teaching', 'relationship-approved'),
   'relationship.rejected': mailed('teaching', 'relationship-rejected'),
   'relationship.ended': mailed('teaching', 'notice'),
+  // Role replay 2026-11-25 (P2-1, ADR 0060): a student's reminder, at most once every 14 days.
+  'relationship.reminder': mailed('teaching', 'notice'),
   // M10a, M10b: reviews (staff notices stay in the dashboard).
   'review.decided': mailed('review', 'review-decided'),
   'review.opened': dashboardOnly('review'),
   'review.updated': dashboardOnly('review'),
   'claim.decided': mailed('review', 'claim-decided'),
+  // Role replay 2026-11-25 (P3-8, ADR 0067): a reviewer asks a teacher about a claim.
+  'claim.confirmation_asked': mailed('review', 'notice'),
   'invitation.claimed': mailed('teaching', 'notice'),
   'instructor.decided': mailed('review', 'instructor-decided'),
   // DEFAULT D19: both parties of an arbitration, its decision included (e-mailed since M10b).

@@ -29,18 +29,19 @@ import { PageRedirect } from '@/components/account/page-redirect';
 import { NameText } from '@/components/account/person-names';
 import { ArrowRightIcon } from '@/components/icons';
 import { EvidenceUploader } from '@/components/evidence/uploader';
-import { EndTrainingForm, WithdrawForm } from '@/components/relationships/forms';
+import { EndTrainingForm, PublishProfileForm, RemindForm, WithdrawForm } from '@/components/relationships/forms';
 import { NotPublicNote, OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
 import { formatSize } from '@/lib/file-size';
+import { LONG_WAIT_DAYS, REMINDER_INTERVAL_DAYS } from '@/lib/request-reminders';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import type { RelationshipView } from '@/server/services/relationships';
-import { endTrainingAction, withdrawRequestAction } from '../actions';
-import { END_FORM, endForm, WITHDRAW_FORM, withdrawForm } from '../form-ids';
+import { endTrainingAction, remindTeacherAction, showProfilePubliclyAction, withdrawRequestAction } from '../actions';
+import { END_FORM, endForm, REMIND_FORM, remindForm, WITHDRAW_FORM, withdrawForm } from '../form-ids';
 
 export const instant = false;
 
@@ -214,7 +215,7 @@ function Row({ view, children, testId }: { view: RelationshipView; children?: Re
         <RelationshipBadge view={view} />
         {children}
       </div>
-      <NotPublicNote view={view} />
+      <NotPublicNote view={view} publish={<PublishProfileForm action={showProfilePubliclyAction} page="teachers" />} />
       {view.review ? <ClaimReview review={view.review} /> : null}
       <InvitationLine view={view} />
       <SentEvidence files={view.evidence} />
@@ -231,6 +232,7 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
   if (!mine) return <LoadError {...TEACHERS_LOAD_ERROR} retryHref={PAGE} />;
   const withdrawResult = await readFormResult(WITHDRAW_FORM, query.outcome);
   const endResult = await readFormResult(END_FORM, query.outcome);
+  const remindResult = await readFormResult(REMIND_FORM, query.outcome);
   const all = [...mine.requests, ...mine.teachers];
   const byId = (id: string) => all.find((view) => view.id === id);
   const sent = byId(one(query.sent));
@@ -239,6 +241,7 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
   const invitationSent = byId(one(query.invitation));
   const ended = byId(one(query.ended));
   const withdrawn = one(query.withdrawn);
+  const reminded = byId(one(query.reminded));
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
@@ -308,6 +311,17 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
               The request was withdrawn. Nothing about it is shown to anyone; you can send a new one at any time.
             </OutcomeNote>
           ) : null}
+          {one(query.published) === '1' ? (
+            <OutcomeNote testId="profile-published">
+              Your profile is public now. Each confirmed link appears in the public lineage once the other person&rsquo;s profile is public too.
+            </OutcomeNote>
+          ) : null}
+          {reminded ? (
+            <OutcomeNote testId="reminder-sent">
+              A reminder was sent to <NameText name={reminded.teacher.name} />. They get a notification and an e-mail; you can send another one in{' '}
+              {REMINDER_INTERVAL_DAYS} days.
+            </OutcomeNote>
+          ) : null}
           {ended ? (
             <OutcomeNote testId="training-ended">
               Training with <NameText name={ended.teacher.name} /> is marked as ended. The link stays on both profiles, shown as historical.
@@ -336,7 +350,37 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
                   const withdrawInitial = withdrawResult?.values?.relationshipId === view.id ? withdrawResult : null;
                   return (
                     <Row key={view.id} view={view} testId="request">
-                      <span className="text-sm text-fg-muted">Sent {formatDay(view.createdAt)}</span>
+                      <span className="text-sm text-fg-muted">
+                        Sent {formatDay(view.createdAt)}
+                        {view.waitingDays !== null && view.waitingDays > 0 ? (
+                          <>
+                            {' · waiting '}
+                            <span data-visual-days="">{view.waitingDays === 1 ? '1 day' : `${view.waitingDays} days`}</span>
+                          </>
+                        ) : null}
+                      </span>
+                      {view.reminder ? (
+                        view.reminder.now ? (
+                          <RemindForm
+                            action={remindTeacherAction}
+                            relationshipId={view.id}
+                            idempotencyKey={randomUUID()}
+                            who={who}
+                            fixedId={remindForm(view.id)}
+                            initial={remindResult?.values?.relationshipId === view.id ? remindResult : null}
+                          />
+                        ) : (
+                          <span data-testid="reminder-from" className="text-sm text-fg-muted">
+                            You can send a reminder from {formatDay(view.reminder.from)}.
+                          </span>
+                        )
+                      ) : null}
+                      {view.waitingDays !== null && view.waitingDays >= LONG_WAIT_DAYS ? (
+                        <p data-testid="long-wait" className="max-w-[34ch] text-sm sm:text-right">
+                          No answer for <span data-visual-days="">{view.waitingDays} days</span>. Your teacher may not be using WingChunRoots at the moment: you can send a reminder, or
+                          withdraw the request and ask again later.
+                        </p>
+                      ) : null}
                       {view.rejection ? (
                         <p data-testid="rejection" className="max-w-[34ch] text-sm sm:text-right">
                           {view.rejection.text}

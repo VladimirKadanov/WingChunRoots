@@ -168,9 +168,13 @@ describe('sign-up answer (no account enumeration)', () => {
     const other = await signUp(unconfirmed, 'another long demo password');
     const confirmed = await createAccount({ label: 'enumeration' });
     const existing = await signUp(confirmed.email, 'a long demo password');
+    // Every accepted sign-up marks its browser for the address's first confirmation (ADR 0069): a
+    // keyed hash of the address the request named, so its value is the only part that differs.
+    const MARK = /^((?:__Secure-)?wcr\.confirm_browser=)[^;]+/;
+    for (const result of [fresh, again, other, existing]) expect(result.response.headers.getSetCookie().filter((raw) => MARK.test(raw))).toHaveLength(1);
     const shape = (response: Response) => ({
       contentType: response.headers.get('content-type'),
-      cookies: response.headers.getSetCookie(),
+      cookies: response.headers.getSetCookie().map((raw) => raw.replace(MARK, '$1<mark>')),
       headers: [...response.headers.keys()].sort(),
     });
     for (const result of [fresh, again, other, existing]) {
