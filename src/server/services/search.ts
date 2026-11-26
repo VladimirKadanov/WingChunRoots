@@ -58,7 +58,8 @@ export function checkSearchRate(meta: RequestMeta | undefined, now = Date.now())
  * Role replay 2026-11-25 (P2-5): the group to show before People. A query of two or more words
  * ("hall sofia") whose words all start words of the first school, event, organization or lineage
  * (its name, and the city of a school or an event) while the first person's names do not: that
- * result is what was looked for, whatever its group.
+ * result is what was looked for, whatever its group. When several groups qualify, the name with the
+ * fewest words left over wins (an exact name before a longer one).
  */
 export function firstGroup(query: string, answer: Pick<SearchResultDto, 'people' | 'schools' | 'events' | 'organizations' | 'lineages'>): SearchResultDto['first'] {
   const words = foldLatin(query).split(' ').filter(Boolean);
@@ -69,10 +70,17 @@ export function firstGroup(query: string, answer: Pick<SearchResultDto, 'people'
   };
   const person = answer.people[0];
   if (person && (covers(person.displayName.value) || (person.matched && covers(person.matched.value)))) return null;
-  if (answer.schools[0] && covers(answer.schools[0].name, answer.schools[0].city)) return 'schools';
-  if (answer.events[0] && covers(answer.events[0].title, answer.events[0].city)) return 'events';
-  if (answer.organizations[0] && covers(answer.organizations[0].name)) return 'organizations';
-  if (answer.lineages[0] && covers(answer.lineages[0].name)) return 'lineages';
+  // Of the first results that the words cover, the one with the fewest words of its name left
+  // over: "federation north" is the federation of that name before its "… summer camp".
+  const extra = (name: string) => foldLatin(name).split(' ').filter((o) => o && !words.some((w) => o.startsWith(w))).length;
+  const candidates: { group: NonNullable<SearchResultDto['first']>; extra: number }[] = [];
+  if (answer.schools[0] && covers(answer.schools[0].name, answer.schools[0].city)) candidates.push({ group: 'schools', extra: extra(answer.schools[0].name) });
+  if (answer.events[0] && covers(answer.events[0].title, answer.events[0].city)) candidates.push({ group: 'events', extra: extra(answer.events[0].title) });
+  if (answer.organizations[0] && covers(answer.organizations[0].name)) candidates.push({ group: 'organizations', extra: extra(answer.organizations[0].name) });
+  if (answer.lineages[0] && covers(answer.lineages[0].name)) candidates.push({ group: 'lineages', extra: extra(answer.lineages[0].name) });
+  // A stable sort: on a tie the order above (schools, events, organizations, lineages) decides.
+  candidates.sort((a, b) => a.extra - b.extra);
+  if (candidates[0]) return candidates[0].group;
   return null;
 }
 

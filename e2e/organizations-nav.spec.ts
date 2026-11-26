@@ -45,8 +45,10 @@ test('@nav the palette finds an approved organization by its name and opens its 
   await page.goto('/schools');
   await openPalette(page);
   await searchInput(page).fill('federation north');
-  const hit = option(page, 'Demo Federation North');
+  // The organization; since P2-5 its upcoming event can be listed too, after it.
+  const hit = option(page, 'Demo Federation North').and(page.locator('[data-kind="organization"]'));
   await expect(hit).toBeVisible();
+  await expect(page.getByTestId('search-palette').getByRole('option').first()).toHaveAttribute('data-kind', 'organization');
   await expect(hit).toContainText('Federation');
   await hit.click();
   await expect(page).toHaveURL(/\/organizations\/demo-federation-north$/);
