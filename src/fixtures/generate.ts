@@ -468,6 +468,7 @@ class Builder {
       // M26: the demo data enters no links through the archive editor, so none has a source note.
       sourceNote: null,
       requestNote: null,
+      viaInviteLink: false,
       createdAt: created,
       updatedAt: created,
     };

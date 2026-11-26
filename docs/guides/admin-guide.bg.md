@@ -609,6 +609,8 @@ SELECT occurred_at, action, subject_id, before, after
 
 Всеки преход е ред в `relationship_event` (стар и нов статус, актьор и ролята му, ключ за идемпотентност) и запис в одита: `relationship.request`, `relationship.resubmit`, `relationship.approve`, `relationship.reject`, `relationship.withdraw`, `relationship.end` — с идентификатори, без имена и адреси. Нищо не се трие: оттеглена и отказана заявка остават като история, видими само за двамата.
 
+Колоната `teaching_relationship.via_invite_link` казва, че заявката е изпратена от връзката за покана на учителя (`/join/<адрес>`, [ADR 0073](../adr/0073-invite-link-mark.md)); `relationship.request` пази `viaInviteLink` в одита. Учителят и проверяващите виждат „From your invite link“. Това е само подсказка: връзката не пази тайна и знакът не одобрява нищо.
+
 ```sql
 SELECT occurred_at, action, subject_id, before, after
   FROM audit_log

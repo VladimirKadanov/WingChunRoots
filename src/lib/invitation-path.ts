@@ -34,15 +34,18 @@ export function isClaimPath(path: unknown): path is string {
  * A Sifu's invite link (/join/<slug>, role replay 2026-11-25, P1-3) leads to the request form with
  * that teacher chosen: a new student comes back to it after the e-mail and onboarding.
  */
-const TEACHER_REQUEST_PATH = /^\/dashboard\/teachers\/new\?teacher=[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const TEACHER_REQUEST_PATH = /^\/dashboard\/teachers\/new\?teacher=[a-z0-9]+(?:-[a-z0-9]+)*(?:&from=invite)?$/;
 
 /** Whether `path` is the request form with a teacher chosen (the target of a Sifu's invite link). */
 export function isTeacherRequestPath(path: unknown): path is string {
   return typeof path === 'string' && path.length <= 160 && TEACHER_REQUEST_PATH.test(path);
 }
 
-/** The request form with `slug` chosen as the teacher. */
-export const teacherRequestPath = (slug: string) => `/dashboard/teachers/new?teacher=${slug}`;
+/**
+ * The request form with `slug` chosen as the teacher; with `invite`, from that teacher's own invite
+ * link (/join/<slug>), so the request is marked for the teacher (ADR 0073; a hint, never an approval).
+ */
+export const teacherRequestPath = (slug: string, opts: { invite?: boolean } = {}) => `/dashboard/teachers/new?teacher=${slug}${opts.invite ? '&from=invite' : ''}`;
 
 /** Whether `path` rides in the confirmation e-mail's link (nothing else does). */
 export function ridesInConfirmationLink(path: unknown): path is string {

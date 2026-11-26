@@ -221,9 +221,15 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
                                 </span>
                               ) : null}
                             </span>
-                            <span className="mt-1">
+                            <span className="mt-1 flex flex-wrap items-center gap-2">
                               {/* The teacher's side of "Waiting for the teacher", as on the dashboard. */}
                               <StatusBadge state="unconfirmed" label="Sent to you" />
+                              {/* ADR 0073: sent from your own invite link; a hint in words, never an approval. */}
+                              {view.viaInviteLink ? (
+                                <span className="text-sm font-semibold" data-testid="request-via-invite">
+                                  From your invite link
+                                </span>
+                              ) : null}
                             </span>
                           </span>
                         </td>
