@@ -602,14 +602,11 @@ test('@M10b "Create an account" on an invitation keeps it through sign-up, the e
   await visible(page.getByRole('button', { name: 'Create account' })).click();
   await expect(visible(page.getByRole('heading', { level: 1, name: 'Check your inbox' }))).toBeVisible();
 
-  // The confirmation link carries the invitation, and so does the sign-in it leads to.
+  // The confirmation link carries the invitation; it signs in the browser that signed up (ADR 0069).
   const link = new URL(await emailLinkFromOutbox('verify-email', email));
   expect(link.searchParams.get('next')).toBe(invitePath);
   await page.goto(`${link.pathname}${link.search}`);
   await visible(page.getByRole('button', { name: 'Confirm my address' })).click();
-  await page.waitForURL((u) => u.pathname === '/sign-in' && u.searchParams.get('verified') === '1' && u.searchParams.get('next') === invitePath, { timeout: 15_000 });
-  await visible(page.getByLabel('Password', { exact: true })).fill(NEW_ACCOUNT_PASSWORD);
-  await visible(page.getByRole('button', { name: 'Sign in' })).click();
 
   // Signed in, the account is back on the invitation (no profile set-up on the way) and claims.
   await page.waitForURL((u) => u.pathname === invitePath, { timeout: 15_000 });
