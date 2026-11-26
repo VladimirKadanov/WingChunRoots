@@ -69,7 +69,7 @@ export function AccountMenu({ variant, menu, signOut }: { variant: 'bar' | 'rail
         className={
           variant === 'bar'
             ? 'relative inline-flex size-[44px] shrink-0 items-center justify-center rounded-full focus-visible:-outline-offset-2'
-            : 'flex min-h-[3.25rem] w-full min-w-0 items-center gap-3 rounded-sm px-2 text-left hover:bg-surface-3 rail-compact:justify-center rail-compact:px-0'
+            : 'flex min-h-[3.25rem] w-full min-w-0 items-center gap-3 rounded-sm px-2 text-left hover:bg-surface-3'
         }
       >
         <Initials initials={menu.initials} size={variant === 'bar' ? 'sm' : 'md'} />
@@ -81,7 +81,7 @@ export function AccountMenu({ variant, menu, signOut }: { variant: 'bar' | 'rail
           </span>
         ) : null}
         {variant === 'rail' ? (
-          <span className="grid min-w-0 flex-1 rail-compact:sr-only">
+          <span className="grid min-w-0 flex-1" data-rail="label">
             <span className="truncate text-ui font-semibold" {...named}>
               {name}
             </span>

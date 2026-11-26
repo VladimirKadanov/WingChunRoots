@@ -42,6 +42,7 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
               href={item.href}
               prefetch={item.built ? null : false}
               aria-current={current ? 'page' : undefined}
+              data-rail={variant === 'rail' ? 'link' : undefined}
               className={cx(
                 'group relative flex items-center text-fg-subtle transition-colors duration-(--duration-fast) hover:text-fg aria-[current=page]:text-fg',
                 // An inset focus ring: the tab bar ends at the screen edge and would clip an outer one.
@@ -50,7 +51,7 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
                   ? // Centred with the same room above the icon as below the chop, so the chop never
                     // sits on the screen's bottom edge where there is no home-indicator inset.
                     '@container/tab min-h-11 flex-1 flex-col justify-center gap-1 text-caption uppercase'
-                  : 'min-h-[46px] gap-3.5 rounded-sm px-3 text-ui font-medium hover:bg-surface-3 aria-[current=page]:bg-surface-3 aria-[current=page]:font-semibold rail-compact:size-[46px] rail-compact:justify-center rail-compact:px-0',
+                  : 'min-h-[46px] gap-3.5 rounded-sm px-3 text-ui font-medium hover:bg-surface-3 aria-[current=page]:bg-surface-3 aria-[current=page]:font-semibold',
               )}
             >
               <Icon size={variant === 'tabs' ? 23 : 21} />
@@ -61,8 +62,8 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
                   at 150 % text (a tab of about 3.6 em) it is set an eighth smaller. Only still larger
                   text breaks a word, and then inside its own tab instead of running into the next. */}
               <span
+                data-rail={variant === 'rail' ? 'label' : undefined}
                 className={cx(
-                  variant === 'rail' && 'rail-compact:sr-only',
                   variant === 'tabs' &&
                     'max-w-full text-center [overflow-wrap:anywhere] @max-[5.75em]/tab:tracking-[0.03em] @max-[5em]/tab:tracking-normal @max-[5em]/tab:normal-case @max-[3.8em]/tab:text-[0.875em]',
                 )}
@@ -71,10 +72,7 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
               </span>
               {variant === 'rail' ? (
                 // P2-10: the folded rail names each icon beside it on hover and on keyboard focus.
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute top-1/2 left-full z-50 ml-2 hidden -translate-y-1/2 rounded-sm bg-fg px-2.5 py-1.5 text-sm font-medium whitespace-nowrap text-fg-inverse shadow-pop rail-compact:group-hover:block rail-compact:group-focus-visible:block"
-                >
+                <span aria-hidden="true" data-rail="tip">
                   {item.label}
                 </span>
               ) : null}
@@ -82,7 +80,7 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
                 aria-hidden="true"
                 className={cx(
                   'size-1.5 scale-0 rotate-[-20deg] rounded-[1px] bg-fg transition-transform duration-(--duration-slow) ease-stamp group-aria-[current=page]:scale-100 group-aria-[current=page]:rotate-[4deg]',
-                  variant === 'tabs' ? 'block' : 'absolute top-1/2 right-3 -mt-[3px] rail-compact:right-1',
+                  variant === 'tabs' ? 'block' : 'absolute top-1/2 right-3 -mt-[3px]',
                 )}
               />
             </Link>

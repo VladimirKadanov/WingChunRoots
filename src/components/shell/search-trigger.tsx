@@ -90,13 +90,13 @@ export function SearchField({ variant }: { variant: 'bar' | 'rail' }) {
         // The bar is a size container: when the top bar leaves it too little room for "Find" (a
         // phone with the wordmark and the account menu), it shows the magnifier alone, centred, and
         // the word stays its accessible name, never a clipped "Fi…". The rail is no container.
-        variant === 'bar' ? '@container flex-1 px-3 text-sm' : 'w-full px-3 text-ui rail-compact:justify-center rail-compact:px-0',
+        variant === 'bar' ? '@container flex-1 px-3 text-sm' : 'w-full px-3 text-ui',
       )}
     >
       <SearchIcon size={variant === 'bar' ? 18 : 19} className="shrink-0 @max-[3.75rem]:mx-auto" />
-      <span className="min-w-0 flex-1 truncate @max-[3.75rem]:sr-only rail-compact:sr-only">{variant === 'bar' ? 'Find' : 'Find a name'}</span>
+      <span className="min-w-0 flex-1 truncate @max-[3.75rem]:sr-only" data-rail="label">{variant === 'bar' ? 'Find' : 'Find a name'}</span>
       {variant === 'rail' ? (
-        <kbd aria-hidden="true" className="shrink-0 rounded-[3px] border border-border-subtle px-1.5 font-sans text-xs text-fg-subtle rail-compact:hidden">
+        <kbd aria-hidden="true" className="shrink-0 rounded-[3px] border border-border-subtle px-1.5 font-sans text-xs text-fg-subtle" data-rail="hide">
           Ctrl K
         </kbd>
       ) : null}
