@@ -50,6 +50,9 @@ export type AuditAction =
   | 'review.assign'
   | 'review.needs_info'
   | 'review.note'
+  // Role replay 2026-11-25 (P3-8, ADR 0067): a reviewer asks a teacher about a claim; the teacher answers.
+  | 'review.ask_teacher'
+  | 'claim_confirmation.answer'
   | 'review.resolve'
   // M11: schools (plan §6.6). The rows name the fields that changed, never a point or a contact.
   | 'school.create'
