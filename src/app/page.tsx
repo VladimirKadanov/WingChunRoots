@@ -12,7 +12,7 @@ import { HomeAccountLine, VisitorAccountLine } from '@/components/home/home-acco
 import { ArrowRightIcon, LineageIcon, LockIcon, PinIcon } from '@/components/icons';
 import { DEMO_HALL, DEMO_LINE } from '@/components/home/demo-lineage';
 import { HALL_TREE_KINDS, HALL_TREE_STATS, HallTree, HallTreeKey } from '@/components/home/hall-tree';
-import { HomeSearch } from '@/components/home/home-search';
+import { ComingUpFallback, HomeComingUp } from '@/components/home/home-coming-up';
 import { LivingLine } from '@/components/home/living-line';
 import { TraceLineButton } from '@/components/home/trace-line';
 import { Legend } from '@/components/ink/legend';
@@ -102,48 +102,63 @@ export default function HomePage() {
         }
       />
 
-      {/* The ways in (plan §5.5): the real search, the explorer, the school finder and an account. */}
+      {/* The ways in (plan §5.5). The search is the hero's (LivingLine); this part adds what is on
+          next and a school near you (role replay 2026-11-25, P3-4): one search box on the page. */}
       <section aria-labelledby="start-heading" className="border-t border-border-subtle py-section md:py-section-desktop">
         <div className="mb-6 grid max-w-[62ch] gap-2.5">
           <p className="eyebrow">Start here</p>
           <h2 id="start-heading" className="font-display text-section">
-            Find your teacher, your lineage, a school
+            Find a school, an event, your lineage
           </h2>
-          <p className="text-base text-fg-muted">
-            Search finds a person by any spelling of their name: Latin script, Chinese characters, Cyrillic, Jyutping or pinyin.
-            Only confirmed, public records are shown.
-          </p>
+          <p className="text-base text-fg-muted">Only confirmed, public records are shown.</p>
         </div>
-        <div className="grid max-w-[46rem] gap-4">
-          <HomeSearch />
-          <ul className="grid gap-3 sm:grid-cols-2">
-            <li>
-              <Link
-                href="/explore"
-                className="flex min-h-14 items-center gap-3 rounded-sm border border-border-subtle bg-surface-1 px-4 py-3 text-fg transition-colors duration-(--duration-fast) hover:border-fg-muted"
-              >
-                <LineageIcon size={22} className="shrink-0 text-fg-muted" />
-                <span className="grid min-w-0 flex-1">
-                  <span className="font-medium">Explore the lineages</span>
-                  <span className="text-sm text-fg-muted">The graph and the list of every verified line</span>
-                </span>
-                <ArrowRightIcon size={18} className="shrink-0 text-fg-subtle" />
+        <div className="grid max-w-[46rem] gap-8 lg:max-w-none lg:grid-cols-2 lg:gap-12">
+          <div className="grid content-start gap-4">
+            <form action="/schools" method="get" role="search" aria-labelledby="home-school-heading" className="grid gap-3 rounded-sm border border-border-subtle p-4" data-testid="home-find-school">
+              <h3 id="home-school-heading" className="flex items-center gap-2 font-display text-xl">
+                <PinIcon size={20} className="shrink-0 text-fg-muted" />
+                Find a school
+              </h3>
+              <input type="hidden" name="view" value="list" />
+              <label htmlFor="home-school-near" className="text-sm font-semibold">
+                City or town
+              </label>
+              <div className="flex flex-wrap gap-3">
+                <input
+                  id="home-school-near"
+                  name="near"
+                  type="text"
+                  autoComplete="address-level2"
+                  placeholder="For example, Sofia"
+                  maxLength={100}
+                  className="min-h-12 min-w-0 flex-1 basis-48 rounded-sm border border-border-strong bg-surface-1 px-4 text-field text-fg placeholder:text-fg-subtle hover:border-fg-muted focus-visible:border-fg"
+                />
+                <button type="submit" className={buttonVariants({ variant: 'primary' })}>
+                  Show schools
+                </button>
+              </div>
+              <Link href="/schools" className="link inline-flex min-h-11 items-center gap-1.5 justify-self-start text-sm">
+                Find a school on the map
+                <ArrowRightIcon size={16} />
               </Link>
-            </li>
-            <li>
-              <Link
-                href="/schools"
-                className="flex min-h-14 items-center gap-3 rounded-sm border border-border-subtle bg-surface-1 px-4 py-3 text-fg transition-colors duration-(--duration-fast) hover:border-fg-muted"
-              >
-                <PinIcon size={22} className="shrink-0 text-fg-muted" />
-                <span className="grid min-w-0 flex-1">
-                  <span className="font-medium">Find a school</span>
-                  <span className="text-sm text-fg-muted">The map, a radius and a lineage filter</span>
-                </span>
-                <ArrowRightIcon size={18} className="shrink-0 text-fg-subtle" />
-              </Link>
-            </li>
-          </ul>
+            </form>
+            <Link
+              href="/explore"
+              className="flex min-h-14 items-center gap-3 rounded-sm border border-border-subtle bg-surface-1 px-4 py-3 text-fg transition-colors duration-(--duration-fast) hover:border-fg-muted"
+            >
+              <LineageIcon size={22} className="shrink-0 text-fg-muted" />
+              <span className="grid min-w-0 flex-1">
+                <span className="font-medium">Explore the lineages</span>
+                <span className="text-sm text-fg-muted">The graph and the list of every verified line</span>
+              </span>
+              <ArrowRightIcon size={18} className="shrink-0 text-fg-subtle" />
+            </Link>
+          </div>
+          <Suspense fallback={<ComingUpFallback />}>
+            <HomeComingUp />
+          </Suspense>
+        </div>
+        <div className="mt-8 max-w-[46rem]">
           <Suspense fallback={<VisitorAccountLine />}>
             <HomeAccountLine />
           </Suspense>

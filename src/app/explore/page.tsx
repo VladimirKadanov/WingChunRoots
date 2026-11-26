@@ -15,6 +15,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 
+import { HomeSearch } from '@/components/home/home-search';
 import { Explorer } from '@/components/lineage/explorer/explorer';
 import { explorerHref, explorerRead, paramsFrom, readKey } from '@/components/lineage/explorer/state';
 import { LineageName } from '@/components/lineage/person-name';
@@ -75,6 +76,11 @@ export default async function ExplorePage({ searchParams }: Props) {
             The explorer draws who taught whom, generation by generation, around one person or a whole lineage. Start from a lineage
             below, or from anyone&apos;s profile.
           </p>
+          {/* Search first (role replay 2026-11-25, P3-6): the palette finds a person by any spelling and a lineage by its name. */}
+          <search className="mt-6 grid gap-2">
+            <HomeSearch />
+            <p className="text-sm text-fg-subtle">Find a person by any spelling of their name, or a lineage by its name.</p>
+          </search>
           {starts === null ? (
             // A failed read is not an empty record: it says so, with Retry (a plain reload).
             <ErrorPanel title="The lineages could not be loaded." className="mt-8">
@@ -94,30 +100,41 @@ export default async function ExplorePage({ searchParams }: Props) {
               </p>
             </div>
           ) : (
-            <ul className="mt-8 grid border-t border-border-subtle">
-              {starts.lineages.map((l) => (
-                <li key={l.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border-subtle py-4">
-                  <div className="min-w-0">
-                    <p className="font-display text-xl">
-                      <LineageName name={l.name} />
-                    </p>
-                    <p className="text-sm text-fg-muted">
-                      Root:{' '}
-                      <span lang="und-Latn" translate="no">
-                        {l.root.displayName}
-                      </span>{' '}
-                      · {l.people.toLocaleString('en')} {l.people === 1 ? 'person' : 'people'}
-                    </p>
-                  </div>
-                  <Link href={`/explore?focus=${l.root.id}&lineage=${l.id}`} className={buttonVariants({ variant: 'secondary' })}>
-                    {/* One flex item, so the space after "Explore" stays a space. */}
-                    <span>
-                      Explore <LineageName name={l.name} />
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            // Role replay 2026-11-25, P3-6: cards with the root and the size, two to a row from 640 px.
+            <section aria-labelledby="explore-lineages" className="mt-8">
+              <h2 id="explore-lineages" className="font-display text-xl">
+                Lineages on the record
+              </h2>
+              <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+                {starts.lineages.map((l) => (
+                  <li key={l.id} className="grid content-between gap-4 rounded-sm border border-border-subtle bg-surface-1 p-4" data-testid="explore-lineage">
+                    <div className="grid min-w-0 gap-1">
+                      <h3 className="font-display text-xl [overflow-wrap:anywhere]">
+                        <LineageName name={l.name} />
+                      </h3>
+                      <p className="text-sm text-fg-muted">
+                        Root:{' '}
+                        <Link href={`/people/${l.root.slug}`} prefetch={false} className="link inline-flex min-h-11 items-center">
+                          <span lang="und-Latn" translate="no">
+                            {l.root.displayName}
+                          </span>
+                        </Link>
+                      </p>
+                      <p className="flex items-baseline gap-1.5" data-testid="explore-lineage-size">
+                        <span className="font-display text-2xl tabular">{l.people.toLocaleString('en')}</span>
+                        <span className="text-sm text-fg-muted">{l.people === 1 ? 'person on the public record' : 'people on the public record'}</span>
+                      </p>
+                    </div>
+                    <Link href={`/explore?focus=${l.root.id}&lineage=${l.id}`} className={buttonVariants({ variant: 'secondary', className: 'justify-self-start' })}>
+                      {/* One flex item, so the space after "Explore" stays a space. */}
+                      <span>
+                        Explore <LineageName name={l.name} />
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
         </div>
       </div>
