@@ -22,7 +22,7 @@
 // messages (src/server/forms/flash.ts).
 
 import { useForm, useStore } from '@tanstack/react-form';
-import { type ReactNode, startTransition, useActionState, useEffectEvent, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, startTransition, useActionState, useEffectEvent, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { FormMessage, SelectField, SubmitButton, fieldClassName, useFocusOnError, useFormId, useHydrated } from '@/components/account/fields';
 import { NameLine } from '@/components/account/person-names';
@@ -159,6 +159,20 @@ function Label({ htmlFor, children, optional }: { htmlFor: string; children: Rea
   );
 }
 
+/**
+ * A phone (below md, 768 px): the names are rows with Edit, one open at a time (role replay
+ * 2026-11-25, P3-1: four open name blocks made the editor 8,600 px tall). The server and a page
+ * without JavaScript draw every row open.
+ */
+const PHONE_QUERY = '(max-width: 767.98px)';
+function subscribePhone(onChange: () => void) {
+  const query = window.matchMedia(PHONE_QUERY);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+const isPhone = () => window.matchMedia(PHONE_QUERY).matches;
+const notPhone = () => false;
+
 export function ProfileEditor({
   initialValues,
   options,
@@ -214,6 +228,13 @@ export function ProfileEditor({
   // Before hydration the rows are the saved names and the spare rows.
   const [rowKeys, setRowKeys] = useState(() => Array.from({ length: drawn.names.length + spareRowCount(drawn.names.length) }, (_, i) => `row-${i}`));
   const addedRows = useRef(0);
+  // P3-1: on a phone, the key of the one name row that is open (null: all are rows with Edit).
+  const phone = useSyncExternalStore(subscribePhone, isPhone, notPhone);
+  // A name row that holds the focus when the page hydrates stays open: nothing typed before is hidden
+  // (the server's page draws every row open, and the first render after hydration still does).
+  const [openKey, setOpenKey] = useState<string | null>(() =>
+    typeof document === 'undefined' ? null : (document.activeElement?.closest<HTMLElement>('[data-name-row]')?.dataset.rowKey ?? null),
+  );
 
   // The form state takes over what the fields hold; React never writes it back (see the top).
   const syncFromDom = () => {
@@ -293,8 +314,17 @@ export function ProfileEditor({
     const key = `added-${addedRows.current++}`;
     form.setFieldValue('names', (list) => [...list, { value: '', writing: LATIN_WRITING, kind: 'name' }]);
     setRowKeys((keys) => [...keys.slice(0, at), key]);
+    setOpenKey(key);
     // The new row's name field takes the focus once it is rendered.
     requestAnimationFrame(() => document.getElementById(fieldId(FORM, nameField(at, 'value')))?.focus());
+  };
+  const openName = (i: number) => {
+    setOpenKey(rowKeys[i] ?? null);
+    requestAnimationFrame(() => document.getElementById(fieldId(FORM, nameField(i, 'value')))?.focus());
+  };
+  const closeName = (i: number) => {
+    setOpenKey(null);
+    requestAnimationFrame(() => document.getElementById(`${FORM}-edit-name-${i}`)?.focus());
   };
   const removeName = (i: number) => {
     syncFromDom();
@@ -373,10 +403,17 @@ export function ProfileEditor({
             const refusal = primaryRefusal(row.writing, row.kind);
             const eligible = refusal === null;
             const isPrimary = values.primary === i;
+            const rowKey = rowKeys[i] ?? `slot-${i}`;
+            // P3-1: a phone shows a saved name as a row with Edit unless it is the open one, is new or has an error.
+            const collapsed = hydrated && phone && !row.spare && rowKey !== openKey && !(valueError || writingError || primaryError) && row.value.trim() !== '';
+            const bodyId = `${FORM}-name-${i}-fields`;
+            const writingLabel = writings.find((w) => w.value === row.writing)?.label ?? row.writing;
             return (
               <li
-                key={rowKeys[i] ?? `slot-${i}`}
+                key={rowKey}
                 data-name-row=""
+                data-row-key={rowKey}
+                data-collapsed={collapsed ? '' : undefined}
                 className={cx(
                   'grid gap-4 rounded-sm border bg-surface-1 p-4 sm:p-5',
                   isPrimary ? 'border-fg' : 'border-border-subtle',
@@ -386,111 +423,149 @@ export function ProfileEditor({
                 <fieldset className="contents">
                   <legend className="sr-only">Name {i + 1}</legend>
                   {row.spare ? <input type="hidden" name={`names.${i}.spare`} value="1" /> : null}
-                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(15rem,19rem)]">
-                    <div data-field="" className="grid grid-cols-[minmax(0,1fr)] content-start gap-1.5">
-                      <Label htmlFor={valueId} optional={row.spare}>
-                        {row.spare ? 'New name' : isPrimary ? 'Display name' : `Name ${i + 1}`}
-                      </Label>
-                      <input
-                        id={valueId}
-                        name={nameField(i, 'value')}
-                        type="text"
-                        defaultValue={row.value}
-                        lang={writing.lang || undefined}
-                        translate="no"
-                        spellCheck={false}
-                        autoComplete={isPrimary ? 'name' : 'off'}
-                        autoCapitalize={writing.script === 'Latn' && !isRomanization ? 'words' : 'none'}
-                        enterKeyHint="next"
-                        maxLength={120}
-                        readOnly={pending}
-                        aria-invalid={valueError ? true : undefined}
-                        aria-errormessage={valueError ? `${valueId}-error` : undefined}
-                        aria-describedby={describedBy(valueError && `${valueId}-error`)}
-                        // Dense Han, kana and Hangul read better a step larger; Cyrillic, Greek and the rest keep the field size.
-                        className={cx(fieldClassName, LARGER_SCRIPTS.has(writing.script) && 'text-lg')}
-                      />
-                      <FieldError id={`${valueId}-error`} error={valueError} />
-                    </div>
-                    <SelectField
-                      form={FORM}
-                      name={nameField(i, 'writing')}
-                      label="Written in"
-                      autoComplete="off"
-                      defaultValue={row.writing}
-                      disabled={pending}
-                      state={selectState}
-                    >
-                      {writings.map((w) => (
-                        <option key={w.value} value={w.value}>
-                          {w.label}
-                        </option>
-                      ))}
-                    </SelectField>
-                  </div>
-
-                  {/* items-start: when Kind wraps under the radio on a phone, Remove stays on the radio's line. */}
-                  <div className="flex items-start justify-between gap-x-5 gap-y-2">
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1">
-                      <label htmlFor={primaryId} className={cx('flex min-h-11 items-center gap-3 text-ui', eligible || !hydrated ? 'cursor-pointer' : 'text-fg-subtle')}>
-                        <input
-                          id={primaryId}
-                          type="radio"
-                          name="primary"
-                          value={i}
-                          defaultChecked={isPrimary}
-                          disabled={pending || (hydrated && !eligible)}
-                          aria-describedby={describedBy(primaryError && `${primaryId}-error`, hydrated && !eligible && `${primaryId}-why`)}
-                          className="size-5 shrink-0 cursor-pointer accent-[var(--fg)] disabled:cursor-not-allowed"
-                        />
-                        Use as display name
-                      </label>
-                      {isRomanization ? (
-                        <input type="hidden" name={nameField(i, 'kind')} value="name" />
-                      ) : (
-                        <span className="flex min-w-0 items-center gap-2">
-                          <label htmlFor={kindId} className="text-sm text-fg-muted">
-                            Kind
-                          </label>
-                          {/* The fields' own select: 16 px (no zoom on iOS) and the thin chevron. No fixed width:
-                              as wide as "Also known as" when there is room, narrower on a 320 px phone, so the
-                              row never makes the page wider than the screen. */}
-                          <span className="relative min-w-0 flex-1">
-                            <select
-                              id={kindId}
-                              name={nameField(i, 'kind')}
-                              defaultValue={row.kind}
-                              disabled={pending}
-                              className={cx(fieldClassName, 'appearance-none pr-11')}
-                            >
-                              <option value="name">Name</option>
-                              <option value="alias">Also known as</option>
-                            </select>
-                            <ChevronDownIcon size={20} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-fg-muted" />
-                          </span>
+                  {collapsed ? (
+                    <div className="flex items-center justify-between gap-3" data-testid="name-summary">
+                      <p className="grid min-w-0">
+                        <span lang={writing.lang || undefined} translate="no" className={cx('font-display text-lg [overflow-wrap:anywhere]', LARGER_SCRIPTS.has(writing.script) && 'text-xl')}>
+                          {row.value.trim()}
                         </span>
-                      )}
+                        <span className="text-sm text-fg-muted">
+                          {writingLabel}
+                          {isPrimary ? ' · Display name' : row.kind === 'alias' && !isRomanization ? ' · Also known as' : ''}
+                        </span>
+                      </p>
+                      <button
+                        id={`${FORM}-edit-name-${i}`}
+                        type="button"
+                        onClick={() => openName(i)}
+                        aria-expanded={false}
+                        aria-controls={bodyId}
+                        disabled={pending}
+                        className={cx(buttonVariants({ variant: 'secondary', size: 'sm' }), 'min-h-11 shrink-0')}
+                      >
+                        Edit<span className="sr-only"> name {i + 1}</span>
+                      </button>
                     </div>
-                    {hydrated ? (
+                  ) : null}
+                  {/* The fields stay in the form while the row is closed: the save sends every name. */}
+                  <div id={bodyId} hidden={collapsed} className="grid gap-4">
+                    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(15rem,19rem)]">
+                      <div data-field="" className="grid grid-cols-[minmax(0,1fr)] content-start gap-1.5">
+                        <Label htmlFor={valueId} optional={row.spare}>
+                          {row.spare ? 'New name' : isPrimary ? 'Display name' : `Name ${i + 1}`}
+                        </Label>
+                        <input
+                          id={valueId}
+                          name={nameField(i, 'value')}
+                          type="text"
+                          defaultValue={row.value}
+                          lang={writing.lang || undefined}
+                          translate="no"
+                          spellCheck={false}
+                          autoComplete={isPrimary ? 'name' : 'off'}
+                          autoCapitalize={writing.script === 'Latn' && !isRomanization ? 'words' : 'none'}
+                          enterKeyHint="next"
+                          maxLength={120}
+                          readOnly={pending}
+                          aria-invalid={valueError ? true : undefined}
+                          aria-errormessage={valueError ? `${valueId}-error` : undefined}
+                          aria-describedby={describedBy(valueError && `${valueId}-error`)}
+                          // Dense Han, kana and Hangul read better a step larger; Cyrillic, Greek and the rest keep the field size.
+                          className={cx(fieldClassName, LARGER_SCRIPTS.has(writing.script) && 'text-lg')}
+                        />
+                        <FieldError id={`${valueId}-error`} error={valueError} />
+                      </div>
+                      <SelectField
+                        form={FORM}
+                        name={nameField(i, 'writing')}
+                        label="Written in"
+                        autoComplete="off"
+                        defaultValue={row.writing}
+                        disabled={pending}
+                        state={selectState}
+                      >
+                        {writings.map((w) => (
+                          <option key={w.value} value={w.value}>
+                            {w.label}
+                          </option>
+                        ))}
+                      </SelectField>
+                    </div>
+
+                    {/* items-start: when Kind wraps under the radio on a phone, Remove stays on the radio's line. */}
+                    <div className="flex items-start justify-between gap-x-5 gap-y-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1">
+                        <label htmlFor={primaryId} className={cx('flex min-h-11 items-center gap-3 text-ui', eligible || !hydrated ? 'cursor-pointer' : 'text-fg-subtle')}>
+                          <input
+                            id={primaryId}
+                            type="radio"
+                            name="primary"
+                            value={i}
+                            defaultChecked={isPrimary}
+                            disabled={pending || (hydrated && !eligible)}
+                            aria-describedby={describedBy(primaryError && `${primaryId}-error`, hydrated && !eligible && `${primaryId}-why`)}
+                            className="size-5 shrink-0 cursor-pointer accent-[var(--fg)] disabled:cursor-not-allowed"
+                          />
+                          Use as display name
+                        </label>
+                        {isRomanization ? (
+                          <input type="hidden" name={nameField(i, 'kind')} value="name" />
+                        ) : (
+                          <span className="flex min-w-0 items-center gap-2">
+                            <label htmlFor={kindId} className="text-sm text-fg-muted">
+                              Kind
+                            </label>
+                            {/* The fields' own select: 16 px (no zoom on iOS) and the thin chevron. No fixed width:
+                                as wide as "Also known as" when there is room, narrower on a 320 px phone, so the
+                                row never makes the page wider than the screen. */}
+                            <span className="relative min-w-0 flex-1">
+                              <select
+                                id={kindId}
+                                name={nameField(i, 'kind')}
+                                defaultValue={row.kind}
+                                disabled={pending}
+                                className={cx(fieldClassName, 'appearance-none pr-11')}
+                              >
+                                <option value="name">Name</option>
+                                <option value="alias">Also known as</option>
+                              </select>
+                              <ChevronDownIcon size={20} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-fg-muted" />
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                      {hydrated ? (
+                        <button
+                          type="button"
+                          onClick={() => removeName(i)}
+                          disabled={pending || values.names.length <= 1}
+                          className={cx(buttonVariants({ variant: 'ghost', size: 'sm' }), 'min-h-11 shrink-0 gap-1.5 disabled:opacity-50')}
+                        >
+                          <CloseIcon size={16} />
+                          Remove<span className="sr-only"> name {i + 1}</span>
+                        </button>
+                      ) : null}
+                    </div>
+                    {/* On a line of its own, so Remove stays at the end of the row on every card. */}
+                    {/* Why this name cannot be the display name, and what to change (the save's error says the same). */}
+                    {hydrated && refusal ? (
+                      <p id={`${primaryId}-why`} className="-mt-2 text-sm text-fg-subtle">
+                        {refusal}
+                      </p>
+                    ) : null}
+                    <FieldError id={`${primaryId}-error`} error={primaryError} />
+                    {hydrated && phone && !row.spare && rowKey === openKey && row.value.trim() !== '' ? (
                       <button
                         type="button"
-                        onClick={() => removeName(i)}
-                        disabled={pending || values.names.length <= 1}
-                        className={cx(buttonVariants({ variant: 'ghost', size: 'sm' }), 'min-h-11 shrink-0 gap-1.5 disabled:opacity-50')}
+                        onClick={() => closeName(i)}
+                        aria-controls={bodyId}
+                        aria-expanded
+                        className={cx(buttonVariants({ variant: 'ghost', size: 'sm' }), 'min-h-11 justify-self-start')}
                       >
-                        <CloseIcon size={16} />
-                        Remove<span className="sr-only"> name {i + 1}</span>
+                        Done<span className="sr-only"> with name {i + 1}</span>
                       </button>
                     ) : null}
                   </div>
-                  {/* On a line of its own, so Remove stays at the end of the row on every card. */}
-                  {/* Why this name cannot be the display name, and what to change (the save's error says the same). */}
-                  {hydrated && refusal ? (
-                    <p id={`${primaryId}-why`} className="-mt-2 text-sm text-fg-subtle">
-                      {refusal}
-                    </p>
-                  ) : null}
-                  <FieldError id={`${primaryId}-error`} error={primaryError} />
                 </fieldset>
               </li>
             );
