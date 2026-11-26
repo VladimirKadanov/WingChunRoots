@@ -67,14 +67,27 @@ describe('buildFlow', () => {
     expect(before.edges.find((e) => e.id === graph.edges[0]!.id)!.hidden).toBe(true);
     expect(selected.edges.find((e) => e.id === graph.edges[0]!.id)!.hidden).toBe(false);
     expect(selected.nodes.find((n) => n.id === id(1))!.hidden).toBe(false);
-    // The labels are those of the view as drawn before the selection.
-    expect(labelOf(before, 3)).toBe('1 generation below Demo Teacher in this view');
-    expect(labelOf(selected, 3)).toBe('1 generation below Demo Teacher in this view');
+    // A generation in the lineage is counted along every verified link, folded away or not
+    // (ADR 0075): neither the selection nor the switch changes it.
+    expect(labelOf(before, 3)).toBe('Generation 3 from Demo Root');
+    expect(labelOf(selected, 3)).toBe('Generation 3 from Demo Root');
     expect(labelOf(selected, 2)).toBe(labelOf(before, 2));
   });
 
-  it('counts ended training in the labels with show=historical', () => {
-    expect(labelOf(buildFlow(graph, scene, new Map(), true, null), 3)).toBe('Generation 3 from Demo Root');
+  it('gives the same generation labels with show=historical', () => {
+    const shown = buildFlow(graph, scene, new Map(), true, null);
+    const folded = buildFlow(graph, scene, new Map(), false, null);
+    for (const n of [1, 2, 3]) expect(labelOf(shown, n)).toBe(labelOf(folded, n));
+    expect(labelOf(shown, 3)).toBe('Generation 3 from Demo Root');
+  });
+
+  it('draws ended training with a teacher who has died without the switch (ADR 0075)', () => {
+    // A historical lineage is made of ended training: only a living teacher's former students fold away.
+    const late = { ...graph, nodes: graph.nodes.map((n) => (n.id === id(1) ? { ...n, lifeStatus: 'deceased' } : n)) } as typeof graph;
+    const flow = buildFlow(late, scene, new Map(), false, null);
+    expect(flow.edges.find((e) => e.id === graph.edges[0]!.id)!.hidden).toBe(false);
+    expect(flow.nodes.find((n) => n.id === id(1))!.hidden).toBe(false);
+    expect(labelOf(flow, 3)).toBe('Generation 3 from Demo Root');
   });
 });
 
@@ -164,7 +177,7 @@ describe('flowBase node data for the keyboard and screen readers (M06)', () => {
     expect(student.ariaLabel).toMatch(/^Demo Student, .+, Verified$/);
     expect(student.data.slug).toBe('demo-3');
     // The root's ended training is hidden: the teacher has no line drawn into them, so no status.
-    expect(base.nodes.find((n) => n.id === id(2))!.ariaLabel).toBe('Demo Teacher');
+    expect(base.nodes.find((n) => n.id === id(2))!.ariaLabel).toBe('Demo Teacher, Generation 2 from Demo Root');
   });
 
   it('names the selected person as selected, and only them', () => {

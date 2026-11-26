@@ -3,7 +3,7 @@
 // The selection's panel (plan §4.7, §5.6; milestone M06, package B): from 768 px an overlay over
 // the canvas, top right; below it a non-modal bottom sheet (the Drawer, snap points 0.15, 0.5 and
 // 0.92). It holds the routes of descent of the selected person in the view, their teachers, "Focus
-// this lineage", "Show ended training", the expand actions and the M05 links; for a summary node,
+// this lineage", "Show former students", the expand actions and the M05 links; for a summary node,
 // the teacher's students. It loads in a chunk of its own, asked for with the canvas's
 // (explorer.tsx), and works the URL itself (the explorer's state): what it links to and what its
 // buttons change stay out of the explorer's first JavaScript. The "Open profile" link comes from
@@ -100,7 +100,7 @@ export interface PanelProps {
   openProfile: ReactNode;
   /** Where the routes of descent of the selection in the view are read from (routes.ts litOf). */
   routes: RouteSource | null;
-  /** The explorer's URL state, and its setter: centring, "Focus this lineage", "Show ended training", the list view's links. */
+  /** The explorer's URL state, and its setter: centring, "Focus this lineage", "Show former students", the list view's links. */
   url: PanelUrl;
   setUrl: (patch: Partial<PanelUrl>) => unknown;
   /** Close: clears the selection (and the students list). */
@@ -517,7 +517,7 @@ function PersonBody({
           onClick={() => setUrl({ show: showHistorical ? null : 'historical' })}
         >
           {showHistorical ? <CheckIcon size={18} /> : null}
-          Show ended training
+          Show former students
         </button>
       </div>
 

@@ -37,7 +37,7 @@ import type { LineageEdgeDto, LineageGraphDto } from '@/server/dto/public';
 import { chainEdge, generationLabels, generationText } from '../generation';
 import { MarkKey, markKinds } from '../route-mark';
 import { OptionsDisclosure } from './options-disclosure';
-import { isHistoricalRelation, periodText, relationStatus, strokeOf } from '../status';
+import { formerLinkIn, isHistoricalRelation, periodText, relationStatus, strokeOf } from '../status';
 import { useLayoutWorker } from '../useLayoutWorker';
 import type { LineageEdge, PersonNode } from './canvas';
 import { anchoredScene, useExpansions } from './expand';
@@ -164,12 +164,19 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
   const edges = new Map(graph.edges.map((e) => [e.id, e]));
   const lineages = new Map(graph.lineages.map((l) => [l.id, l]));
   const roots = new Set(graph.lineages.map((l) => l.rootPersonId).filter(Boolean));
-  // Ended training is drawn only with show=historical or for the selected person (plan §4.6, §4.7).
-  const byDefault = (e: LineageEdgeDto) => showHistorical || !isHistoricalRelation(e.periods);
+  // A living teacher's former students are drawn only with show=historical or for the selected
+  // person (plan §4.6, §4.7); training with a teacher who has died is always drawn (ADR 0075).
+  const former = formerLinkIn(graph.nodes);
+  const byDefault = (e: LineageEdgeDto) => showHistorical || !former(e);
   const drawn = graph.edges.filter(byDefault);
-  // A label speaks of the lines drawn before anyone is selected: it never counts from, or names,
-  // someone who is not shown, and the ended training a selection adds does not change it.
+  // A generation in the lineage is a fact of the record: it is counted along every verified link
+  // of the answer, drawn or folded away, so it does not change with the switch (ADR 0075). A label
+  // of the view ("N generations below …") still speaks only of the lines drawn before anyone is
+  // selected: it never counts from, or names, someone who is not shown.
   const labels = generationLabels({ ...graph, edges: drawn });
+  if (drawn.length !== graph.edges.length) {
+    for (const [id, label] of generationLabels(graph)) if (label.kind === 'lineage') labels.set(id, label);
+  }
   // Every line into a person, in the answer's order; the chip and the status speak of the lines
   // drawn, not of hidden ones.
   const into = new Map<string, LineageEdgeDto[]>();
@@ -693,7 +700,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
       <Activity mode={params.view === 'graph' ? 'visible' : 'hidden'}>
         <div className="flex min-h-0 flex-1 flex-col">
           {/* Phone review 2026-11 (ADR 0053): under md the view's options (the steppers, the lineage
-              picker, "Show ended training") fold behind one Options button, so the graph keeps the
+              picker, "Show former students") fold behind one Options button, so the graph keeps the
               screen; from md they stay in the row as before. */}
           <div className="relative flex flex-wrap items-center gap-2 border-b border-border-subtle py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] md:pr-[max(1.5rem,env(safe-area-inset-right,0px))] md:pl-6">
             <Segmented
@@ -729,7 +736,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                   onChange={(e) => void setUrl({ show: e.currentTarget.checked ? 'historical' : null })}
                   className="size-5 cursor-pointer accent-[var(--fg)]"
                 />
-                Show ended training
+                Show former students
               </label>
             </OptionsDisclosure>
           </div>

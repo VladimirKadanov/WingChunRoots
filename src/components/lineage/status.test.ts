@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { PeriodDto, StudentEntryDto } from '@/server/dto/public';
 import { placeText } from './person-header';
 import { bySeniority } from './relation-list';
-import { asStudentEdges, isHistoricalRelation, kindsOf, periodText, relationStatus, sameNameNotes, startYear, strokeOf, studentTotalsText } from './status';
+import { asStudentEdges, formerLinkIn, isFormerStudentLink, isHistoricalRelation, kindsOf, periodText, relationStatus, sameNameNotes, startYear, strokeOf, studentTotalsText } from './status';
 
 const period = (from: string | null, to: string | null, ongoing = false): PeriodDto => ({
   from,
@@ -39,6 +39,18 @@ describe('startYear and isHistoricalRelation', () => {
     expect(isHistoricalRelation([period('1981', '1983'), period('1990', null, true)])).toBe(false);
     expect(isHistoricalRelation([period(null, null)])).toBe(false);
     expect(isHistoricalRelation([])).toBe(false);
+  });
+
+  it('folds away only the former students of a living teacher (ADR 0075)', () => {
+    const ended = [period('1981', '1983')];
+    expect(isFormerStudentLink(ended, 'living')).toBe(true);
+    expect(isFormerStudentLink(ended, 'deceased')).toBe(false);
+    expect(isFormerStudentLink(ended, 'unknown')).toBe(false);
+    expect(isFormerStudentLink(ended, undefined)).toBe(false);
+    expect(isFormerStudentLink([period('1990', null, true)], 'living')).toBe(false);
+    const former = formerLinkIn([{ id: 'a', lifeStatus: 'living' }, { id: 'b', lifeStatus: 'deceased' }]);
+    expect(former({ teacherId: 'a', periods: ended })).toBe(true);
+    expect(former({ teacherId: 'b', periods: ended })).toBe(false);
   });
 });
 

@@ -40,6 +40,22 @@ export function isHistoricalRelation(periods: readonly PeriodDto[]): boolean {
   return periods.length > 0 && periods.every((p) => !p.ongoing) && periods.some((p) => p.to !== null);
 }
 
+/**
+ * Ended training that the explorer folds away until "Show former students" (ADR 0075): only the
+ * former students of a living teacher. Training with a teacher who has died, or with a historical
+ * record, has always ended, so those links are drawn like any other: a historical lineage is made
+ * of them. `teacherLifeStatus` is the teacher's `lifeStatus` in the same answer.
+ */
+export function isFormerStudentLink(periods: readonly PeriodDto[], teacherLifeStatus: string | undefined): boolean {
+  return teacherLifeStatus === 'living' && isHistoricalRelation(periods);
+}
+
+/** isFormerStudentLink() over the edges of one answer. */
+export function formerLinkIn(nodes: readonly { id: string; lifeStatus: string }[]): (edge: { teacherId: string; periods: readonly PeriodDto[] }) => boolean {
+  const life = new Map(nodes.map((n) => [n.id, n.lifeStatus]));
+  return (edge) => isFormerStudentLink(edge.periods, life.get(edge.teacherId));
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** 1985, Feb 1992 or 3 Feb 1992, by the precision the date was recorded with. */

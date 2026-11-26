@@ -72,6 +72,11 @@ describe('countsInView', () => {
     expect(countsInView(graph, id(2), 0, true)).toEqual({ students: 2, teachers: 1, list: false });
   });
 
+  it('counts ended training with a teacher who has died as drawn (ADR 0075)', () => {
+    const late = { ...graph, nodes: graph.nodes.map((n) => (n.id === id(1) ? { ...n, lifeStatus: 'deceased' } : n)) } as LineageGraphDto;
+    expect(countsInView(late, id(2), 0, false)).toEqual({ students: 3, teachers: 1, list: false });
+  });
+
   it('gives the list beyond the cap', () => {
     expect(countsInView(graph, id(2), 7, false)).toEqual({ students: 7, teachers: 2, list: true });
   });

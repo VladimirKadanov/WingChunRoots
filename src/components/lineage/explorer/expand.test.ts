@@ -226,7 +226,7 @@ describe('expansionWords', () => {
 
   it('says that the rest are in the view when an expansion added nobody', () => {
     expect(expansionWords([{ id: id(2), direction: 'teachers', name: 'Demo Person 002' }], merged, new Set())).toBe(
-      'Every teacher of Demo Person 002 on the record is in this view; ended training is drawn with Show ended training.',
+      'Every teacher of Demo Person 002 on the record is in this view; former students are drawn with Show former students.',
     );
   });
 });

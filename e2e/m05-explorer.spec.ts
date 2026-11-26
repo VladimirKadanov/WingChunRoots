@@ -171,6 +171,15 @@ test('@M05 historical relationships are hidden by default and shown with show=hi
   expect(await historical.evaluate((p) => getComputedStyle(p).opacity)).toBe('1');
 });
 
+test('@M05 training with a teacher who has died is drawn without the switch (ADR 0075)', async ({ page }) => {
+  // demo-root-c is a historical record: every link to its students has ended, and the lineage is made of them.
+  const root = await personIdOf('demo-root-c');
+  await openExplorer(page, { focus: root });
+  await expect(nodeOf(page, root)).toBeVisible();
+  const lines = page.locator(`[data-edge][data-stroke="historical"]`);
+  await expect(lines.first()).toBeVisible();
+});
+
 test('@M05 all nodes of one generation share the same y position', async ({ page }) => {
   await openExplorer(page, { focus: await personIdOf('demo-two-lineages') });
   const nodes = await personNodes(page).evaluateAll((els) => els.map((el) => ({ rank: el.getAttribute('data-rank'), y: el.getBoundingClientRect().top })));
@@ -342,7 +351,7 @@ test.describe('on a phone', () => {
         page.getByRole('button', { name: 'Fit the whole view' }),
         page.getByRole('group', { name: 'Show as' }).getByRole('button', { name: 'List' }),
         page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Lineage' }),
-        // ADR 0053: on a phone the view's options ("Show ended training") fold behind Options.
+        // ADR 0053: on a phone the view's options ("Show former students") fold behind Options.
         page.getByTestId('explorer-options').locator(':scope > summary'),
       ];
       for (const item of [...controls, page.getByTestId('explorer-legend')]) {
@@ -1169,7 +1178,7 @@ test.describe('M05 fixes B', () => {
       for (const control of [
         page.getByRole('group', { name: 'Show as' }),
         page.getByRole('group', { name: 'View' }),
-        page.locator('label').filter({ hasText: 'Show ended training' }),
+        page.locator('label').filter({ hasText: 'Show former students' }),
         page.getByTestId('explorer-legend'),
         page.getByRole('button', { name: 'Zoom in' }),
         page.getByRole('button', { name: 'Fit the whole view' }),

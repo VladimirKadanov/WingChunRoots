@@ -169,7 +169,7 @@ export function expansionWords(done: readonly Done[], graph: LineageGraphDto, ad
         ? `Added ${counted(people.size, one)} of ${name}.${rest}`
         : rest
           ? rest.trim()
-          : `Every ${one} of ${name} on the record is in this view; ended training is drawn with Show ended training.`;
+          : `Every ${one} of ${name} on the record is in this view; former students are drawn with Show former students.`;
     })
     .join(' ');
 }

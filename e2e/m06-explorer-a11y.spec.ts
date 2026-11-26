@@ -623,7 +623,7 @@ test.describe('selection (B)', () => {
 
     // Esc on a control in the raised sheet's body closes the sheet: the focus goes back to the person, not to <body>.
     await expand.dispatchEvent('click');
-    const ended = panel.getByRole('button', { name: 'Show ended training' });
+    const ended = panel.getByRole('button', { name: 'Show former students' });
     await expect(ended).toBeVisible();
     await ended.focus();
     await page.keyboard.press('Escape');
