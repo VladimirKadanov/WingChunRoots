@@ -22,7 +22,7 @@ test('@nav the profile finds a small town by any spelling and saves it (P2-12)',
   await expect(page.getByRole('button', { name: 'Add a name' })).toBeVisible();
 
   // The Cyrillic spelling finds it as well; the keyboard moves through the options.
-  const box = page.getByRole('combobox', { name: 'City or town' });
+  const box = page.getByRole('combobox', { name: 'City or town' }).and(page.locator('input'));
   await box.fill('Банско');
   const option = page.getByRole('option', { name: 'Bansko, BG' });
   await expect(option).toBeVisible();
@@ -34,7 +34,7 @@ test('@nav the profile finds a small town by any spelling and saves it (P2-12)',
 
   await chooseCity(page, 'Bansk', 'Bansko, BG');
   // Choosing the town sets its country.
-  await expect(page.getByLabel('Country', { exact: true })).toHaveValue('BG');
+  await expect(page.getByLabel(/^Country/)).toHaveValue('BG');
   await expectNoAxeViolations(page, '/dashboard/profile (city type-ahead)');
   await page.getByRole('button', { name: 'Save my profile' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Your profile is saved.' })).toBeVisible();
@@ -45,7 +45,7 @@ test('@nav the profile finds a small town by any spelling and saves it (P2-12)',
 
   // The saved town is shown again after a reload.
   await page.reload();
-  await expect(page.getByRole('combobox', { name: 'City or town' })).toHaveValue('Bansko, BG');
+  await expect(page.getByRole('combobox', { name: 'City or town' }).and(page.locator('input'))).toHaveValue('Bansko, BG');
 });
 
 test('@nav "My city is missing" tells the admins and leads back to the form (P2-12)', async ({ page }) => {
@@ -56,13 +56,14 @@ test('@nav "My city is missing" tells the admins and leads back to the form (P2-
   await expect(page).toHaveURL(/\/dashboard\/places\/missing\?next=%2Fdashboard%2Fprofile/);
   await expect(page.getByRole('heading', { level: 1, name: 'My city is missing' })).toBeVisible();
 
+  const form = page.getByTestId('missing-place-form');
   // Nothing typed: the form says what is missing.
   await page.getByRole('button', { name: 'Tell the administrators' }).click();
   await expect(page.getByText('Type the name of your city or town.').first()).toBeVisible();
 
   const name = `Demo Hamlet ${Date.now().toString(36)}`;
-  await page.getByLabel('City or town').fill(name);
-  await page.getByLabel('Country').selectOption('BG');
+  await form.getByLabel('City or town').fill(name);
+  await form.getByLabel('Country').selectOption('BG');
   await page.getByRole('button', { name: 'Tell the administrators' }).click();
   await expect(page.getByText(`The administrators now know that ${name} is missing`)).toBeVisible();
 

@@ -125,7 +125,8 @@ export async function noClickAfterCancelledTouchPress(page: Page) {
  * combobox named `label` and picks the option `option` ("Leipzig, DE").
  */
 export async function chooseCity(scope: Page | Locator, typed: string, option: string, label: string | RegExp = 'City or town') {
-  const box = scope.getByRole('combobox', { name: label });
+  // The input, not the select of the large cities that stands in until the type-ahead loads.
+  const box = scope.getByRole('combobox', { name: label }).and(scope.locator('input'));
   await box.fill(typed);
   await scope.getByRole('option', { name: option, exact: true }).click();
   await expect(box).toHaveValue(option);
