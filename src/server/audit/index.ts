@@ -145,6 +145,8 @@ export type AuditAction =
   | 'passport.attendance_claim'
   | 'passport.attendance_decide'
   | 'passport.rank_photos'
+  // ADR 0072: an account's rank ladder (the number of steps, never the words).
+  | 'passport.ladder'
   | 'passport.remove'
   // M22: billing in test mode (docs/adr/0025-billing.md). The rows carry ids, the plan, the
   // provider, states and dates, never a card detail, an amount a customer typed or an address.

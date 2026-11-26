@@ -24,9 +24,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uuidOrEmpty = (value: string) => (UUID.test(value) ? value : '');
 const uuidOrNull = (value: string) => (UUID.test(value) ? value : null);
 
-/** The student's page: /dashboard/students?student=<person id>. */
+/** The student's own page (ADR 0072): /dashboard/students/<person id>. */
 // Always with a query, since callers append `&recorded=…` and the like.
-const pageOf = (personId: string) => (UUID.test(personId) ? `${LIST}?student=${personId}` : `${LIST}?`);
+const pageOf = (personId: string) => (UUID.test(personId) ? `${LIST}/${personId}?` : `${LIST}?`);
 
 function signInAgain(next: string): never {
   redirect(`/sign-in?next=${encodeURIComponent(next)}`);
@@ -56,7 +56,7 @@ export async function addRankAction(_previous: FormState, form: FormData): Promi
   } catch (error) {
     return failed(error, RANK_FORM, pageOf(personId), values);
   }
-  redirect(`${pageOf(personId)}&recorded=rank#entries`);
+  redirect(`${pageOf(personId)}recorded=rank#entries`);
 }
 
 /** "Record the examination" (passport.addExam). */
@@ -79,7 +79,7 @@ export async function addExamAction(_previous: FormState, form: FormData): Promi
   } catch (error) {
     return failed(error, EXAM_FORM, pageOf(personId), values);
   }
-  redirect(`${pageOf(personId)}&recorded=exam#entries`);
+  redirect(`${pageOf(personId)}recorded=exam#entries`);
 }
 
 /** "Record the form or skill" (passport.addSkill). */
@@ -97,7 +97,7 @@ export async function addSkillAction(_previous: FormState, form: FormData): Prom
   } catch (error) {
     return failed(error, SKILL_FORM, pageOf(personId), values);
   }
-  redirect(`${pageOf(personId)}&recorded=skill#entries`);
+  redirect(`${pageOf(personId)}recorded=skill#entries`);
 }
 
 /** "Save" of a changed entry, or "Mark as approved" of a skill (passport.updateEntry). */
@@ -120,9 +120,9 @@ export async function updateEntryAction(_previous: FormState, form: FormData): P
   try {
     await (await client()).passport.updateEntry(input as Parameters<Awaited<ReturnType<typeof client>>['passport']['updateEntry']>[0]);
   } catch (error) {
-    return failed(error, ENTRY_FORM, `${pageOf(personId)}&edit=${uuidOrEmpty(id)}`, values, { rank: 'title', awardedRank: 'title', name: 'title' });
+    return failed(error, ENTRY_FORM, `${pageOf(personId)}edit=${uuidOrEmpty(id)}`, values, { rank: 'title', awardedRank: 'title', name: 'title' });
   }
-  redirect(`${pageOf(personId)}&changed=1#entry-${uuidOrEmpty(id)}`);
+  redirect(`${pageOf(personId)}changed=1#entry-${uuidOrEmpty(id)}`);
 }
 
 /** "Withdraw" (passport.withdrawEntry): kept, shown to nobody. */
@@ -136,7 +136,7 @@ export async function withdrawEntryAction(_previous: FormState, form: FormData):
   } catch (error) {
     return failed(error, WITHDRAW_FORM, pageOf(personId), { id, kind });
   }
-  redirect(`${pageOf(personId)}&withdrawn=1#entries`);
+  redirect(`${pageOf(personId)}withdrawn=1#entries`);
 }
 
 /** "Mark as attended" (passport.markAttendance) of a past event, for the student of the page. */
@@ -148,5 +148,5 @@ export async function markAttendanceAction(_previous: FormState, form: FormData)
   } catch (error) {
     return failed(error, ATTENDANCE_FORM, pageOf(personId), { eventId });
   }
-  redirect(`${pageOf(personId)}&attended=1#events`);
+  redirect(`${pageOf(personId)}attended=1#events`);
 }

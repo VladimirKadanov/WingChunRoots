@@ -203,6 +203,9 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/family', name: 'dashboard-family-basic', status: 200, milestone: 'M19', signInAs: 'demo-two-lineages' },
   { path: '/dashboard/students', name: 'dashboard-students', status: 200, milestone: 'M19', key: true, signInAs: 'demo-pro-sifu-8' },
   { path: '/dashboard/students', name: 'dashboard-students-none', status: 200, milestone: 'M19', signInAs: 'demo-pending' },
+  // A grading for several students and the rank ladder (role replay 2026-11-25, P2-8, ADR 0072): read only.
+  { path: '/dashboard/students/grading', name: 'students-grading', status: 200, milestone: 'M19', signInAs: 'demo-pro-sifu-8' },
+  { path: '/dashboard/students/ladder', name: 'students-ladder', status: 200, milestone: 'M19', signInAs: 'demo-pro-sifu-8' },
   // The activity check of the listed schools (M20; DEFAULT D17): the owner's list of demo-pro-sifu-8
   // with its two demo schools in the check (demo-school-awaiting-birmingham awaiting confirmation,
   // demo-school-hidden-munich hidden from the map; fixed dates, no test changes them), and the
