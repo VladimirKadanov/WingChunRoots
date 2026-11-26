@@ -46,6 +46,7 @@
 // Logs and audit rows carry ids and codes, never a name (plan §6.4).
 
 import { allowanceSentence } from '@/lib/allowance-text';
+import { REMINDER_INTERVAL_DAYS } from '@/lib/request-reminders';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
@@ -61,6 +62,7 @@ import {
   authUser,
   invitation,
   lineage,
+  notification,
   person,
   personClaim,
   personName,
@@ -146,6 +148,15 @@ export const periods = z
   .min(1, { error: 'Add at least one training period.' })
   .max(MAX_PERIODS, { error: `Add at most ${MAX_PERIODS} training periods.` });
 
+export const REQUEST_NOTE_MAX = 280;
+/** Role replay 2026-11-25 (P2-3, ADR 0060): an optional note to the teacher; blank means none. */
+const requestNote = z
+  .string()
+  .trim()
+  .max(REQUEST_NOTE_MAX, { error: `Keep the note to ${REQUEST_NOTE_MAX} characters.` })
+  .nullish();
+const noteOf = (note: string | null | undefined): string | null => (note ? note : null);
+
 export const requestInput = z.object({
   teacherId: z.uuid({ error: 'Choose your teacher from the search.' }),
   /** Optional: when left out, the lineage of the teacher's own primary line (see lineageFor). */
@@ -153,6 +164,7 @@ export const requestInput = z.object({
   periods,
   /** DEFAULT D05: the student's wish that this teacher be drawn as the primary line; visual only. */
   displayPrimary: z.boolean().default(false),
+  note: requestNote,
   idempotencyKey,
 });
 export type RequestInput = z.input<typeof requestInput>;
@@ -163,6 +175,8 @@ export const resubmitInput = z.object({
   lineageId: z.uuid({ error: 'Choose a lineage from the list.' }).nullish(),
   periods,
   displayPrimary: z.boolean().default(false),
+  /** Left out: the request keeps its note; empty or null: the note is removed. */
+  note: requestNote,
   idempotencyKey,
 });
 
@@ -224,6 +238,24 @@ export interface RelationshipView {
   confirmedAt: string | null;
   /** What the viewer may do now. */
   can: { approve: boolean; reject: boolean; withdraw: boolean; resubmit: boolean; end: boolean };
+  /**
+   * Role replay 2026-11-25 (P2-1, ADR 0060): how many whole days a request has waited for its
+   * teacher since it was (last) sent; null once it is not waiting for the teacher.
+   */
+  waitingDays: number | null;
+  /**
+   * P2-1: for the student of a request that waits for its teacher: whether a reminder can be sent
+   * now, and from when the next one can (14 days after sending, then 14 days after each reminder).
+   */
+  reminder: { now: boolean; from: string } | null;
+  /**
+   * P2-2: for the teacher or the student of a confirmed link that is not shown publicly yet: whose
+   * profile is still private. `you` offers "Show my profile publicly"; `them` (only when the other
+   * person has an account and can choose) says the link waits for them. Null otherwise.
+   */
+  privateSide: { you: boolean; them: boolean } | null;
+  /** P2-3: the student's optional note to the teacher, for the two of them and the reviewers. */
+  note: string | null;
   /** M10a: teacher_approval (the teacher answers) or committee_review (the review queue decides). */
   verificationPath: 'teacher_approval' | 'committee_review';
   /** M10a: the historical claim of a committee_review relationship, for its student and teacher; null otherwise. */
@@ -296,6 +328,7 @@ export interface RelRow {
   isDisplayPrimary: boolean;
   prefersDisplayPrimary: boolean;
   statusReason: string | null;
+  requestNote: string | null;
   requestedByUserId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -315,6 +348,7 @@ const relColumns = {
   isDisplayPrimary: teachingRelationship.isDisplayPrimary,
   prefersDisplayPrimary: teachingRelationship.prefersDisplayPrimary,
   statusReason: teachingRelationship.statusReason,
+  requestNote: teachingRelationship.requestNote,
   requestedByUserId: teachingRelationship.requestedByUserId,
   createdAt: teachingRelationship.createdAt,
   updatedAt: teachingRelationship.updatedAt,
@@ -454,6 +488,10 @@ type InviteFacts = {
   claim_resolution: string | null;
   unverified: boolean;
   shown: boolean;
+  teacher_public: boolean;
+  student_public: boolean;
+  teacher_claimed: boolean;
+  student_claimed: boolean;
 };
 
 async function inviteFactsOf(db: Executor, visible: { row: RelRow; role: RelationshipRole }[]): Promise<Map<string, InviteFacts>> {
@@ -468,7 +506,9 @@ SELECT tr.id::text AS id,
          AND NOT EXISTS (SELECT 1 FROM review_case v WHERE v.person_id = t.id AND v.kind = 'instructor_verification'
                           AND v.status = 'resolved' AND v.resolution = 'approved')) AS unverified,
        (tr.status IN ('verified', 'in_arbitration') AND tr.visibility = 'public'
-         AND t.visibility = 'public' AND t.deleted_at IS NULL AND s.visibility = 'public' AND s.deleted_at IS NULL) AS shown
+         AND t.visibility = 'public' AND t.deleted_at IS NULL AND s.visibility = 'public' AND s.deleted_at IS NULL) AS shown,
+       (t.visibility = 'public') AS teacher_public, (s.visibility = 'public') AS student_public,
+       (t.claimed_by_user_id IS NOT NULL) AS teacher_claimed, (s.claimed_by_user_id IS NOT NULL) AS student_claimed
   FROM teaching_relationship tr
   JOIN person t ON t.id = tr.teacher_person_id
   JOIN person s ON s.id = tr.student_person_id
@@ -494,6 +534,14 @@ function invitationOf(facts: InviteFacts): RelationshipInvitation {
   return { state, expiresAt: state === 'sent' && expiresAt ? expiresAt.toISOString() : null, canSend: !claimOpen };
 }
 
+function privateSideOf(row: RelRow, role: RelationshipRole, established: boolean, f: InviteFacts | undefined): RelationshipView['privateSide'] {
+  if (!established || !f || f.shown || (role !== 'teacher' && role !== 'student')) return null;
+  const mine = role === 'teacher' ? f.teacher_public : f.student_public;
+  const theirs = role === 'teacher' ? f.student_public : f.teacher_public;
+  const theyChoose = role === 'teacher' ? f.student_claimed : f.teacher_claimed;
+  return { you: !mine, them: !theirs && theyChoose };
+}
+
 async function toViews(db: Executor, rows: RelRow[], viewer: Viewer): Promise<RelationshipView[]> {
   const visible = rows.map((row) => ({ row, role: roleOf(row, viewer) })).filter((v): v is { row: RelRow; role: RelationshipRole } => v.role !== null);
   if (visible.length === 0) return [];
@@ -502,7 +550,11 @@ async function toViews(db: Executor, rows: RelRow[], viewer: Viewer): Promise<Re
   const reviews = await reviewsOf(db, visible, viewer);
   const facts = await inviteFactsOf(db, visible);
   const sent = await filesOfRelationships(db, visible.map((v) => v.row.id));
+  const reminded = await remindersOf(db, visible.filter((v) => v.role === 'student' && v.row.status === 'pending_teacher').map((v) => v.row));
+  const now = Date.now();
   return visible.map(({ row, role }) => {
+    const waiting = row.status === 'pending_teacher';
+    const nextReminder = waiting && role === 'student' ? reminderFrom(row, reminded.get(row.id) ?? null) : null;
     const own = periods.get(row.id) ?? [];
     const established = row.status === 'verified' || row.status === 'in_arbitration';
     const historical = established && isHistorical(own);
@@ -536,6 +588,10 @@ async function toViews(db: Executor, rows: RelRow[], viewer: Viewer): Promise<Re
         resubmit: role === 'student' && row.status === 'rejected' && byTeacher,
         end: (role === 'teacher' || role === 'student') && established && hasOngoing(own),
       },
+      waitingDays: waiting ? Math.max(0, Math.floor((now - row.updatedAt.getTime()) / DAY_MS)) : null,
+      reminder: nextReminder ? { now: nextReminder.getTime() <= now, from: nextReminder.toISOString() } : null,
+      privateSide: privateSideOf(row, role, established, facts.get(row.id)),
+      note: row.requestNote,
       verificationPath: row.verificationPath,
       review: reviews.get(row.id) ?? null,
       // M10b: the label is for the student and the reviewers only (the milestone's In scope 1).
@@ -1045,6 +1101,7 @@ export async function requestTeacher(principal: Principal | null, raw: RequestIn
         requestedByUserId: p.user.id,
         // DEFAULT D05: a wish, applied on approval; visual only.
         prefersDisplayPrimary: input.displayPrimary,
+        requestNote: noteOf(input.note),
       });
       await writePeriods(tx, id, rows);
       const eventId = await recordEvent(tx, { relationshipId: id, from: null, to: 'pending_teacher', actor: p, role: 'student', key: input.idempotencyKey });
@@ -1141,7 +1198,7 @@ export async function checkLineage(db: Executor, asked: string | null, teacherId
 
 // --- Transitions on an existing relationship ---------------------------------------------------
 
-type Action = 'approve' | 'reject' | 'withdraw' | 'resubmit' | 'end';
+type Action = 'approve' | 'reject' | 'withdraw' | 'resubmit' | 'end' | 'remind';
 
 const ALLOWED_ROLE: Record<Action, readonly RelationshipRole[]> = {
   approve: ['teacher'],
@@ -1149,6 +1206,7 @@ const ALLOWED_ROLE: Record<Action, readonly RelationshipRole[]> = {
   withdraw: ['student'],
   resubmit: ['student'],
   end: ['teacher', 'student'],
+  remind: ['student'],
 };
 
 const FORBIDDEN_TEXT: Record<Action, string> = {
@@ -1157,6 +1215,7 @@ const FORBIDDEN_TEXT: Record<Action, string> = {
   withdraw: 'Only the student who sent the request can withdraw it.',
   resubmit: 'Only the student who sent the request can correct it.',
   end: 'Only the student or the teacher can mark the training as ended.',
+  remind: 'Only the student who sent the request can send a reminder.',
 };
 
 /** 404 for a stranger (plan §6.4), 403 for a participant or reviewer whose side may not do this. */
@@ -1535,6 +1594,92 @@ export async function withdrawRelationship(principal: Principal | null, raw: z.i
   }
 }
 
+// --- remind (role replay 2026-11-25, P2-1, ADR 0060) ---------------------------------------------
+
+const DAY_MS = 86_400_000;
+const reminderKeyPrefix = (relationshipId: string) => `relationship.reminder:${relationshipId}:`;
+
+/** The newest reminder of each waiting request, read from the teacher's notices (their dedupe keys). */
+async function remindersOf(db: Executor, rows: RelRow[]): Promise<Map<string, Date>> {
+  const out = new Map<string, Date>();
+  if (rows.length === 0) return out;
+  const found = await db
+    .select({ key: notification.dedupeKey, createdAt: notification.createdAt })
+    .from(notification)
+    .innerJoin(person, eq(person.claimedByUserId, notification.userId))
+    .where(
+      and(
+        inArray(person.id, [...new Set(rows.map((r) => r.teacherPersonId))]),
+        eq(notification.template, 'relationship.reminder'),
+        sql`${notification.dedupeKey} LIKE 'relationship.reminder:%'`,
+      ),
+    );
+  for (const row of rows) {
+    const prefix = reminderKeyPrefix(row.id);
+    for (const f of found) {
+      if (!f.key?.startsWith(prefix)) continue;
+      const last = out.get(row.id);
+      if (!last || f.createdAt > last) out.set(row.id, f.createdAt);
+    }
+  }
+  return out;
+}
+
+/** When the next reminder can go: 14 days after the later of the (last) sending and the last reminder. */
+function reminderFrom(row: Pick<RelRow, 'updatedAt'>, last: Date | null): Date {
+  const base = last && last > row.updatedAt ? last : row.updatedAt;
+  return new Date(base.getTime() + REMINDER_INTERVAL_DAYS * DAY_MS);
+}
+
+/**
+ * relationships.remind: the student of a request that has waited at least 14 days sends its teacher
+ * a plain reminder (a notice and the generic notice e-mail), at most once every 14 days. Nothing
+ * else changes: the request keeps its status, and the teacher still decides alone.
+ */
+export async function remindRelationship(principal: Principal | null, raw: z.input<typeof relationshipActionInput>, meta: RequestMeta): Promise<RelationshipResult> {
+  const p = requireUser(principal);
+  const parsed = relationshipActionInput.safeParse(raw);
+  if (!parsed.success) throw fieldErrors(parsed.error);
+  const input = parsed.data;
+  const db = getDb();
+  const viewer = await viewerOf(db, p);
+  const outcome = await db.transaction(async (tx) => {
+    // Locked, so two reminders sent at once cannot both pass the 14-day check.
+    const row = await rowById(tx, input.relationshipId, true);
+    if (!row) throw notFound();
+    authorize(row, viewer, 'remind');
+    const key = `${reminderKeyPrefix(row.id)}${input.idempotencyKey}`;
+    const [teacher] = await tx.select({ userId: person.claimedByUserId }).from(person).where(eq(person.id, row.teacherPersonId));
+    const replayed = teacher?.userId
+      ? await tx.select({ id: notification.id }).from(notification).where(and(eq(notification.userId, teacher.userId), eq(notification.dedupeKey, key)))
+      : [];
+    if (replayed.length > 0) return { id: row.id, replayed: true };
+    if (row.status !== 'pending_teacher') throw new ServiceError('CONFLICT', 'Only a request that waits for the teacher can be sent as a reminder.');
+    const from = reminderFrom(row, (await remindersOf(tx, [row])).get(row.id) ?? null);
+    if (from.getTime() > Date.now()) {
+      throw new ServiceError('CONFLICT', `You can send a reminder from ${formatReminderDay(from)}. A reminder goes at most once every ${REMINDER_INTERVAL_DAYS} days.`);
+    }
+    if (!teacher?.userId) throw new ServiceError('CONFLICT', 'This teacher has no account, so a reminder cannot reach them.');
+    const days = Math.floor((Date.now() - row.updatedAt.getTime()) / DAY_MS);
+    await notify(tx, teacher.userId, 'relationship.reminder', { relationshipId: row.id, lineageName: row.lineageName, days }, { key });
+    await writeAudit(tx, {
+      action: 'relationship.remind',
+      actorUserId: p.user.id,
+      actorRole: p.user.role,
+      subjectType: 'teaching_relationship',
+      subjectId: row.id,
+      before: { status: row.status },
+      after: { status: row.status, reminded: true },
+      requestId: meta.requestId,
+      ipHmac: meta.ipHmac,
+    });
+    return { id: row.id, replayed: false };
+  });
+  return { relationship: await viewOf(db, outcome.id, viewer), replayed: outcome.replayed };
+}
+
+const formatReminderDay = (date: Date) => date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+
 // --- resubmit ----------------------------------------------------------------------------------
 
 /**
@@ -1578,7 +1723,14 @@ export async function resubmitRelationship(principal: Principal | null, raw: z.i
       if (await closesCycle(tx, row.teacherPersonId, row.studentPersonId)) throw new ServiceError('CONFLICT', CYCLE_MESSAGE);
       await tx
         .update(teachingRelationship)
-        .set({ status: 'pending_teacher', lineageId, prefersDisplayPrimary: input.displayPrimary, statusReason: null, updatedAt: new Date() })
+        .set({
+          status: 'pending_teacher',
+          lineageId,
+          prefersDisplayPrimary: input.displayPrimary,
+          statusReason: null,
+          ...(input.note === undefined ? {} : { requestNote: noteOf(input.note) }),
+          updatedAt: new Date(),
+        })
         .where(eq(teachingRelationship.id, row.id));
       await writePeriods(tx, row.id, rows);
       const eventId = await recordEvent(tx, { relationshipId: row.id, from: 'rejected', to: 'pending_teacher', actor: p, role: 'student', reason: 'resubmitted', key: input.idempotencyKey });

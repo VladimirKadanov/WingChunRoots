@@ -3,7 +3,7 @@
 export type InstructorState = 'not_instructor' | 'unverified' | 'verified';
 
 export interface NextStep {
-  key: 'profile' | 'teacher' | 'school' | 'instructor';
+  key: 'profile' | 'teacher' | 'school' | 'instructor' | 'public' | 'photo';
   label: string;
   hint: string;
   href: string;
@@ -24,6 +24,9 @@ export function nextSteps(input: {
   pendingClaim?: boolean;
   teacherLinks: number;
   schools: number;
+  /** Role replay 2026-11-25 (P2-2): the own profile is public, and it has a profile photo. */
+  profilePublic?: boolean;
+  hasPhoto?: boolean;
 }): NextStep[] {
   if (input.staffOnly || input.pendingClaim) return [];
   const steps: NextStep[] = [
@@ -61,5 +64,22 @@ export function nextSteps(input: {
       },
     );
   }
+  // P2-2: what lets the lineage show the person, and lets people recognise them.
+  steps.push(
+    {
+      key: 'public',
+      label: 'Make your profile public',
+      hint: 'Your confirmed links appear in the public lineage once both people are public.',
+      href: '/dashboard/profile',
+      done: input.profilePublic === true,
+    },
+    {
+      key: 'photo',
+      label: 'Add a photo',
+      hint: 'The cards in the lineage show it, so people recognise you.',
+      href: '/dashboard/photos',
+      done: input.hasPhoto === true,
+    },
+  );
   return steps.every((step) => step.done) ? [] : steps;
 }

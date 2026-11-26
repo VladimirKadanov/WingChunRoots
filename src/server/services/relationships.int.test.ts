@@ -28,6 +28,7 @@ import {
   REQUESTS_PER_WINDOW,
   REQUESTS_TO_ONE_TEACHER_PER_WINDOW,
   rejectRelationship,
+  remindRelationship,
   requestTeacher,
   resubmitRelationship,
   studentRequests,
@@ -233,6 +234,74 @@ describe('every transition writes relationship_event and audit_log', () => {
     expect((await audits(id)).at(-1)).toMatchObject({ action: 'relationship.end', reason: 'training_ended' });
     expect(await notificationsOf(student.account.id, 'relationship.ended')).toEqual([{ payload: { relationshipId: id, by: 'teacher' } }]);
     expect(await refusal(endRelationship(student.principal, { relationshipId: id, endedOn: '2024', idempotencyKey: key() }, meta))).toBe('CONFLICT');
+  });
+});
+
+describe('reminders (role replay 2026-11-25, P2-1, ADR 0060)', () => {
+  const backdate = (id: string, days: number) =>
+    getDb()
+      .update(teachingRelationship)
+      .set({ updatedAt: sql`now() - make_interval(days => ${days})`, createdAt: sql`now() - make_interval(days => ${days})` })
+      .where(eq(teachingRelationship.id, id));
+
+  it('a request that has waited 14 days can be sent as a reminder once every 14 days, by its student only; the teacher sees how long it waited', async () => {
+    const teacher = await member('p2-reminded', { sifu: true });
+    const student = await member('p2-reminding');
+    const id = await request(student, teacher);
+    const fresh = (await myTeachers(student.principal)).requests.find((r) => r.id === id)!;
+    expect(fresh.waitingDays).toBe(0);
+    expect(fresh.reminder?.now).toBe(false);
+    expect(await refusal(remindRelationship(student.principal, { relationshipId: id, idempotencyKey: key() }, meta))).toBe('CONFLICT');
+
+    await backdate(id, 15);
+    const waited = (await myTeachers(student.principal)).requests.find((r) => r.id === id)!;
+    expect(waited.waitingDays).toBe(15);
+    expect(waited.reminder?.now).toBe(true);
+    expect((await studentRequests(teacher.principal)).requests.find((r) => r.id === id)!.waitingDays).toBe(15);
+    expect(await refusal(remindRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta))).toBe('FORBIDDEN');
+
+    const once = key();
+    const sent = await remindRelationship(student.principal, { relationshipId: id, idempotencyKey: once }, meta);
+    expect(sent.replayed).toBe(false);
+    expect(sent.relationship.reminder?.now).toBe(false);
+    // The same key replays; a new key within 14 days is refused.
+    expect((await remindRelationship(student.principal, { relationshipId: id, idempotencyKey: once }, meta)).replayed).toBe(true);
+    expect(await refusal(remindRelationship(student.principal, { relationshipId: id, idempotencyKey: key() }, meta))).toBe('CONFLICT');
+    expect(await notificationsOf(teacher.account.id, 'relationship.reminder')).toEqual([{ payload: { relationshipId: id, lineageName: expect.any(String), days: 15 } }]);
+    expect((await audits(id)).at(-1)).toMatchObject({ action: 'relationship.remind' });
+    expect(await statusOf(id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
+    const note = (await listNotifications(teacher.principal)).items.find((n) => n.template === 'relationship.reminder')!;
+    expect(note.title).toBe('A student is still waiting for your answer');
+
+    // An answered request takes no reminder.
+    await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    expect((await myTeachers(student.principal)).teachers.find((r) => r.id === id)!.reminder).toBeNull();
+    expect(await refusal(remindRelationship(student.principal, { relationshipId: id, idempotencyKey: key() }, meta))).toBe('CONFLICT');
+  });
+});
+
+describe('note to the teacher (role replay 2026-11-25, P2-3, ADR 0060)', () => {
+  it('keeps an optional note for the two people only, refuses a long one, and a resubmit can change or remove it', async () => {
+    const teacher = await member('p2-noted-teacher', { sifu: true });
+    const student = await member('p2-noting-student');
+    const other = await member('p2-note-outsider');
+    expect(
+      await refusal(requestTeacher(student.principal, { teacherId: teacher.personId, lineageId, periods: ongoingFrom(), note: 'x'.repeat(281), idempotencyKey: key() }, meta)),
+    ).toBe('BAD_REQUEST');
+    const id = await request(student, teacher, { note: '  We trained together in Demo City, 2019.  ' });
+    expect((await studentRequests(teacher.principal)).requests.find((r) => r.id === id)!.note).toBe('We trained together in Demo City, 2019.');
+    expect((await myTeachers(student.principal)).requests.find((r) => r.id === id)!.note).toBe('We trained together in Demo City, 2019.');
+    expect(await refusal(getRelationship(other.principal, { id }))).toBe('NOT_FOUND');
+
+    await rejectRelationship(teacher.principal, { relationshipId: id, reason: 'dates', idempotencyKey: key() }, meta);
+    const kept = await resubmitRelationship(student.principal, { relationshipId: id, periods: ongoingFrom(), idempotencyKey: key() }, meta);
+    expect(kept.relationship.note).toBe('We trained together in Demo City, 2019.');
+    await rejectRelationship(teacher.principal, { relationshipId: id, reason: 'dates', idempotencyKey: key() }, meta);
+    const cleared = await resubmitRelationship(student.principal, { relationshipId: id, periods: ongoingFrom(), note: '   ', idempotencyKey: key() }, meta);
+    expect(cleared.relationship.note).toBeNull();
+    // A request without a note stores none (the column refuses an empty text).
+    const plain = await request(student, await member('p2-noted-second', { sifu: true }), { note: '' });
+    expect((await myTeachers(student.principal)).requests.find((r) => r.id === plain)!.note).toBeNull();
   });
 });
 

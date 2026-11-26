@@ -48,6 +48,8 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/teachers/actions.ts#requestTeacherAction': { rpc: ['relationships.request'] },
   'src/app/dashboard/teachers/actions.ts#resubmitRequestAction': { rpc: ['relationships.resubmit'] },
   'src/app/dashboard/teachers/actions.ts#withdrawRequestAction': { rpc: ['relationships.withdraw'] },
+  'src/app/dashboard/teachers/actions.ts#remindTeacherAction': { rpc: ['relationships.remind'] },
+  'src/app/dashboard/teachers/actions.ts#showProfilePubliclyAction': { rpc: ['profile.publish'] },
   'src/app/dashboard/teachers/actions.ts#endTrainingAction': { rpc: ['relationships.end'] },
   'src/app/dashboard/students/requests/actions.ts#approveRequestAction': { rpc: ['relationships.approve'] },
   'src/app/dashboard/students/requests/actions.ts#rejectRequestAction': { rpc: ['relationships.reject'] },

@@ -29,6 +29,7 @@ import { flushSync } from 'react-dom';
 
 import { CheckboxField, FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { NameText } from '@/components/account/person-names';
+import { TextAreaField } from '@/components/account/textarea-field';
 import { SearchIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import type { PersonHit } from '@/components/ui/search-palette';
@@ -412,6 +413,21 @@ export function RequestForm({
           state={state}
         />
       </section>
+
+      {/* Role replay 2026-11-25 (P2-3, ADR 0060): a few words that help the teacher place the student. */}
+      {inviting ? null : (
+        <TextAreaField
+          form={formId}
+          name="note"
+          label="Note to your teacher"
+          optional
+          rows={3}
+          maxLength={280}
+          hint="For example where and when you trained together. Only your teacher and the reviewers read it."
+          state={state}
+          className="sm:max-w-[36rem]"
+        />
+      )}
 
       <div className="grid gap-3">
         <p className="max-w-[60ch] text-sm text-fg-muted">

@@ -35,7 +35,11 @@ const slugs = (page: Page) => page.getByTestId('event-row').evaluateAll((rows) =
 test('@M17 the calendar lists the upcoming events by month and filters them with the keyboard', async ({ page }) => {
   await page.goto('/events');
   await expect(page.getByRole('heading', { level: 1, name: 'Events' })).toBeVisible();
-  const upcoming = await slugs(page);
+  // P2-9 (ADR 0062): the first upcoming event is under "Next up", and not repeated in the list below.
+  const nextUp = await page.getByTestId('event-next').getAttribute('data-slug');
+  const listed = await slugs(page);
+  expect(listed).not.toContain(nextUp);
+  const upcoming = [nextUp, ...listed];
   for (const slug of ['demo-seminar-chum-kiu-sofia', 'demo-spring-camp-london', 'demo-online-theory-evening', 'demo-cancelled-exam-session', 'demo-federation-summer-camp']) {
     expect(upcoming).toContain(slug);
   }
@@ -130,6 +134,14 @@ test('@M17 an event page shows its dates in its own zone, links its people, and 
   const external = page.getByTestId('event-external');
   await expect(external).toHaveAttribute('href', 'https://example.test/demo-seminar');
   expect(await external.getAttribute('target')).toBeNull();
+  // Role replay 2026-11-25 (P2-9, ADR 0062): how to join, and directions from the public place line only.
+  await expect(page.getByTestId('event-price')).toHaveText('EUR 30, members of the hall EUR 20');
+  await expect(page.getByTestId('event-open-to')).toHaveText('Open to all levels');
+  await expect(page.getByTestId('event-register-email').getByRole('link', { name: 'demo-seminar@example.test' })).toHaveAttribute('href', 'mailto:demo-seminar@example.test');
+  await expect(page.getByTestId('event-register')).toHaveCount(0);
+  const directions = page.getByTestId('event-directions');
+  await expect(directions).toHaveAttribute('href', /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=.*Sofia%2C%20Bulgaria$/);
+  expect(await directions.getAttribute('target')).toBeNull();
   for (const link of await page.getByRole('link').filter({ visible: true }).all()) {
     const box = await link.boundingBox();
     if (box) expect(box.height, `${await link.textContent()}: a 44 px target`).toBeGreaterThanOrEqual(44);
