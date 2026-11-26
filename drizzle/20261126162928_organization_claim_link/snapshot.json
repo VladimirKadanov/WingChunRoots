@@ -1,11 +1,10 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "ef2a5212-3dc7-465d-9f8e-66b6252c36e4",
+  "id": "b826bcf8-35c4-4d6b-851c-fc8ce3460c33",
   "prevIds": [
-    "302673d8-880e-4e35-9f0b-ecc283ba91fb",
-    "84597655-1038-4951-aa9f-3accfa4b9cf2",
-    "a39a7a31-7e3f-4cce-b4b7-f7704de34f83"
+    "36386e0a-b683-467e-b481-c963618c5c66",
+    "ce4a52b2-cd47-4abf-8208-f560e8cc5877"
   ],
   "ddl": [
     {
@@ -311,6 +310,12 @@
     {
       "isRlsEnabled": false,
       "name": "passport_skill",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "rank_ladder_step",
       "entityType": "tables",
       "schema": "public"
     },
@@ -5627,6 +5632,19 @@
       "table": "teaching_relationship"
     },
     {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "via_invite_link",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "teaching_relationship"
+    },
+    {
       "type": "timestamp with time zone",
       "typeSchema": null,
       "notNull": true,
@@ -8602,6 +8620,58 @@
       "entityType": "columns",
       "schema": "public",
       "table": "passport_skill"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rank_ladder_step"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "position",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rank_ladder_step"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rank_ladder_step"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rank_ladder_step"
     },
     {
       "type": "uuid",
@@ -20871,6 +20941,23 @@
     {
       "nameExplicit": false,
       "columns": [
+        "user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "auth_user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "rank_ladder_step_user_id_auth_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "rank_ladder_step"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "person_id"
       ],
       "schemaTo": "public",
@@ -21580,6 +21667,17 @@
       "entityType": "pks",
       "schema": "public",
       "table": "passport_rank_photo"
+    },
+    {
+      "columns": [
+        "user_id",
+        "position"
+      ],
+      "nameExplicit": false,
+      "name": "rank_ladder_step_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "rank_ladder_step"
     },
     {
       "columns": [
@@ -23833,6 +23931,20 @@
       "entityType": "checks",
       "schema": "public",
       "table": "passport_skill"
+    },
+    {
+      "value": "\"position\" BETWEEN 0 AND 29",
+      "name": "rank_ladder_step_position_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "rank_ladder_step"
+    },
+    {
+      "value": "char_length(\"name\") BETWEEN 1 AND 120",
+      "name": "rank_ladder_step_name_length",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "rank_ladder_step"
     },
     {
       "value": "\"idempotency_key\" IS NULL OR \"idempotency_key\" ~ '^[A-Za-z0-9_-]{8,64}$'",
