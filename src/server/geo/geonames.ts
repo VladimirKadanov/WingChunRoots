@@ -15,7 +15,7 @@ export const GEONAMES_EXTRACT_PATH = 'src/server/geo/data/geonames-places.tsv';
 export const GEONAMES_ATTRIBUTION = 'GeoNames (https://www.geonames.org/), licensed under CC BY 4.0';
 
 /**
- * The countries of the extract and the smallest population kept in each. M11 (DEFAULT, In scope 1)
+ * The countries of the extract and the smallest population kept in each. At first (DEFAULT, M11 In scope 1) it
  * had Bulgaria and the countries of the fictional demo schools. Role replay 2026-11-25, P2-12
  * (DEFAULT, no D number; docs/adr/0071-cities-of-launch-countries.md): every European country, and
  * the other countries with many Wing Chun schools (the United States, Canada, Australia, New
