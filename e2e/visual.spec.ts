@@ -42,6 +42,9 @@ async function fixVisualDates(page: Page) {
     }
     // The review queue's Waiting column counts from the seed's fixed base date, in either language.
     for (const el of document.querySelectorAll('[data-visual-waited]')) el.textContent = '9 days';
+    // How long a teacher request has waited (role replay 2026-11-25, P2-1) counts days since the
+    // seed's fixed dates, so it changes every day without any change in the app.
+    for (const el of document.querySelectorAll('[data-visual-days]')) el.textContent = '9 days';
   });
 }
 

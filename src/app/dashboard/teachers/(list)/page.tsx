@@ -352,7 +352,12 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
                     <Row key={view.id} view={view} testId="request">
                       <span className="text-sm text-fg-muted">
                         Sent {formatDay(view.createdAt)}
-                        {view.waitingDays !== null && view.waitingDays > 0 ? ` · waiting ${view.waitingDays === 1 ? '1 day' : `${view.waitingDays} days`}` : ''}
+                        {view.waitingDays !== null && view.waitingDays > 0 ? (
+                          <>
+                            {' · waiting '}
+                            <span data-visual-days="">{view.waitingDays === 1 ? '1 day' : `${view.waitingDays} days`}</span>
+                          </>
+                        ) : null}
                       </span>
                       {view.reminder ? (
                         view.reminder.now ? (
@@ -372,7 +377,7 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
                       ) : null}
                       {view.waitingDays !== null && view.waitingDays >= LONG_WAIT_DAYS ? (
                         <p data-testid="long-wait" className="max-w-[34ch] text-sm sm:text-right">
-                          No answer for {view.waitingDays} days. Your teacher may not be using WingChunRoots at the moment: you can send a reminder, or
+                          No answer for <span data-visual-days="">{view.waitingDays} days</span>. Your teacher may not be using WingChunRoots at the moment: you can send a reminder, or
                           withdraw the request and ask again later.
                         </p>
                       ) : null}
