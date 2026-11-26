@@ -161,8 +161,8 @@ function Label({ htmlFor, children, optional }: { htmlFor: string; children: Rea
 
 /**
  * A phone (below md, 768 px): the names are rows with Edit, one open at a time (role replay
- * 2026-11-25, P3-1: four open name blocks made the editor 8,600 px tall). The server and a page
- * without JavaScript draw every row open.
+ * 2026-11-25, P3-1: four open name blocks made the editor 8,600 px tall), once the profile has
+ * COLLAPSE_FROM saved names. The server and a page without JavaScript draw every row open.
  */
 const PHONE_QUERY = '(max-width: 767.98px)';
 function subscribePhone(onChange: () => void) {
@@ -172,6 +172,7 @@ function subscribePhone(onChange: () => void) {
 }
 const isPhone = () => window.matchMedia(PHONE_QUERY).matches;
 const notPhone = () => false;
+const COLLAPSE_FROM = 3;
 
 export function ProfileEditor({
   initialValues,
@@ -230,6 +231,8 @@ export function ProfileEditor({
   const addedRows = useRef(0);
   // P3-1: on a phone, the key of the one name row that is open (null: all are rows with Edit).
   const phone = useSyncExternalStore(subscribePhone, isPhone, notPhone);
+  // One or two names fit a phone open; from three saved names on, they are rows with Edit.
+  const manyNames = drawn.names.length >= COLLAPSE_FROM;
   // A name row that holds the focus when the page hydrates stays open: nothing typed before is hidden
   // (the server's page draws every row open, and the first render after hydration still does).
   const [openKey, setOpenKey] = useState<string | null>(() =>
@@ -405,7 +408,7 @@ export function ProfileEditor({
             const isPrimary = values.primary === i;
             const rowKey = rowKeys[i] ?? `slot-${i}`;
             // P3-1: a phone shows a saved name as a row with Edit unless it is the open one, is new or has an error.
-            const collapsed = hydrated && phone && !row.spare && rowKey !== openKey && !(valueError || writingError || primaryError) && row.value.trim() !== '';
+            const collapsed = hydrated && phone && manyNames && !row.spare && rowKey !== openKey && !(valueError || writingError || primaryError) && row.value.trim() !== '';
             const bodyId = `${FORM}-name-${i}-fields`;
             const writingLabel = writings.find((w) => w.value === row.writing)?.label ?? row.writing;
             return (
@@ -554,7 +557,7 @@ export function ProfileEditor({
                       </p>
                     ) : null}
                     <FieldError id={`${primaryId}-error`} error={primaryError} />
-                    {hydrated && phone && !row.spare && rowKey === openKey && row.value.trim() !== '' ? (
+                    {hydrated && phone && manyNames && !row.spare && rowKey === openKey && row.value.trim() !== '' ? (
                       <button
                         type="button"
                         onClick={() => closeName(i)}
