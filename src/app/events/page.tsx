@@ -122,6 +122,7 @@ function FilterForm({ filters, countries }: { filters: Filters; countries: strin
       {filters.person ? <input type="hidden" name="person" value={filters.person} /> : null}
       {filters.school ? <input type="hidden" name="school" value={filters.school} /> : null}
       {filters.organization ? <input type="hidden" name="organization" value={filters.organization} /> : null}
+      {filters.place ? <input type="hidden" name="place" value={filters.place} /> : null}
       <FilterDisclosure active={activeFilters(filters).length} from="md" panelClassName="grid grid-cols-1 items-end gap-3 max-md:mt-3 sm:grid-cols-2">
       <Select id="event-country" name="country" label="Country" value={filters.country ?? ''} options={countryOptions} />
       <Select id="event-kind" name="kind" label="Kind" value={filters.kind ?? ''} options={[['', 'All kinds'], ...KINDS]} />
@@ -155,6 +156,7 @@ async function loadList(f: Filters, month?: { month: string }): Promise<EventLis
       person: f.person ?? undefined,
       school: f.school ?? undefined,
       organization: f.organization ?? undefined,
+      place: f.place ?? undefined,
       ...(month ? { month: month.month, limit: 50 } : { page: f.page }),
     });
   } catch (error) {
@@ -214,11 +216,17 @@ function LoadFailed({ filters }: { filters: Filters }) {
 }
 
 function Scope({ filters }: { filters: Filters }) {
-  if (!filters.person && !filters.school && !filters.organization) return null;
+  if (!filters.person && !filters.school && !filters.organization && !filters.place) return null;
   return (
     <p className="mt-4 text-sm" data-testid="event-scope">
-      {filters.person ? 'The events of one person, as organizer or instructor.' : filters.school ? 'The events at one school.' : 'The events of one organization.'}{' '}
-      <Link href={hrefOf(filters, { person: null, school: null, organization: null, page: 1 })} className="link inline-flex min-h-11 items-center">
+      {filters.person
+        ? 'The events of one person, as organizer or instructor.'
+        : filters.school
+          ? 'The events at one school.'
+          : filters.organization
+            ? 'The events of one organization.'
+            : 'The events in one city.'}{' '}
+      <Link href={hrefOf(filters, { person: null, school: null, organization: null, place: null, page: 1 })} className="link inline-flex min-h-11 items-center">
         Show every event
       </Link>
     </p>
@@ -259,7 +267,7 @@ async function AgendaView({ filters }: { filters: Filters }) {
           {filtered ? (
             <p>
               <Link
-                href={hrefOf({ ...filters, country: null, kind: null, format: null, person: null, school: null, organization: null, page: 1 })}
+                href={hrefOf({ ...filters, country: null, kind: null, format: null, person: null, school: null, organization: null, place: null, page: 1 })}
                 className="link inline-flex min-h-11 items-center"
               >
                 Show every event
