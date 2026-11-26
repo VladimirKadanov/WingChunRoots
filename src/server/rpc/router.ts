@@ -73,6 +73,10 @@ import {
   decideAttendanceClaim,
   decideAttendanceInput,
   markAttendance,
+  recordGrading,
+  recordGradingInput,
+  setLadder,
+  setLadderInput,
   markAttendanceInput,
   myPassport,
   passportGet,
@@ -1726,6 +1730,23 @@ export const router = {
       .route({ method: 'POST', path: '/passport/skill/add', summary: 'Record a form or skill, learning or approved; as for addRank' })
       .input(addSkillInput)
       .handler(({ context, input }) => addSkill(context.principal, input, context.meta)),
+    recordGrading: signedIn
+      .route({
+        method: 'POST',
+        path: '/passport/grading',
+        summary:
+          'Record one grading for up to 50 students at once (ADR 0072): the awarded rank, the date, optionally the examiner and the organization; each student gets the examination and, unless `alsoRank` is false, the rank; each checked as for addExam, all or nothing; each student is told; audited',
+      })
+      .input(recordGradingInput)
+      .handler(({ context, input }) => recordGrading(context.principal, input, context.meta)),
+    setLadder: signedIn
+      .route({
+        method: 'POST',
+        path: '/passport/ladder',
+        summary: 'Set your rank ladder (ADR 0072): up to 30 ranks in order, offered as the pick list where you record a rank; an empty list clears it; audited',
+      })
+      .input(setLadderInput)
+      .handler(({ context, input }) => setLadder(context.principal, input, context.meta)),
     updateEntry: signedIn
       .route({
         method: 'POST',

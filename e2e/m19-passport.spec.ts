@@ -177,7 +177,7 @@ test('@M19 a student cannot record; they hide an entry, propose a correction and
     await correction.getByRole('button', { name: 'Send the correction' }).click();
     await expect(page.getByTestId('passport-notice')).toHaveText('Your correction was sent to whoever recorded the entry.');
     await expect(shown(page.getByTestId('passport-correction-waiting'))).toContainText('The rank was awarded in 2019.');
-    await teacher.page.goto(`/dashboard/students?student=${student.person.id}`);
+    await teacher.page.goto(`/dashboard/students/${student.person.id}`);
     await expect(teacher.page.getByTestId('student-correction')).toContainText('The rank was awarded in 2019.');
 
     // A private certificate (DEFAULT M19, questions 4 and 5): the owner and the teacher see it, a guest gets 404.
@@ -214,3 +214,54 @@ test('@M19 a student cannot record; they hide an entry, propose a correction and
 async function demoPng(): Promise<Buffer> {
   return Buffer.from(await plainImage('png', 320, 220));
 }
+
+test('@M19 a grading day: the teacher sets a rank ladder, then records one grading for two students at once', async ({ page, browser }) => {
+  test.setTimeout(180_000);
+  const admin = await signedIn(browser, 'admin');
+  const first = await freshContext(browser);
+  const second = await freshContext(browser);
+  try {
+    const sifu = await sifuAccount(page, 'Grading Sifu');
+    const a = await publicStudent(first.page, admin.page, 'Demo Grading Pupil One', false);
+    const b = await publicStudent(second.page, admin.page, 'Demo Grading Pupil Two', false);
+    await relate(sifu.userId, a.userId);
+    await relate(sifu.userId, b.userId);
+
+    // The ladder, once: one rank per line.
+    await page.goto('/dashboard/students');
+    await shown(page.getByTestId('students-ladder-link')).click();
+    const ladder = page.getByTestId('passport-ladder-form');
+    await ladder.getByLabel('Your ranks, one per line').fill('Demo first level\nDemo second level\nDemo third level');
+    await axeBothThemes(page, 'rank ladder');
+    await ladder.getByRole('button', { name: 'Save the ladder' }).click();
+    await expect(shown(page.getByTestId('students-notice'))).toHaveText('Your rank ladder is saved.');
+
+    // The grading: the rank from the ladder, the date, then a tick for each student who passed.
+    await shown(page.getByTestId('students-grading-link')).click();
+    const grading = page.getByTestId('passport-grading-form');
+    const rank = grading.getByLabel('Awarded rank');
+    await expect(rank).toHaveAttribute('list', 'rank-ladder');
+    await expect(page.locator('#rank-ladder option')).toHaveCount(3);
+    await grading.getByRole('button', { name: 'Record the grading' }).click();
+    await expect(grading.locator('#passport-grading-personIds-error')).toBeVisible();
+    await rank.fill('Demo second level');
+    await grading.getByLabel('Date').fill('2024-06');
+    await grading.getByLabel('Demo Grading Pupil One').check();
+    await grading.getByLabel('Demo Grading Pupil Two').check();
+    await axeBothThemes(page, 'record a grading');
+    await grading.getByRole('button', { name: 'Record the grading' }).click();
+    await expect(shown(page.getByTestId('students-notice'))).toHaveText('The grading is recorded for 2 students. Each of them was told.');
+
+    // Each student's passport has its own page: the examination and the rank.
+    await shown(page.getByTestId('passport-student')).filter({ hasText: 'Demo Grading Pupil Two' }).getByRole('link').click();
+    await expect(page).toHaveURL(new RegExp(`/dashboard/students/${b.person.id}$`));
+    await expect(shown(page.getByTestId('student-passport-entry'))).toHaveCount(2);
+    await expect(shown(page.getByTestId('passport-rank-form')).getByLabel('Rank')).toHaveAttribute('list', 'rank-ladder');
+    await first.page.goto('/dashboard/passport');
+    await expect(shown(first.page.getByTestId('own-passport-entry'))).toHaveCount(2);
+  } finally {
+    await admin.context.close();
+    await first.context.close();
+    await second.context.close();
+  }
+});

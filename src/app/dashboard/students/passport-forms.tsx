@@ -41,14 +41,23 @@ function OrganizationField({ form, state, organizations }: { form: string; state
   );
 }
 
-export function RankForm({ personId, organizations, initial }: { personId: string; organizations: Choice[]; initial: FormState | null }) {
+export function RankForm({ personId, organizations, ladder, initial }: { personId: string; organizations: Choice[]; ladder?: string; initial: FormState | null }) {
   const [state, action, pending] = useActionState(addRankAction, initial ?? IDLE);
   useFocusOnError(RANK_FORM, state);
   return (
     <form id={RANK_FORM} action={action} noValidate className="grid gap-4" data-testid="passport-rank-form">
       <FormMessage form={RANK_FORM} state={state} labels={{ rank: 'Rank', date: 'Date', organizationId: 'Awarded by' }} />
       <input type="hidden" name="personId" value={personId} />
-      <TextField form={RANK_FORM} name="rank" label="Rank" state={state} autoComplete="off" maxLength={120} hint="As your school writes it, such as “Second level”." />
+      <TextField
+        form={RANK_FORM}
+        name="rank"
+        label="Rank"
+        state={state}
+        autoComplete="off"
+        maxLength={120}
+        list={ladder}
+        hint={ladder ? 'Pick one of your rank ladder, or write another.' : 'As your school writes it, such as “Second level”.'}
+      />
       <DateField form={RANK_FORM} state={state} />
       <OrganizationField form={RANK_FORM} state={state} organizations={organizations} />
       <div>
@@ -60,14 +69,26 @@ export function RankForm({ personId, organizations, initial }: { personId: strin
   );
 }
 
-export function ExamForm({ personId, organizations, examiners, initial }: { personId: string; organizations: Choice[]; examiners: Choice[]; initial: FormState | null }) {
+export function ExamForm({
+  personId,
+  organizations,
+  examiners,
+  ladder,
+  initial,
+}: {
+  personId: string;
+  organizations: Choice[];
+  examiners: Choice[];
+  ladder?: string;
+  initial: FormState | null;
+}) {
   const [state, action, pending] = useActionState(addExamAction, initial ?? IDLE);
   useFocusOnError(EXAM_FORM, state);
   return (
     <form id={EXAM_FORM} action={action} noValidate className="grid gap-4" data-testid="passport-exam-form">
       <FormMessage form={EXAM_FORM} state={state} labels={{ awardedRank: 'Awarded rank', date: 'Date', examinerPersonId: 'Examiner', organizationId: 'Awarded by' }} />
       <input type="hidden" name="personId" value={personId} />
-      <TextField form={EXAM_FORM} name="awardedRank" label="Awarded rank" state={state} autoComplete="off" maxLength={120} />
+      <TextField form={EXAM_FORM} name="awardedRank" label="Awarded rank" state={state} autoComplete="off" maxLength={120} list={ladder} hint={ladder ? 'Pick one of your rank ladder, or write another.' : undefined} />
       <DateField form={EXAM_FORM} state={state} />
       <SelectField
         form={EXAM_FORM}
@@ -128,6 +149,7 @@ export function EditEntryForm({
   date,
   progress,
   cancelHref,
+  ladder,
   initial,
 }: {
   personId: string;
@@ -137,6 +159,8 @@ export function EditEntryForm({
   date: string | null;
   progress: 'learning' | 'approved' | null;
   cancelHref: string;
+  /** The id of the rank ladder's <datalist>, for a rank or an examination. */
+  ladder?: string;
   initial: FormState | null;
 }) {
   const [state, action, pending] = useActionState(updateEntryAction, initial ?? IDLE);
@@ -148,7 +172,7 @@ export function EditEntryForm({
       <input type="hidden" name="personId" value={personId} />
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="id" value={id} />
-      <TextField form={ENTRY_FORM} name="title" label={titleLabel} state={state} autoComplete="off" maxLength={120} defaultValue={title} autoFocus />
+      <TextField form={ENTRY_FORM} name="title" label={titleLabel} state={state} autoComplete="off" maxLength={120} defaultValue={title} list={ladder} autoFocus />
       <DateField form={ENTRY_FORM} state={state} defaultValue={date ?? ''} />
       {kind === 'skill' ? (
         <SelectField form={ENTRY_FORM} name="progress" label="Progress" state={state} autoComplete="off" defaultValue={state.values?.progress ?? progress ?? 'learning'}>

@@ -148,6 +148,9 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/students/actions.ts#updateEntryAction': { rpc: ['passport.updateEntry'] },
   'src/app/dashboard/students/actions.ts#withdrawEntryAction': { rpc: ['passport.withdrawEntry'] },
   'src/app/dashboard/students/actions.ts#markAttendanceAction': { rpc: ['passport.markAttendance'] },
+  // ADR 0072: a grading for several students, and the account's rank ladder.
+  'src/app/dashboard/students/grading/actions.ts#recordGradingAction': { rpc: ['passport.recordGrading'] },
+  'src/app/dashboard/students/ladder/actions.ts#setLadderAction': { rpc: ['passport.setLadder'] },
   'src/app/people/[slug]/passport-actions.ts#removePassportEntryAction': { rpc: ['passport.remove'] },
   'src/app/dashboard/profile/actions.ts#saveSupporterAction': { rpc: ['profile.setSupporter'] },
   'src/app/dashboard/profile/actions.ts#saveProfileVideosAction': { rpc: ['profile.setVideos'] },
