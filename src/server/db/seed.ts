@@ -83,6 +83,7 @@ import {
   personVideo,
   pilotAccessRequest,
   place,
+  rankLadderStep,
   recordProposal,
   recordRevision,
   relationshipEvent,
@@ -169,6 +170,8 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   personVideo,
   pilotAccessRequest,
   place,
+  // ADR 0072: an account's rank ladder (no demo rows).
+  rankLadderStep,
   recordProposal,
   recordRevision,
   relationshipEvent,

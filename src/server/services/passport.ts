@@ -13,6 +13,10 @@
 //   passport.students        the students they record for, one student's entries, their past events
 //   passport.addRank / addExam / addSkill / updateEntry / withdrawEntry
 //   passport.markAttendance  the organizer or an instructor of a past event, for their own students
+//   passport.recordGrading   one grading for several students at once: an examination each, and
+//                            their rank (role replay 2026-11-25, P2-8, ADR 0072)
+// Any account, for itself:
+//   passport.setLadder       its rank ladder, offered as the pick list of the rank fields (ADR 0072)
 // Staff with a verified second factor:
 //   passport.remove          any entry, with a reason (audited; the owner is told)
 //
@@ -45,7 +49,7 @@ import { requireStaff2FA, requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { passportCertificate, passportExam, passportRank, passportRankPhoto, passportSkill, person, personPhoto } from '../db/schema';
+import { passportCertificate, passportExam, passportRank, passportRankPhoto, passportSkill, person, personPhoto, rankLadderStep } from '../db/schema';
 import {
   GALLERY_PHOTO_STATUSES,
   PASSPORT_CERTIFICATES_MAX,
@@ -55,6 +59,7 @@ import {
   PASSPORT_TEXT_MAX,
   PASSPORT_TITLE_MAX,
   PASSPORT_VISIBILITIES,
+  RANK_LADDER_MAX,
   SKILL_PROGRESSES,
 } from '../db/schema/common';
 import { EVENT_KIND_LABELS, type EventKind } from '../dto/events';
@@ -130,6 +135,7 @@ const FIELD_LABELS: Record<string, string> = {
   eventId: 'Choose one of your past events.',
   personIds: 'Choose at least one of your students.',
   photoIds: `Choose at most ${PASSPORT_RANK_PHOTOS_MAX} photos of your own gallery.`,
+  steps: `Write at most ${RANK_LADDER_MAX} ranks, one per line, each at most ${PASSPORT_TEXT_MAX} characters.`,
 };
 
 function fieldErrors(error: z.ZodError): ServiceError {
@@ -197,6 +203,18 @@ export const certificateIdInput = z.object({ id: id('No such certificate.') });
 export const markAttendanceInput = z.object({ eventId: z.uuid({ error: 'No such event.' }), personIds: z.array(z.uuid()).min(1).max(50) });
 export const passportRemoveInput = z.object({ kind: z.enum(PASSPORT_ENTRY_KINDS), id: id(), reason: text(PASSPORT_NOTE_MAX) });
 export const passportStudentsInput = z.object({ personId: z.uuid().nullish() });
+/** The most students one grading records for (ADR 0072). */
+export const GRADING_STUDENTS_MAX = 50;
+export const recordGradingInput = z.object({
+  awardedRank: text(PASSPORT_TEXT_MAX),
+  date: dateField,
+  examinerPersonId: z.uuid().nullish(),
+  organizationId: z.uuid().nullish(),
+  personIds: z.array(z.uuid()).min(1).max(GRADING_STUDENTS_MAX),
+  /** Also record the awarded rank as each student's rank (their current rank follows it). */
+  alsoRank: z.boolean().default(true),
+});
+export const setLadderInput = z.object({ steps: z.array(z.string().max(PASSPORT_TEXT_MAX * 2)).max(RANK_LADDER_MAX * 2) });
 
 /** A date as people remember it: "2019", "2019-05" or "2019-05-12"; empty for unknown; never after today. */
 function cleanDate(raw: string | null | undefined, field = 'date'): { on: string | null; precision: 'year' | 'month' | 'day' | 'unknown' } {
@@ -862,6 +880,10 @@ export interface PassportStudents {
   students: PassportStudent[];
   /** The organizations the account administers (approved), to name as the issuer. */
   organizations: { id: string; name: string }[];
+  /** The account's rank ladder (ADR 0072), the pick list of the rank fields; empty when not set. */
+  ladder: string[];
+  /** The examiners a grading offers: this account's own person and its teachers (ADR 0072). */
+  gradingExaminers: PassportExaminer[];
   selected: { student: PassportStudent; entries: StudentEntry[]; events: PastEvent[]; examiners: PassportExaminer[] } | null;
 }
 
@@ -993,7 +1015,37 @@ export async function passportStudents(principal: Principal | null, raw: z.input
       examiners,
     };
   }
-  return { hasProfile: own !== null || organizations.length > 0, students, organizations, selected };
+  return {
+    hasProfile: own !== null || organizations.length > 0,
+    students,
+    organizations,
+    ladder: await ladderOf(db, p.user.id),
+    gradingExaminers: own ? await gradingExaminers(db, own) : [],
+    selected,
+  };
+}
+
+async function ladderOf(db: Executor, userId: string): Promise<string[]> {
+  const rows = await db.select({ name: rankLadderStep.name }).from(rankLadderStep).where(eq(rankLadderStep.userId, userId)).orderBy(rankLadderStep.position);
+  return rows.map((r) => r.name);
+}
+
+/** For a grading (several students at once): the account's own person and its verified teachers. */
+async function gradingExaminers(db: Executor, own: string): Promise<PassportExaminer[]> {
+  const rows = await db.execute<{ id: string; name: string | null; lang: string | null; note: string }>(sql`
+    SELECT DISTINCT ON (p.id) p.id,
+           (SELECT n.value FROM person_name n WHERE n.person_id = p.id AND n.is_primary LIMIT 1) AS name,
+           (SELECT n.lang FROM person_name n WHERE n.person_id = p.id AND n.is_primary LIMIT 1) AS lang,
+           c.note
+      FROM (
+        SELECT ${own}::uuid AS id, 'You' AS note, 0 AS rank
+        UNION ALL
+        SELECT r.teacher_person_id, 'Your teacher', 1 FROM teaching_relationship r WHERE r.student_person_id = ${own}::uuid AND r.status = 'verified'
+      ) c JOIN person p ON p.id = c.id AND p.deleted_at IS NULL
+     ORDER BY p.id, c.rank`);
+  return rows.rows
+    .map((r) => ({ personId: r.id, name: { value: r.name ?? 'Unnamed person', lang: r.lang ?? 'und-Latn', script: 'Latn' as const }, note: r.note }))
+    .sort((a, b) => (a.note === 'You' ? -1 : b.note === 'You' ? 1 : a.name.value.localeCompare(b.name.value, 'en')));
 }
 
 // --- Writing -----------------------------------------------------------------------------------------
@@ -1110,6 +1162,91 @@ export async function addSkill(principal: Principal | null, raw: z.input<typeof 
 }
 
 const WRITER_FIELDS = ['rank', 'awardedRank', 'name', 'progress', 'date', 'organizationId', 'examinerPersonId'] as const;
+
+/**
+ * passport.recordGrading (role replay 2026-11-25, P2-8, ADR 0072): one grading day for several
+ * students at once. Each ticked student gets the examination (the awarded rank, the date, the
+ * examiner) and, with `alsoRank` (the default), the rank itself, so their current rank follows.
+ * Every student is checked as for addExam, all in one transaction: one student this account may
+ * not record for refuses the whole grading, and nothing is written.
+ */
+export async function recordGrading(
+  principal: Principal | null,
+  raw: z.input<typeof recordGradingInput>,
+  meta: RequestMeta,
+): Promise<{ recorded: number; entries: WrittenEntry[] }> {
+  const p = requireUser(principal);
+  const input = parse(recordGradingInput, raw);
+  const awardedRank = cleanText(input.awardedRank, 'awardedRank', PASSPORT_TEXT_MAX);
+  const date = cleanDate(input.date);
+  const people = [...new Set(input.personIds)];
+  return getDb().transaction(async (tx) => {
+    const entries: WrittenEntry[] = [];
+    for (const personId of people) {
+      const writer = await writerFor(tx, p.user.id, personId, input.organizationId ?? null);
+      const examiner = await cleanExaminer(tx, input.examinerPersonId, personId);
+      const [exam] = await tx
+        .insert(passportExam)
+        .values({
+          personId,
+          awardedRank,
+          on: date.on,
+          precision: date.precision,
+          examinerPersonId: examiner,
+          organizationId: writer.organizationId,
+          teacherPersonId: writer.teacherPersonId,
+          createdByUserId: p.user.id,
+        })
+        .returning({ id: passportExam.id });
+      await writeAudit(tx, {
+        action: 'passport.add',
+        ...audited(meta, p),
+        subjectType: 'passport_exam',
+        subjectId: exam!.id,
+        after: { personId, precision: date.precision, examiner: examiner !== null, organization: writer.organizationId !== null, grading: true },
+      });
+      entries.push({ kind: 'exam', id: exam!.id });
+      if (input.alsoRank) {
+        const [rank] = await tx
+          .insert(passportRank)
+          .values({ personId, rank: awardedRank, organizationId: writer.organizationId, on: date.on, precision: date.precision, teacherPersonId: writer.teacherPersonId, createdByUserId: p.user.id })
+          .returning({ id: passportRank.id });
+        await writeAudit(tx, { action: 'passport.add', ...audited(meta, p), subjectType: 'passport_rank', subjectId: rank!.id, after: { personId, precision: date.precision, organization: writer.organizationId !== null, grading: true } });
+        entries.push({ kind: 'rank', id: rank!.id });
+      }
+      // One notice per student: the examination they passed.
+      await tellStudent(tx, personId, p.user.id, 'exam', exam!.id, awardedRank);
+    }
+    return { recorded: people.length, entries };
+  });
+}
+
+/**
+ * passport.setLadder (ADR 0072): the account's rank ladder, replaced as a whole ("First level",
+ * "Second level"…, in order; an empty list clears it). Blank lines and repeats are dropped. Only
+ * words, kept with the account and offered as the pick list wherever it records a rank.
+ */
+export async function setLadder(principal: Principal | null, raw: z.input<typeof setLadderInput>, meta: RequestMeta): Promise<{ steps: string[] }> {
+  const p = requireUser(principal);
+  const input = parse(setLadderInput, raw);
+  const steps: string[] = [];
+  const seen = new Set<string>();
+  for (const line of input.steps) {
+    const value = oneLine(line);
+    if (value === '') continue;
+    const key = value.toLocaleLowerCase('en');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    steps.push(cleanText(value, 'steps', PASSPORT_TEXT_MAX));
+  }
+  if (steps.length > RANK_LADDER_MAX) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { steps: FIELD_LABELS.steps! });
+  return getDb().transaction(async (tx) => {
+    await tx.delete(rankLadderStep).where(eq(rankLadderStep.userId, p.user.id));
+    if (steps.length > 0) await tx.insert(rankLadderStep).values(steps.map((name, position) => ({ userId: p.user.id, position, name })));
+    await writeAudit(tx, { action: 'passport.ladder', ...audited(meta, p), subjectType: 'user', subjectId: p.user.id, after: { steps: steps.length } });
+    return { steps };
+  });
+}
 
 /**
  * passport.updateEntry: whoever wrote a rank, an examination or a skill changes it (the student's
