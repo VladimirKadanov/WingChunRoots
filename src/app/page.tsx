@@ -114,7 +114,7 @@ export default function HomePage() {
         </div>
         <div className="grid max-w-[46rem] grid-cols-[minmax(0,1fr)] gap-8 lg:max-w-none lg:grid-cols-2 lg:gap-12">
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4">
-            <form action="/schools" method="get" role="search" aria-labelledby="home-school-heading" className="grid min-w-0 gap-3 rounded-sm border border-border-subtle p-4" data-testid="home-find-school">
+            <form action="/schools" method="get" role="search" aria-labelledby="home-school-heading" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 rounded-sm border border-border-subtle p-4" data-testid="home-find-school">
               <h3 id="home-school-heading" className="flex items-center gap-2 font-display text-xl">
                 <PinIcon size={20} className="shrink-0 text-fg-muted" />
                 Find a school

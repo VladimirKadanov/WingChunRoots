@@ -160,7 +160,7 @@ export default async function ExplorePage({ searchParams }: Props) {
           </p>
           {/* Search first (role replay 2026-11-25, P3-6): a plain form, no script, that finds a person
               by any spelling and a lineage by its name through search.query, and opens the explorer there. */}
-          <form action="/explore" method="get" role="search" aria-label="Search the lineages" className="mt-6 grid gap-2" data-testid="explore-search">
+          <form action="/explore" method="get" role="search" aria-label="Search the lineages" className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-2" data-testid="explore-search">
             <label htmlFor="explore-q" className="text-sm font-semibold">
               A person or a lineage
             </label>
