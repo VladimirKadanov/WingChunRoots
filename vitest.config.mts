@@ -38,6 +38,7 @@ export const ISOLATED = [
   'src/server/services/ledger-guard.test.ts',
   'src/server/services/lineage-graph.test.ts',
   'src/server/services/organizations.test.ts',
+  'src/server/services/search-first.test.ts',
 ];
 
 const UNIT = ['src/**/*.test.{ts,tsx}', 'e2e/**/*.test.ts', 'scripts/**/*.test.ts'];
