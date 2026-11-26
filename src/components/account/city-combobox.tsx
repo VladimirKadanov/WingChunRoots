@@ -2,8 +2,8 @@
 
 // The city type-ahead (role replay 2026-11-25, P2-12; docs/adr/0071-cities-of-launch-countries.md):
 // every place of the GeoNames extract by any spelling, through the public places.search procedure
-// (GET /api/v1/places/search), instead of a list of the large cities. The ARIA 1.2 combobox
-// pattern: a text field with a list of options under it; the arrow keys move through the options,
+// on the web's /api/rpc (plan §6.8; /api/v1 is the mobile app's contract), instead of a list of
+// the large cities. The ARIA 1.2 combobox pattern: a text field with a list of options under it; the arrow keys move through the options,
 // Enter or a tap chooses one, Escape closes the list. The chosen place's id goes in a hidden input
 // under the field's name. Rendered only after hydration: without JavaScript each form keeps its
 // select of the large cities (and, on the school and event forms, "Find a city or town").
@@ -71,10 +71,14 @@ export function CityCombobox({
     const timer = window.setTimeout(async () => {
       setStatus('loading');
       try {
-        const search = new URLSearchParams({ q: query, ...(countryCode ? { countryCode } : {}) });
-        const response = await fetch(`/api/v1/places/search?${search}`, { headers: { accept: 'application/json' } });
+        // oRPC's wire format ({ json: input } -> { json: output }), as the search palette.
+        const response = await fetch('/api/rpc/places/search', {
+          method: 'POST',
+          headers: { accept: 'application/json', 'content-type': 'application/json' },
+          body: JSON.stringify({ json: { q: query, ...(countryCode ? { countryCode } : {}) } }),
+        });
         if (!response.ok) throw new Error(String(response.status));
-        const body = (await response.json()) as { places: CityChoice[] };
+        const body = ((await response.json()) as { json: { places: CityChoice[] } }).json;
         if (ticket !== request.current) return;
         setHits(body.places.map(({ id: placeId, name: placeName, countryCode: code, point }) => ({ id: placeId, name: placeName, countryCode: code, ...(point ? { point } : {}) })));
         setActive(-1);
