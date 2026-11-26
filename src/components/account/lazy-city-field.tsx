@@ -9,7 +9,11 @@ import { type ComponentProps, lazy, type ReactNode, Suspense } from 'react';
 
 import { useHydrated } from './fields';
 
-const CityField = lazy(() => import('./city-field').then((m) => ({ default: m.CityField })));
+// Fetched as soon as this module runs in the browser (before the form hydrates), so the swap from
+// the select comes as early as it can.
+const load = () => import('./city-field').then((m) => ({ default: m.CityField }));
+const early = typeof window === 'undefined' ? null : load();
+const CityField = lazy(() => early ?? load());
 
 export function LazyCityField({ fallback, ...props }: ComponentProps<typeof CityField> & { fallback: ReactNode }) {
   const hydrated = useHydrated();
