@@ -112,6 +112,20 @@ cmd_init() {
   log "next: deploy/staging/staging.sh deploy"
 }
 
+# `docker compose up` leaves Caddy alone when only its Caddyfile changed (a bind mount, and git
+# replaces the file, so the container keeps the old one): recreate Caddy when the file differs from
+# the one it last started with.
+reload_caddy_if_changed() {
+  local now before
+  now="$(sha256sum deploy/staging/Caddyfile | cut -d' ' -f1)"
+  before="$(cat .staging/caddyfile.sha256 2>/dev/null || true)"
+  if [ "$now" != "$before" ]; then
+    dc up -d --force-recreate caddy
+    printf '%s\n' "$now" > .staging/caddyfile.sha256
+    log "Caddy restarted with the new Caddyfile"
+  fi
+}
+
 cmd_deploy() {
   need_env
   [ -s .staging/auth.caddy ] || die "no site password yet: run deploy/staging/staging.sh init"
@@ -127,6 +141,7 @@ cmd_deploy() {
   fi
   dc pull -q --ignore-buildable 2>/dev/null || dc pull -q
   dc up -d --remove-orphans
+  reload_caddy_if_changed
   wait_healthy
   log "running https://$(get_env STAGING_HOST)"
 }

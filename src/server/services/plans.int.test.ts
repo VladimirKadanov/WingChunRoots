@@ -135,7 +135,7 @@ describe('plans.catalog and plans.mine', () => {
     // Every price is a proposal; a free plan is "Free", with no proposal label (review round 1, design-10).
     for (const plan of plans) expect(plan.price.label, plan.code).toBe(plan.price.monthlyUsd === 0 ? null : PROPOSED_PRICE_LABEL);
     for (const plan of plans) if (plan.price.monthlyUsd === 0) expect(plan.price.text).toBe('Free');
-    expect(plans.find((p) => p.code === 'federation')!.price.text).toBe('$99 a month or $990 a year');
+    expect(plans.find((p) => p.code === 'federation')!.price.text).toBe('$99 a month or $990 a year (two months free)');
     expect(plans.find((p) => p.code === 'federation')!.availability).toBe('planned');
     const features = result.data.features as { key: string; availability: string }[];
     // M16 (owner decision 2026-11-03, docs/adr/0019-galleries.md): the photo allowance is available now.

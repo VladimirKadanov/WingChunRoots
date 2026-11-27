@@ -20,10 +20,10 @@
 | Код | Ниво (спецификация) | Име | За кого | Наличност | Предложена цена (DEFAULT D09) | Показва се като |
 |---|---|---|---|---|---|---|
 | `free_student` | Tier 1 | Free Student | Student акаунт | `now` | $0 | „Free“ |
-| `premium_student` | Tier 2 | Premium Student | Student акаунт | `now` | $4 на месец | „$4 a month“ |
+| `premium_student` | Tier 2 | Premium Student | Student акаунт | `now` | $4 на месец, $40 годишно | „$4 a month or $40 a year (two months free)“ |
 | `free_sifu` | Tier 1-B | Free Sifu | Sifu акаунт | `now` | $0 | „Free“ |
-| `pro_sifu` | Tier 3 | Professional Sifu | Sifu акаунт | `now` | $19 на месец | „$19 a month“ |
-| `federation` | Tier 4 | Federation | организация | `planned` (Фаза 3, D12) | $99 на месец, $990 годишно | „$99 a month or $990 a year“ |
+| `pro_sifu` | Tier 3 | Professional Sifu | Sifu акаунт | `now` | $19 на месец, $190 годишно | „$19 a month or $190 a year (two months free)“ |
+| `federation` | Tier 4 | Federation | организация | `planned` (Фаза 3, D12) | $99 на месец, $990 годишно | „$99 a month or $990 a year (two months free)“ |
 
 Нивата („Tier 1-B“ и т.н.) са думи на спецификацията и не се показват в приложението. Всяка цена над нула се показва с етикета **„Proposed price (not final)“**; безплатен план е просто „Free“, без етикет (`formatPrice()`). Нищо не се таксува. В пилота нямаше Stripe, таблица за плащания или бутон за плащане. От M22 платените планове със `now` могат да се платят **в тестов режим** („Test mode, no real charge“, [ADR 0025](adr/0025-billing.md)). Цените остават работни предложения (D09), а истинско таксуване няма (§11а).
 
@@ -298,6 +298,7 @@
 | `2026-11-19.3` | Решение на собственика от 18.11.2026 ([ADR 0049](adr/0049-supporter-badge.md)): нов ред `supporter_badge` („Supporter badge“, `now`, `enforced: true`) след `kung_fu_family`: Free Student и Free Sifu „No“ („Not included“), Premium Student и Professional Sifu „Optional badge on your profile“ (изключена, докато членът не я включи; не променя търсенето, линията и прегледите), Federation „Not applicable“ (`neutral`). Ранният достъп от плана не е в матрицата, защото засега няма такава функция. Спецификацията §3.1 (EN и BG) е обновена с бележка |
 | `2026-11-19.4` | Решение на собственика от 18.11.2026 ([ADR 0050](adr/0050-video-embeds.md)): редът `videos` („Videos“) е `now` (без фаза), `enforced: true` и вече не е скрит: Free Student и Free Sifu „No videos“, Premium Student „2 videos“, Professional Sifu „20 videos“, Federation „Unlimited, with limits still to be defined“ (в приложението до 20). Само вградени връзки към YouTube и Vimeo, без качване; плейърът се зарежда едва при **Play**. Подканата го изрежда след снимките. Спецификацията §3.1 (EN и BG) е обновена с бележка |
 | `2026-11-25.1` | Прегледът на всички роли от 25.11.2026 (P1-5, [ADR 0059](adr/0059-plans-copy-without-pilot.md)): редът `advertising` е `hidden: true` и не се показва на `/plans` (сайтът не показва реклами, затова никой план не пише „Ads shown“); бележката му е „WingChunRoots shows no advertising on any plan.“ Редът от спецификацията §3.1 остава. |
+| `2026-11-27.1` | Решение на собственика от 27.11.2026 ([ADR 0090](adr/0090-stripe-schedules-clocks-yearly.md)): годишната цена на всеки платен план е 10 месечни (`YEARLY_MONTHS_CHARGED`, „two months free“): Premium Student $40, Professional Sifu $190, Federation $990. На `/account/plan` има и годишна оферта. |
 
 ## 13. Тестове
 

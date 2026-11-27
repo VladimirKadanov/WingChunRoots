@@ -21,7 +21,7 @@ import type { PlanCode } from '@/server/entitlements/plans';
 import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { CANCEL_CHANGE_FORM, CANCEL_FORM, CHECKOUT_FORM, changePlanFormId, RESUME_FORM } from './form-ids';
+import { CANCEL_CHANGE_FORM, CANCEL_FORM, changePlanFormId, checkoutFormId, RESUME_FORM } from './form-ids';
 
 const ACCOUNT_PAGE = '/account/plan';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -48,7 +48,7 @@ export async function startCheckoutAction(_previous: FormState, form: FormData):
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(signInFor(page));
     const state = formStateFromFailure(error, { planCode });
     // The organization's page has a form per billing period (forms.tsx, CheckoutForm).
-    const formId = organizationId ? `${CHECKOUT_FORM}-${interval === 'year' ? 'year' : 'month'}` : CHECKOUT_FORM;
+    const formId = checkoutFormId(interval, Boolean(organizationId));
     return formResult({ form: formId, page, anchor: outcomeTarget(formId, state, false) }, state);
   }
   // The test checkout page of the app, or the provider's own page (Stripe test mode): only an

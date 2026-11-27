@@ -59,6 +59,10 @@ describe('the plan matrix against specification §3.1 (English)', () => {
     expect(row.slice(1)).toEqual(PLAN_ORDER.map((code) => `$${PLANS[code].price.monthlyUsd}`));
     for (const code of PLAN_ORDER) expect(PLANS[code].price.status).toBe('working proposal');
     expect(PLANS.federation.price.yearlyUsd).toBe(990);
+    // Owner decision 2026-11-27: a year costs 10 monthly prices (two months free).
+    expect(PLANS.pro_sifu.price.yearlyUsd).toBe(190);
+    expect(PLANS.premium_student.price.yearlyUsd).toBe(40);
+    expect(PLANS.free_sifu.price.yearlyUsd).toBeNull();
   });
 
   it('has one feature for every other row, in the same order, with every cell word for word', () => {
@@ -155,9 +159,9 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
   });
 
   it('formats a proposed price: monthly, the yearly proposal where there is one, and "Free" (review round 1, code-5, design-10)', () => {
-    expect(formatPrice(PLANS.pro_sifu.price)).toBe('$19 a month');
-    expect(formatPrice(PLANS.premium_student.price)).toBe('$4 a month');
-    expect(formatPrice(PLANS.federation.price)).toBe('$99 a month or $990 a year');
+    expect(formatPrice(PLANS.pro_sifu.price)).toBe('$19 a month or $190 a year (two months free)');
+    expect(formatPrice(PLANS.premium_student.price)).toBe('$4 a month or $40 a year (two months free)');
+    expect(formatPrice(PLANS.federation.price)).toBe('$99 a month or $990 a year (two months free)');
     expect(formatPrice(PLANS.free_sifu.price)).toBe('Free');
     expect(formatPrice(PLANS.free_student.price)).toBe('Free');
   });
@@ -173,7 +177,7 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
     const digest = createHash('sha256')
       .update(JSON.stringify({ PLANS, FEATURES, GRANTABLE_PLANS, FEDERATION_EXTRAS, DOWNGRADE_RULES }))
       .digest('hex');
-    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-25.1', digest: '6ad68faf5fe14eae77559601fd7842ebba6b86f6e571a81c1c7f2c7eec0d8611' });
+    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-27.1', digest: '590e110429c3a8a3d87d8b830c4dc80515a40721b88ba79e767a5f596e7acef2' });
   });
 });
 

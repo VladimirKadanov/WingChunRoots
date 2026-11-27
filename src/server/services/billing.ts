@@ -58,6 +58,7 @@ import {
   type PlanCode,
   purchasablePlans,
   TEST_MODE_LABEL,
+  YEARLY_SAVING_NOTE,
 } from '../entitlements/plans';
 import type { Transaction } from '../jobs/outbox';
 import { logger } from '../log';
@@ -235,8 +236,6 @@ function changeOptionsOf(sub: SubscriptionRow, now: Date, inTrial: boolean): Cha
       if (code === sub.scheduledPlanCode && interval === sub.scheduledInterval) return [];
       if (!billingPrice(code, interval)) return [];
       const when = changeTiming(sub, { planCode: code, interval }, inTrial);
-      // The Stripe adapter cannot schedule a change for the period end yet (DEFAULT M23, question 2): not offered.
-      if (when === 'period_end' && sub.provider === 'stripe') return [];
       const price = priceText(code, interval);
       const label = code === sub.planCode ? `Switch to ${INTERVAL_NAMES[interval]} billing` : `Switch to ${PLANS[code].name}`;
       const note =
@@ -300,6 +299,14 @@ export interface BillingOffer {
   price: string;
   priceLabel: typeof PROPOSED_PRICE_LABEL;
   summary: string;
+  /** The yearly offer: what it saves (two months free); null for monthly. */
+  saving: string | null;
+}
+
+/** One offer of a paid plan and billing period. */
+function offerOf(code: PlanCode, interval: BillingInterval): BillingOffer[] {
+  if (!billingPrice(code, interval)) return [];
+  return [{ planCode: code, planName: PLANS[code].name, interval, price: priceText(code, interval), priceLabel: PROPOSED_PRICE_LABEL, summary: PLANS[code].summary, saving: interval === 'year' ? YEARLY_SAVING_NOTE : null }];
 }
 
 export interface MyBilling {
@@ -325,13 +332,7 @@ export interface MyBilling {
 export const billingMineInput = z.object({ checkout: z.uuid().optional() }).default({});
 
 function offersFor(accountType: AccountType): BillingOffer[] {
-  return purchasablePlans(accountType).flatMap((code) =>
-    BILLING_INTERVALS.flatMap((interval) => {
-      const price = billingPrice(code, interval);
-      if (!price) return [];
-      return [{ planCode: code, planName: PLANS[code].name, interval, price: priceText(code, interval), priceLabel: PROPOSED_PRICE_LABEL, summary: PLANS[code].summary }];
-    }),
-  );
+  return purchasablePlans(accountType).flatMap((code) => BILLING_INTERVALS.flatMap((interval) => offerOf(code, interval)));
 }
 
 /** The signed-in account's plan, subscription, payment history and offers (GET /api/v1/billing). */
@@ -485,13 +486,7 @@ export async function organizationBilling(principal: Principal | null, raw: unkn
   const offers =
     live || offersNote
       ? []
-      : ORGANIZATION_PURCHASABLE_PLANS.flatMap((code) =>
-          BILLING_INTERVALS.flatMap((interval) =>
-            billingPrice(code, interval)
-              ? [{ planCode: code, planName: PLANS[code].name, interval, price: priceText(code, interval), priceLabel: PROPOSED_PRICE_LABEL, summary: PLANS[code].summary } satisfies BillingOffer]
-              : [],
-          ),
-        );
+      : ORGANIZATION_PURCHASABLE_PLANS.flatMap((code) => BILLING_INTERVALS.flatMap((interval) => offerOf(code, interval)));
   const view = (s: SubscriptionRow, trialPeriod: boolean) => {
     const v = viewOf(s, invoices.get(s.id) ?? [], now, trialPeriod);
     // Another admin reads; only an owner changes (DEFAULT M23, question 1).
@@ -1668,7 +1663,7 @@ export interface AdminSubscriptionDetail {
   subscription: SubscriptionView & { holder: string; providerSubscriptionId: string; providerVersion: number; grantId: string | null; createdAt: string };
   /** Every stored event of the subscription, oldest first: read-only. */
   events: AdminEventRow[];
-  /** The test clock is offered for a live subscription of the test provider, when it is this app's provider. */
+  /** The test clock is offered for a live subscription of this app's provider, when that provider has one (the test provider; Stripe with STRIPE_TEST_CLOCKS). */
   testClock: { available: boolean; steps: { step: 'period_end' | 'grace_end'; label: string }[] };
 }
 
@@ -1693,7 +1688,8 @@ export async function adminBillingGet(principal: Principal | null, raw: unknown,
   const invoices = await invoicesOf(db, [row.sub.id]);
   const events = await db.select().from(billingEvent).where(eq(billingEvent.subscriptionId, row.sub.id)).orderBy(billingEvent.providerCreatedAt, billingEvent.receivedAt, billingEvent.id);
   const live = isLive(row.sub.status);
-  const available = live && row.sub.provider === 'test' && billingProvider().name === 'test';
+  const provider = billingProvider();
+  const available = live && row.sub.provider === provider.name && typeof provider.advanceClock === 'function';
   return {
     subscription: {
       ...viewOf(row.sub, invoices.get(row.sub.id) ?? [], now),
@@ -1715,7 +1711,7 @@ export const testClockInput = z.object({
 
 /**
  * The test clock (POST /api/v1/admin/billing/test-clock; admin with a verified second factor, or the
- * CLI): the test provider moves one live subscription to the end of its period (a renewal, paid or
+ * CLI): the provider (the test provider, or Stripe's test clock with STRIPE_TEST_CLOCKS) moves one live subscription to the end of its period (a renewal, paid or
  * failed, or the end of a cancelled subscription) or to the end of its grace. Its events reach the
  * webhook and the job, as a real provider's would; nothing is applied here directly. Audited.
  */
@@ -1734,8 +1730,8 @@ export async function runTestClock(
   const db = getDb();
   const [sub] = await db.select().from(billingSubscription).where(eq(billingSubscription.id, input.subscriptionId));
   if (!sub) throw new ServiceError('NOT_FOUND', NOT_FOUND);
-  const provider = testProvider();
-  if (!provider || sub.provider !== 'test') throw new ServiceError('CONFLICT', 'The test clock moves only subscriptions of the test provider.');
+  const provider = billingProvider();
+  if (sub.provider !== provider.name || !provider.advanceClock) throw new ServiceError('CONFLICT', 'The test clock moves only subscriptions of a payment provider with a test clock: the test provider, or Stripe with STRIPE_TEST_CLOCKS.');
   if (!isLive(sub.status)) throw new ServiceError('CONFLICT', 'This subscription has ended; the test clock has nothing to move.');
   if (input.step === 'grace_end' && sub.status !== 'past_due') throw new ServiceError('CONFLICT', 'Only a subscription whose renewal failed has a grace period to end.');
   try {

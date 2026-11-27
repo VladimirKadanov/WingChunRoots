@@ -162,6 +162,12 @@ export interface BillingProvider {
   changePlan(subscriptionId: string, change: PlanChange): Promise<SubscriptionSnapshot>;
   /** M23: takes back a change scheduled for the period end. The new state. */
   cancelScheduledChange(subscriptionId: string): Promise<SubscriptionSnapshot>;
+  /**
+   * The admin test clock, when this provider has one for its subscriptions (the test provider
+   * always; Stripe with STRIPE_TEST_CLOCKS): moves one subscription to the end of its period or of
+   * its grace period, as if the time had passed. Its events follow through the webhook.
+   */
+  advanceClock?(subscriptionId: string, step: 'period_end' | 'grace_end', now?: Date): Promise<SubscriptionSnapshot>;
   /** Verifies the signature of a webhook request body and reads the event. Throws WebhookSignatureError. */
   verifyWebhook(body: string, headers: Headers, now?: Date): VerifiedEvent;
 }

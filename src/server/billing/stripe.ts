@@ -6,6 +6,12 @@
 // whose `livemode` is not false. It is never called in CI: its unit tests use recorded, fictional
 // payloads (src/server/billing/fixtures/) and a fake fetch.
 //
+// M23 follow-up (2026-11-27): a change at the period end (Federation yearly → monthly) is a Stripe
+// subscription schedule of two phases, the current price until the period end and the new one from
+// then; the subscription's metadata says what is scheduled (scheduled_plan_code, scheduled_interval;
+// `none` for nothing), so its webhook events carry it. With STRIPE_TEST_CLOCKS, each new customer is
+// put on its own Stripe test clock, which the admin test clock moves (advanceClock).
+//
 // Requests carry ids, the plan's name and its proposed price only (DEFAULT D09): never a name or an
 // e-mail address of the account (Stripe Checkout asks the payer itself). Errors carry no request
 // or response body.
@@ -14,7 +20,7 @@ import * as z from 'zod';
 
 import type { PLAN_CODES } from '../db/schema/common';
 
-import { stripeSecretKey, stripeWebhookSecret } from './config';
+import { stripeSecretKey, stripeTestClocks, stripeWebhookSecret } from './config';
 import { redactEvent } from './redact';
 import { verifySignature } from './signature';
 import {
@@ -58,6 +64,21 @@ export function formEncode(value: Record<string, unknown>): string {
 const seconds = z.number().int().nonnegative();
 const idOf = (v: unknown): string | null => (typeof v === 'string' ? v : v && typeof v === 'object' && typeof (v as { id?: unknown }).id === 'string' ? (v as { id: string }).id : null);
 const at = (s: number) => new Date(s * 1000);
+const unix = (d: Date) => Math.floor(d.getTime() / 1000);
+/** `none`: the metadata value of "nothing scheduled" (an empty value would remove the key). */
+const NOTHING = 'none';
+
+/** A calendar month (the last day of a shorter month) or a year later, in UTC (as test-provider.ts). */
+export function addStripeInterval(date: Date, interval: BillingInterval): Date {
+  const d = new Date(date.getTime());
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  if (interval === 'year') d.setUTCFullYear(d.getUTCFullYear() + 1);
+  else d.setUTCMonth(d.getUTCMonth() + 1);
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, last));
+  return d;
+}
 
 /** Stripe's subscription status as the app's. */
 export function stripeStatus(status: string): SubscriptionStatus {
@@ -117,6 +138,16 @@ export function subscriptionFromStripe(raw: unknown, version: number, eventAt: D
   // M23: the plan the app wrote in the subscription's metadata at checkout and at a change of plan.
   const plan = s.metadata?.plan_code ?? null;
   const status = stripeStatus(s.status);
+  // The change scheduled for the period end, as changePlan wrote it in the metadata: undefined when
+  // the metadata does not say (the app keeps what it holds), null for none or for what runs already.
+  const scheduledPlan = s.metadata?.scheduled_plan_code;
+  const scheduledInterval = s.metadata?.scheduled_interval;
+  let scheduledChange: SubscriptionSnapshot['scheduledChange'];
+  if (scheduledPlan !== undefined) {
+    const valid = STRIPE_PLAN_CODES.has(scheduledPlan) && (scheduledInterval === 'month' || scheduledInterval === 'year');
+    const running = scheduledPlan === (plan ?? scheduledPlan) && scheduledInterval === interval;
+    scheduledChange = valid && !running ? { planCode: scheduledPlan as PlanCode, interval: scheduledInterval } : null;
+  }
   const endedSeconds = s.ended_at ?? (status === 'canceled' ? (s.canceled_at ?? null) : null);
   return {
     id: s.id,
@@ -128,9 +159,9 @@ export function subscriptionFromStripe(raw: unknown, version: number, eventAt: D
     currentPeriodStart: at(start),
     currentPeriodEnd: at(end),
     endedAt: status === 'canceled' ? (endedSeconds !== null ? at(endedSeconds) : eventAt) : null,
-    // Only when the metadata names it; a change at the period end is never scheduled at Stripe by
-    // this adapter (changePlan below), so the snapshot leaves scheduledChange out.
+    // Only when the metadata names it.
     ...(plan && STRIPE_PLAN_CODES.has(plan) ? { planCode: plan as PlanCode } : {}),
+    ...(scheduledChange !== undefined ? { scheduledChange } : {}),
     version,
   };
 }
@@ -234,6 +265,7 @@ export function createStripeProvider(options: StripeOptions = {}): BillingProvid
   const key = stripeSecretKey(env);
   const send: Fetch = options.fetch ?? ((input, init) => fetch(input, init));
   const now = options.now ?? (() => new Date());
+  const clocks = stripeTestClocks(env);
 
   async function call(method: 'GET' | 'POST' | 'DELETE', path: string, body?: Record<string, unknown>, idempotencyKey?: string): Promise<Record<string, unknown>> {
     let response: Response;
@@ -266,6 +298,27 @@ export function createStripeProvider(options: StripeOptions = {}): BillingProvid
   // events. The webhook event of the same change follows with its own time.
   const snapshot = (json: Record<string, unknown>) => subscriptionFromStripe(json, 0, now());
 
+  const subPath = (subscriptionId: string) => `/subscriptions/${encodeURIComponent(subscriptionId)}`;
+  const NO_SCHEDULE = { scheduled_plan_code: NOTHING, scheduled_interval: NOTHING };
+
+  /** Lets go of the subscription's schedule, when it has one: the subscription keeps its current price. */
+  async function releaseSchedule(current: Record<string, unknown>): Promise<boolean> {
+    const schedule = idOf(current.schedule);
+    if (!schedule) return false;
+    await call('POST', `/subscription_schedules/${encodeURIComponent(schedule)}/release`, {});
+    return true;
+  }
+
+  /** The subscription without a schedule; its metadata says nothing is scheduled. */
+  async function unscheduled(subscriptionId: string, extra: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    const current = await call('GET', subPath(subscriptionId));
+    await releaseSchedule(current);
+    const metadata = (current.metadata as Record<string, string> | undefined) ?? {};
+    const scheduled = metadata.scheduled_plan_code !== undefined && metadata.scheduled_plan_code !== NOTHING;
+    if (!scheduled && Object.keys(extra).length === 0) return current;
+    return call('POST', subPath(subscriptionId), { ...extra, ...(scheduled ? { metadata: NO_SCHEDULE } : {}) });
+  }
+
   const priceData = (planName: string, interval: BillingInterval, amountCents: number, currency: string) => ({
     currency,
     unit_amount: amountCents,
@@ -276,6 +329,16 @@ export function createStripeProvider(options: StripeOptions = {}): BillingProvid
   return {
     name: 'stripe',
     async createCheckout(request: CheckoutRequest): Promise<CheckoutSession> {
+      let customer = request.customerId;
+      if (!customer && clocks) {
+        // STRIPE_TEST_CLOCKS: a customer of its own on a test clock of its own, so the admin test clock
+        // can move this subscription. No name or e-mail address: Stripe Checkout asks the payer.
+        const clock = await call('POST', '/test_helpers/test_clocks', { frozen_time: unix(now()), name: `WingChunRoots ${request.checkoutId.slice(0, 8)}` }, `wcr-clock-${request.checkoutId}`);
+        const clockId = idOf(clock);
+        if (!clockId) throw new BillingProviderError('unavailable', 'Stripe answered without a test clock.');
+        customer = idOf(await call('POST', '/customers', { test_clock: clockId, metadata: { checkout_ref: request.checkoutId } }, `wcr-customer-${request.checkoutId}`));
+        if (!customer) throw new BillingProviderError('unavailable', 'Stripe answered without a customer.');
+      }
       const json = await call(
         'POST',
         '/checkout/sessions',
@@ -284,7 +347,7 @@ export function createStripeProvider(options: StripeOptions = {}): BillingProvid
           client_reference_id: request.checkoutId,
           success_url: request.successUrl,
           cancel_url: request.cancelUrl,
-          customer: request.customerId ?? undefined,
+          customer: customer ?? undefined,
           line_items: [{ quantity: 1, price_data: priceData(request.planName, request.interval, request.amountCents, request.currency) }],
           metadata: { checkout_ref: request.checkoutId },
           // The session cannot be paid after the app's checkout expired (DEFAULT M22, question 7).
@@ -304,38 +367,110 @@ export function createStripeProvider(options: StripeOptions = {}): BillingProvid
       return { url, sessionId: id };
     },
     async cancelAtPeriodEnd(subscriptionId) {
-      return snapshot(await call('POST', `/subscriptions/${encodeURIComponent(subscriptionId)}`, { cancel_at_period_end: true }));
+      // A change scheduled for the period end is dropped: nothing renews (as the test provider does).
+      // Stripe refuses a cancellation of a subscription its schedule manages, so the schedule goes first.
+      return snapshot(await unscheduled(subscriptionId, { cancel_at_period_end: true }));
     },
     async resume(subscriptionId) {
-      return snapshot(await call('POST', `/subscriptions/${encodeURIComponent(subscriptionId)}`, { cancel_at_period_end: false }));
+      return snapshot(await call('POST', subPath(subscriptionId), { cancel_at_period_end: false }));
     },
     async cancelNow(subscriptionId) {
-      return snapshot(await call('DELETE', `/subscriptions/${encodeURIComponent(subscriptionId)}`));
+      const current = await call('GET', subPath(subscriptionId));
+      await releaseSchedule(current);
+      return snapshot(await call('DELETE', subPath(subscriptionId)));
     },
     async changePlan(subscriptionId, change) {
-      const current = await call('GET', `/subscriptions/${encodeURIComponent(subscriptionId)}`);
-      const items = (current.items as { data?: { id?: string; price?: { product?: unknown } }[] } | undefined)?.data ?? [];
+      const current = await call('GET', subPath(subscriptionId));
+      const items = (current.items as { data?: { id?: string; quantity?: number; price?: { id?: string; product?: unknown } }[] } | undefined)?.data ?? [];
       const item = items[0];
       const product = idOf(item?.price?.product);
       if (!item?.id || !product) throw new BillingProviderError('unsupported', 'The Stripe subscription has no item to change.');
-      // DEFAULT M23 (question 2): a change at the period end would need a Stripe subscription
-      // schedule, which this adapter does not create; the test provider schedules it.
-      if (change.when !== 'now') throw new BillingProviderError('unsupported', 'A change at the period end is not available with Stripe test mode yet.');
       const metadata = (current.metadata as Record<string, string> | undefined) ?? {};
-      return snapshot(
-        await call('POST', `/subscriptions/${encodeURIComponent(subscriptionId)}`, {
-          items: [{ id: item.id, price_data: { currency: change.currency, unit_amount: change.amountCents, recurring: { interval: change.interval }, product } }],
-          // An upgrade now: a new period from now, the unused part of the old one credited and invoiced at once.
-          proration_behavior: 'always_invoice',
-          billing_cycle_anchor: 'now',
-          metadata: { ...metadata, plan_code: change.planCode },
-        }),
-      );
+      const newPrice = { currency: change.currency, unit_amount: change.amountCents, recurring: { interval: change.interval }, product };
+
+      if (change.when === 'now') {
+        // A change now replaces any change scheduled for the period end.
+        const released = await releaseSchedule(current);
+        return snapshot(
+          await call('POST', subPath(subscriptionId), {
+            items: [{ id: item.id, price_data: newPrice }],
+            // An upgrade now: a new period from now, the unused part of the old one credited and invoiced at once.
+            proration_behavior: 'always_invoice',
+            billing_cycle_anchor: 'now',
+            metadata: { ...metadata, plan_code: change.planCode, ...(released || metadata.scheduled_plan_code !== undefined ? NO_SCHEDULE : {}) },
+          }),
+        );
+      }
+
+      // DEFAULT M23 (question 2): a downgrade at the period end. A subscription schedule of two phases:
+      // the current price until the period ends, then the new price from a new period (charged then,
+      // nothing prorated); the schedule lets go of the subscription after that phase.
+      const scheduleId = idOf(current.schedule);
+      const schedule = scheduleId
+        ? await call('GET', `/subscription_schedules/${encodeURIComponent(scheduleId)}`)
+        : await call('POST', '/subscription_schedules', { from_subscription: subscriptionId }, `wcr-schedule-${subscriptionId}-${unix(now())}`);
+      const id = idOf(schedule);
+      type Phase = { start_date?: number; end_date?: number; trial_end?: number | null; items?: { price?: unknown; quantity?: number }[] };
+      const phases = (schedule.phases as Phase[] | undefined) ?? [];
+      const moment = unix(now());
+      // The phase that runs now (a schedule made from the subscription has only that one).
+      const phase = phases.find((ph) => typeof ph.start_date === 'number' && typeof ph.end_date === 'number' && ph.start_date <= moment && moment < ph.end_date) ?? phases[0];
+      if (!id || typeof phase?.start_date !== 'number' || typeof phase.end_date !== 'number') throw new BillingProviderError('unavailable', 'Stripe answered without the current phase of the subscription.');
+      const scheduled = { scheduled_plan_code: change.planCode, scheduled_interval: change.interval };
+      await call('POST', `/subscription_schedules/${encodeURIComponent(id)}`, {
+        end_behavior: 'release',
+        proration_behavior: 'none',
+        phases: [
+          {
+            start_date: phase.start_date,
+            end_date: phase.end_date,
+            ...(typeof phase.trial_end === 'number' ? { trial_end: phase.trial_end } : {}),
+            items: (phase.items ?? [{ price: item.price?.id, quantity: item.quantity ?? 1 }]).map((i) => ({ price: idOf(i.price), quantity: i.quantity ?? 1 })),
+            metadata: { ...metadata, ...scheduled },
+          },
+          {
+            items: [{ price_data: newPrice, quantity: 1 }],
+            billing_cycle_anchor: 'phase_start',
+            end_date: unix(addStripeInterval(at(phase.end_date), change.interval)),
+            // Set on the subscription when this phase starts: the new plan runs, nothing is scheduled.
+            metadata: { ...metadata, plan_code: change.planCode, ...NO_SCHEDULE },
+          },
+        ],
+      });
+      // The subscription's own metadata says it at once too (its webhook events carry it).
+      let fresh: Record<string, unknown>;
+      try {
+        fresh = await call('POST', subPath(subscriptionId), { metadata: scheduled });
+      } catch {
+        fresh = await call('GET', subPath(subscriptionId));
+      }
+      return { ...snapshot(fresh), scheduledChange: { planCode: change.planCode, interval: change.interval } };
     },
     async cancelScheduledChange(subscriptionId) {
-      // Nothing is ever scheduled at Stripe by this adapter: the current state.
-      return snapshot(await call('GET', `/subscriptions/${encodeURIComponent(subscriptionId)}`));
+      return { ...snapshot(await unscheduled(subscriptionId)), scheduledChange: null };
     },
+    ...(clocks
+      ? {
+          async advanceClock(subscriptionId: string, step: 'period_end' | 'grace_end') {
+            const current = await call('GET', `${subPath(subscriptionId)}?expand[]=customer`);
+            const state = snapshot(current);
+            if (step === 'grace_end') {
+              // The last retry of the unpaid renewal fails: the subscription ends now.
+              await releaseSchedule(current);
+              return snapshot(await call('DELETE', subPath(subscriptionId)));
+            }
+            const clockId = idOf((current.customer as { test_clock?: unknown } | null)?.test_clock);
+            if (!clockId) throw new BillingProviderError('unsupported', 'This Stripe customer has no test clock: it was created before STRIPE_TEST_CLOCKS was on.');
+            const clock = await call('GET', `/test_helpers/test_clocks/${encodeURIComponent(clockId)}`);
+            if (clock.status !== 'ready') throw new BillingProviderError('refused', 'The Stripe test clock is still moving. Try again in a minute.');
+            const frozen = typeof clock.frozen_time === 'number' ? clock.frozen_time : 0;
+            // Two hours past the period end: Stripe finalizes and charges a renewal invoice about an hour after it is made.
+            const target = Math.max(unix(state.currentPeriodEnd) + 2 * 3600, frozen + 60);
+            await call('POST', `/test_helpers/test_clocks/${encodeURIComponent(clockId)}/advance`, { frozen_time: target });
+            return state;
+          },
+        }
+      : {}),
     verifyWebhook(body: string, headers: Headers, at = new Date()): VerifiedEvent {
       verifySignature(body, headers.get('stripe-signature'), stripeWebhookSecret(env), at);
       let raw: unknown;

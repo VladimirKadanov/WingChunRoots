@@ -29,7 +29,7 @@
 - Само жив, подновяващ се абонамент (не отказан, не `past_due`) се сменя. Смяна към план на друга аудитория е 400.
 - Планираната смяна се пази в `billing_subscription.scheduled_plan_code` / `scheduled_interval` (и на страната на тестовия доставчик). Отказ в края на периода я изчиства.
 - Смяна на плана (нов `plan_code` в снимката) приключва старото право веднага и създава ново със същия период. Смяна само на периода удължава същото право.
-- Адаптерът за Stripe прави само промени веднага (`plan_code` е в `metadata`). Промяна в края на периода иска subscription schedule, който адаптерът още не създава, затова отговаря `unsupported` и нищо не се променя.
+- Адаптерът за Stripe прави промени веднага (`plan_code` е в `metadata`), а от 27.11.2026 и в края на периода чрез subscription schedule ([ADR 0090](0090-stripe-schedules-clocks-yearly.md) §2). Дотогава отговаряше `unsupported`.
 - Одит: `billing.change_plan`, `billing.cancel_change`. Известия: `billing.plan-changed`, `billing.change-scheduled` (категория `billing`).
 
 ### 3. Пробен период на федерация (DEFAULT M23, въпроси 3–5)

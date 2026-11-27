@@ -84,7 +84,7 @@ export const BG_BILLING: AdminDict = {
   'Current period': 'Текущ период',
   '{from} to {to}': 'от {from} до {to}',
   'Test clock': 'Тестов часовник',
-  'Moves this subscription on the test provider as if time had passed: a renewal (paid, or failed with the card that fails at renewal), the end of a cancelled subscription, or the end of the grace period. Audited.': 'Премества този абонамент при тестовия доставчик, все едно е минало време: подновяване (платено или неуспешно с картата, която отказва при подновяване), края на отказан абонамент или края на гратисния период. Записва се в одитния журнал.',
+  'Moves this subscription at the payment provider as if time had passed (with Stripe, its test clock): a renewal (paid, or failed with a card that fails at renewal), the end of a cancelled subscription, or the end of the grace period. Audited.': 'Премества този абонамент при платежния доставчик, все едно е минало време (при Stripe с неговия тестов часовник): подновяване (платено или неуспешно с карта, която отказва при подновяване), края на отказан абонамент или края на гратисния период. Записва се в одитния журнал.',
   'Provider events': 'Събития от доставчика',
   'No events yet.': 'Още няма събития.',
   'Invoices': 'Фактури',
@@ -97,7 +97,7 @@ export const BG_BILLING: AdminDict = {
   'Sign in to continue.': 'Влезте, за да продължите.',
   'Choose what the test clock moves to.': 'Изберете докъде да се премести тестовият часовник.',
   'No such subscription.': 'Няма такъв абонамент.',
-  'The test clock moves only subscriptions of the test provider.': 'Тестовият часовник премества само абонаменти на тестовия доставчик.',
+  'The test clock moves only subscriptions of a payment provider with a test clock: the test provider, or Stripe with STRIPE_TEST_CLOCKS.': 'Тестовият часовник премества само абонаменти на доставчик с тестов часовник: тестовия доставчик или Stripe със STRIPE_TEST_CLOCKS.',
   'This subscription has ended; the test clock has nothing to move.': 'Този абонамент е приключил; тестовият часовник няма какво да премести.',
   'Only a subscription whose renewal failed has a grace period to end.': 'Само абонамент с неуспешно подновяване има гратисен период, който да приключи.',
 };

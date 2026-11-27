@@ -111,7 +111,7 @@ check "the test checkout goes back to the subject's billing page" bash -c "grep 
 # 5. Plan changes (DEFAULT M23, question 2) ---------------------------------------------------------
 check "an upgrade is now with proration, a downgrade at the period end" bash -c "
   grep -q 'export function changeTiming' $SERVICE && grep -q 'export function prorate' $TEST_PROVIDER && grep -q \"proration_behavior: 'always_invoice'\" $STRIPE"
-check "the Stripe adapter refuses a change at the period end instead of guessing" grep -q "change.when !== 'now'" "$STRIPE"
+check "the Stripe adapter schedules a change at the period end (a subscription schedule that lets go after it; ADR 0090)" bash -c "grep -q \"'/subscription_schedules'\" $STRIPE && grep -q \"end_behavior: 'release'\" $STRIPE && grep -q 'scheduled_plan_code' $STRIPE"
 check "both providers take back a scheduled change" bash -c "grep -q 'cancelScheduledChange' $TEST_PROVIDER && grep -q 'cancelScheduledChange' $STRIPE"
 
 # 6. The trial and its daily run (DEFAULT M23, questions 3-5) ---------------------------------------
