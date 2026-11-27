@@ -312,6 +312,31 @@ const placeMissing: NotificationTemplate<{ name: string; countryCode: string }> 
   sample: { name: 'Demo Town', countryCode: 'FR' },
 };
 
+/**
+ * "lineage.missing": to every archivist and admin, when a member says their lineage is not in the
+ * list of the teacher form (journey review 2026-11-26, P2-2; docs/adr/0080-add-a-teacher.md). The
+ * payload holds the lineage's name as typed; nothing about who asked.
+ */
+const lineageMissing: NotificationTemplate<{ name: string }> = {
+  name: 'lineage.missing',
+  parse(payload) {
+    const data = payloadObject('lineage.missing', payload);
+    if (typeof data.name !== 'string' || data.name.length === 0 || data.name.length > 120) {
+      throw new NotificationDataError('lineage.missing', 'name must be a string of 1 to 120 characters');
+    }
+    return { name: data.name };
+  },
+  render: ({ name }) => ({
+    title: 'A lineage is missing',
+    body: [
+      {
+        text: `A member naming their teacher could not find the lineage “${name}” in the list. If the record holds it, add it in the archive editor (Lineages, Create a lineage); the member can then choose it.`,
+      },
+    ],
+  }),
+  sample: { name: 'Demo Lineage of the North' },
+};
+
 // --- Teacher requests (M09) ---------------------------------------------------------------------
 
 /**
@@ -2131,6 +2156,7 @@ export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
   'account.deletion-requested': accountDeletionRequested,
   'place.missing': placeMissing,
+  'lineage.missing': lineageMissing,
   'pilot-access.requested': pilotAccessRequested,
   'pilot-access.closed': pilotAccessClosed,
   'plan.granted': planGranted,

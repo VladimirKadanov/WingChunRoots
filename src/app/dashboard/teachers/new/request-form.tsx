@@ -27,6 +27,7 @@
 import { lazy, Suspense, useActionState, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 
+import Link from 'next/link';
 import { CheckboxField, FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { NameText } from '@/components/account/person-names';
 import { TextAreaField } from '@/components/account/textarea-field';
@@ -248,6 +249,14 @@ export function RequestForm({
               <SearchIcon />
               {teacher ? 'Choose another teacher' : 'Find your teacher'}
             </button>
+            {teacher ? null : (
+              // Journey review 2026-11-26 (P2-2, ADR 0080): not on the site at all.
+              <p className="text-sm">
+                <Link href="/dashboard/teachers/invite?from=search" className="link inline-flex min-h-11 items-center" data-testid="teacher-not-found">
+                  Not found? Add them
+                </Link>
+              </p>
+            )}
             <p role="status" className="sr-only">
               {announce}
             </p>
@@ -299,7 +308,7 @@ export function RequestForm({
           hint={
             lineageNeeded
               ? 'This teacher has no confirmed teachers or students on WingChunRoots yet, so choose the lineage you trained in.'
-              : 'Leave it as the teacher’s own lineage unless you trained with them in another one.'
+              : 'Choose “Not sure” unless you know you trained with them in another lineage.'
           }
           state={state}
           className="max-w-[34rem]"
@@ -310,7 +319,8 @@ export function RequestForm({
               Choose a lineage
             </option>
           ) : (
-            <option value="">The teacher’s own lineage</option>
+            // Journey review 2026-11-26 (P2-2): a student often does not know the lineage's name.
+            <option value="">Not sure: the teacher’s own lineage</option>
           )}
           {options.lineages.map((lineage) => (
             <option key={lineage.id} value={lineage.id}>
@@ -318,6 +328,12 @@ export function RequestForm({
             </option>
           ))}
         </SelectField>
+        {/* P2-2 (ADR 0080): the archivists are told, as "My city is missing" tells the admins. */}
+        <p className="text-sm">
+          <Link href="/dashboard/lineages/missing?next=%2Fdashboard%2Fteachers%2Fnew" className="link inline-flex min-h-11 items-center" data-testid="lineage-missing-link">
+            My lineage is not listed
+          </Link>
+        </p>
       </section>
 
       {/* The periods. */}

@@ -202,7 +202,10 @@ export type AuditAction =
   | 'relationship.edit'
   // Role replay 2026-11-25, P2-12: "My city is missing". The place's name and country, the
   // reporting account as the actor; at most five a day per account (services/places.ts).
-  | 'place.missing_report';
+  | 'place.missing_report'
+  // Journey review 2026-11-26, P2-2: "My lineage is not listed". The lineage's name as typed, the
+  // reporting account as the actor; at most five a day per account (services/lineage-missing.ts).
+  | 'lineage.missing_report';
 
 export interface AuditEntry {
   action: AuditAction;

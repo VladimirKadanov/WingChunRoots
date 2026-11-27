@@ -745,7 +745,7 @@ test("@M09 the lineage field is asked for when the teacher has no lineage, and t
   const countryName = new Intl.DisplayNames(['en'], { type: 'region' }).of(country)!;
   expect(countryName).not.toBe(country);
   const OPTIONAL = 'Lineage of this training (optional)';
-  const OWN_HINT = 'Leave it as the teacher’s own lineage unless you trained with them in another one.';
+  const OWN_HINT = 'Choose “Not sure” unless you know you trained with them in another lineage.';
   const REQUIRED = 'Lineage of this training';
   const NONE_HINT = 'This teacher has no confirmed teachers or students on WingChunRoots yet, so choose the lineage you trained in.';
   const lineageOf = (page: Page) => field(page, /^Lineage of this training/);
@@ -762,7 +762,7 @@ test("@M09 the lineage field is asked for when the teacher has no lineage, and t
   await chooseTeacher(page, { name: knownName, find: knownName });
   await expect(lineageOf(page)).toHaveAccessibleName(OPTIONAL);
   await expect(lineageOf(page)).toHaveAccessibleDescription(OWN_HINT);
-  await expect(lineageOf(page).locator('option').first()).toHaveText('The teacher’s own lineage');
+  await expect(lineageOf(page).locator('option').first()).toHaveText('Not sure: the teacher’s own lineage');
   await expect(visible(page.getByTestId('chosen-teacher'))).toContainText(countryName);
 
   // The ?teacher= start (a profile's link) names the country the same way.

@@ -204,16 +204,8 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
     <Shell
       lead={
         <>
-          Ask a teacher to confirm that they taught you. Each teacher answers their own request; one teacher&apos;s answer never confirms another. For a
-          teacher who has died, reviewers confirm the training from your evidence:{' '}
-          <Link href="/dashboard/teachers/historical" className="link">
-            name a historical teacher
-          </Link>
-          . A teacher who has no profile here at all:{' '}
-          <Link href="/dashboard/teachers/invite" className="link">
-            add and invite your teacher
-          </Link>
-          .
+          Find your teacher by name, then ask them to confirm that they taught you. Each teacher answers their own request; one teacher&apos;s
+          answer never confirms another. Not on WingChunRoots, or no longer alive? Choose “Not found? Add them”.
         </>
       }
     >

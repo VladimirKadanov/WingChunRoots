@@ -142,6 +142,29 @@ export default async function InviteTeacherPage({ searchParams }: { searchParams
     );
   }
   const initial = await readFormResult(INVITE_FORM, query.outcome);
+  // Journey review 2026-11-26 (P2-2, ADR 0080): "Not found: add them" from the search asks first
+  // whether the teacher has died, since reviewers confirm that training from evidence instead.
+  if (one(query.from) === 'search' && !initial) {
+    return (
+      <Shell>
+        <section aria-labelledby="teacher-died-heading" className="grid gap-4" data-testid="teacher-died-question">
+          <h2 id="teacher-died-heading" className="font-display text-2xl">
+            Has this teacher died?
+          </h2>
+          <div className="flex flex-wrap gap-3">
+            <Link href={PAGE} className={buttonVariants({ variant: 'primary', size: 'lg' })}>
+              No, add and invite them
+              <ArrowRightIcon />
+            </Link>
+            <Link href="/dashboard/teachers/historical" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
+              Yes, name a historical teacher
+            </Link>
+          </div>
+          <p className="max-w-[60ch] text-sm text-fg-muted">For a teacher who has died, reviewers confirm the training from the evidence you send.</p>
+        </section>
+      </Shell>
+    );
+  }
   return (
     <Shell>
       <InviteForm

@@ -359,6 +359,7 @@ import {
 import { exploreStartSchema } from '../dto/explore';
 import { exploreStart } from '../services/explore-start';
 import { homeLine } from '../services/home-line';
+import { reportMissingLineage, reportMissingLineageInput } from '../services/lineage-missing';
 import { homeLineSchema } from '../dto/home';
 import {
   ancestorsInput,
@@ -628,6 +629,11 @@ export const router = {
       .route({ method: 'GET', path: '/lineage/home', summary: "The home page's line: the chosen public lineage, or today's in the rotation, from its root down" })
       .output(homeLineSchema)
       .handler(() => homeLine()),
+    // Journey review 2026-11-26 (P2-2): "My lineage is not listed" tells the archivists.
+    reportMissing: signedIn
+      .route({ method: 'POST', path: '/lineage/report-missing', summary: 'Tell the archivists a lineage is missing from the list (its name; at most five a day); audited' })
+      .input(reportMissingLineageInput)
+      .handler(({ context, input }) => reportMissingLineage(context.principal, input, context.meta)),
   },
   people: {
     get: base

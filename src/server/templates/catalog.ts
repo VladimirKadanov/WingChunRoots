@@ -121,6 +121,8 @@ export const NOTIFICATION_CATALOG = {
   'account.deletion-requested': dashboardOnly('account'),
   // Role replay 2026-11-25, P2-12: "My city is missing", to every admin.
   'place.missing': dashboardOnly('account'),
+  // Journey review 2026-11-26, P2-2: "My lineage is not listed", to every archivist and admin.
+  'lineage.missing': dashboardOnly('account'),
   'pilot-access.requested': dashboardOnly('plan'),
   'pilot-access.closed': dashboardOnly('plan'),
   'plan.granted': dashboardOnly('plan'),

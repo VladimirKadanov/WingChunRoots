@@ -1812,6 +1812,7 @@ const ROWS: Row[] = [
   { path: 'places.search', make: () => ({ input: { q: 'Sofia' } }), expect: everyone },
   // Role replay 2026-11-25, P2-12: any signed-in account may tell the admins (five a day).
   { path: 'places.reportMissing', make: () => ({ input: { name: 'Demo Missing Town', countryCode: 'FR' } }), expect: own() },
+  { path: 'lineage.reportMissing', make: () => ({ input: { name: 'Demo Missing Lineage' } }), expect: own() },
   { path: 'dashboard.overview', make: noInput, expect: own() },
   { path: 'dashboard.nav', make: noInput, expect: own() },
   // M15: organizations. `party` is the owner of another organization: it reaches only its own
@@ -2785,6 +2786,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/unsubscribe/actions.ts#unsubscribeAction', row: 'notifications.unsubscribe', form: same, roles: ['anonymous', 'member'], call: (fn, form) => fn(form) },
   { action: 'src/app/dashboard/actions.ts#requestPilotAccessAction', row: 'plans.requestPilotAccess', form: same, roles: ['anonymous', 'owner'] },
   { action: 'src/app/dashboard/places/missing/actions.ts#reportMissingPlaceAction', row: 'places.reportMissing', form: same, roles: ['anonymous', 'member'] },
+  { action: 'src/app/dashboard/lineages/missing/actions.ts#reportMissingLineageAction', row: 'lineage.reportMissing', form: same, roles: ['anonymous', 'member'] },
   { action: 'src/app/account/plan/actions.ts#setAccountTypeAction', row: 'account.setType', form: same, roles: ['anonymous', 'owner'] },
   { action: 'src/app/admin/grants/actions.ts#createGrantAction', row: 'grants.create', form: same, roles: ['anonymous', 'member', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/grants/actions.ts#revokeGrantAction', row: 'grants.revoke', form: same, roles: ['anonymous', 'member', 'party', 'adminNo2fa', 'admin'] },
@@ -2797,6 +2799,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/teachers/actions.ts#remindTeacherAction', row: 'relationships.remind', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/teachers/actions.ts#showProfilePubliclyAction', row: 'profile.publish', form: () => ({ page: 'teachers' }), roles: ['anonymous', 'owner'] },
   { action: 'src/app/dashboard/teachers/actions.ts#endTrainingAction', row: 'relationships.end', form: (i) => ({ ...same(i), endYear: '2024' }), roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/students/requests/actions.ts#startAnsweringAsSifuAction', row: 'account.setType', form: same, roles: ['anonymous', 'owner'] },
   { action: 'src/app/dashboard/students/requests/actions.ts#approveRequestAction', row: 'relationships.approve', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/students/requests/actions.ts#rejectRequestAction', row: 'relationships.reject', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/teachers/invite/actions.ts#sendInvitationAction', row: 'invitations.send', form: same, roles: ['anonymous', 'member', 'owner'] },
