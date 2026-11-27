@@ -90,7 +90,7 @@ test('@identity a member reports a profile pretending to be them: the moderator 
   // A route is required; then the report opens a case and the reporter lands on it.
   await visible(page.getByLabel('Why this profile is yours')).fill('Fictional: this is my profile; the account that holds it is not mine.');
   await visible(page.getByRole('button', { name: 'Send the report' })).click();
-  await page.waitForURL((u) => u.pathname === reportPath && u.searchParams.has('outcome'));
+  // A hydrated form shows the answer in place; before hydration the page comes back with ?outcome.
   await expect(visible(page.getByText('Choose how you will show that you are this person.')).first()).toBeVisible();
   await visible(page.getByTestId('identity-route-vouching')).check();
   await visible(page.getByLabel('Why this profile is yours')).fill('Fictional: this is my profile; the account that holds it is not mine.');
