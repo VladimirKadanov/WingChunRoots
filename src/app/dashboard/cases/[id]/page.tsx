@@ -26,8 +26,9 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { APPEAL_FORM, REPLY_FORM } from './form-ids';
+import { APPEAL_FORM, CODE_ADD_FORM, CODE_CONFIRM_FORM, REPLY_FORM, VOUCH_ASK_FORM } from './form-ids';
 import { AppealForm } from './appeal-form';
+import { AddCodeForm, AskVouchForm, ConfirmCodeForm } from './identity-forms';
 import { ReplyForm } from './reply-form';
 
 export const instant = false;
@@ -87,6 +88,12 @@ const APPEAL_STATUS_WORDS = { pending: 'Waiting for a decision', upheld: 'Upheld
 
 const MODERATED_KINDS = new Set(['relationship_dispute', 'lineage_report']);
 
+/** ADR 0088: an impersonation report's decision, as each side reads it. */
+const IDENTITY_DECISION_WORDS: Record<'reporter' | 'reported', Record<'approved' | 'rejected', string>> = {
+  reporter: { approved: 'Upheld.', rejected: 'Not upheld.' },
+  reported: { approved: 'The administrators decided that the profile belongs to someone else.', rejected: 'The report was not upheld: the profile stays with you.' },
+};
+
 export default async function PartyCasePage({ params, searchParams }: { params: Params; searchParams: Search }) {
   const { id } = await params;
   const query = await searchParams;
@@ -109,6 +116,9 @@ export default async function PartyCasePage({ params, searchParams }: { params: 
   const rel = c.relationship;
   const reviewers = MODERATED_KINDS.has(c.kind) ? 'The moderators' : 'The reviewers';
   const appealInitial = await readFormResult(APPEAL_FORM, query.outcome);
+  const vouchInitial = c.identity ? await readFormResult(VOUCH_ASK_FORM, query.outcome) : null;
+  const codeInitial = c.identity ? await readFormResult(CODE_ADD_FORM, query.outcome) : null;
+  const confirmInitial = c.identity ? await readFormResult(CODE_CONFIRM_FORM, query.outcome) : null;
 
   return (
     <Frame>
@@ -124,6 +134,13 @@ export default async function PartyCasePage({ params, searchParams }: { params: 
           <OutcomeNote testId="claim-sent">Your claim was sent. A reviewer checks it; you get a notification and an e-mail when they decide.</OutcomeNote>
         ) : null}
         {query.replied === '1' ? <OutcomeNote testId="reply-sent">Your answer was sent to the reviewers.</OutcomeNote> : null}
+        {query.sent === '1' && c.identity ? (
+          <OutcomeNote testId="identity-sent">Your report was sent. A moderator checks it first; you get a notification when they have.</OutcomeNote>
+        ) : null}
+        {query.vouch === '1' ? <OutcomeNote testId="vouch-sent">Your question was sent. They answer on their own page; you see here when they have.</OutcomeNote> : null}
+        {query.code === 'email' ? <OutcomeNote testId="code-sent">The code is on its way. Type it below when it arrives.</OutcomeNote> : null}
+        {query.code === 'page' ? <OutcomeNote testId="code-made">Post the code below on the page, then tell us here in a message that it is there.</OutcomeNote> : null}
+        {query.confirmed === '1' ? <OutcomeNote testId="code-confirmed">The code is confirmed.</OutcomeNote> : null}
         {query.appealed === '1' && c.appeal?.appeal ? (
           <OutcomeNote testId="appeal-sent">Your appeal was sent. Another member of staff than the one who decided looks at it.</OutcomeNote>
         ) : null}
@@ -175,7 +192,20 @@ export default async function PartyCasePage({ params, searchParams }: { params: 
             <h2 id="case-decision" className="font-display text-xl">
               Decision
             </h2>
-            <p className="text-ui">{DECISION_WORDS[c.kind]?.[c.decision.resolution] ?? (c.decision.resolution === 'approved' ? 'Approved.' : 'Not approved.')}</p>
+            <p className="text-ui">
+              {c.identity
+                ? IDENTITY_DECISION_WORDS[c.identity.side][c.decision.resolution]
+                : (DECISION_WORDS[c.kind]?.[c.decision.resolution] ?? (c.decision.resolution === 'approved' ? 'Approved.' : 'Not approved.'))}
+            </p>
+            {c.identity?.outcome ? (
+              <p className="text-sm" data-testid="identity-outcome">
+                {c.identity.outcome.profileMoved
+                  ? `The profile is yours now. ${c.identity.outcome.photosRemoved > 0 ? `${c.identity.outcome.photosRemoved} photo(s) the other account added were removed. ` : ''}${c.identity.outcome.relationshipsReturned > 0 ? `${c.identity.outcome.relationshipsReturned} student request(s) it had approved wait for your answer in Your students. ` : ''}Check the profile’s text: the other account may have written it.`
+                  : c.identity.outcome.takenDown
+                    ? 'The copy is off the public pages.'
+                    : null}
+              </p>
+            ) : null}
             {c.decision.reason ? (
               <p className="text-sm whitespace-pre-line">
                 <span className="font-semibold">{reviewers}: </span>
@@ -212,6 +242,106 @@ export default async function PartyCasePage({ params, searchParams }: { params: 
               <p className="max-w-[60ch] text-sm text-fg-muted" data-testid="appeal-note">
                 {c.appeal.note}
               </p>
+            ) : null}
+          </section>
+        ) : null}
+
+        {c.identity ? (
+          <section aria-labelledby="case-identity" className="grid gap-4" data-testid="identity-proof" data-side={c.identity.side} data-status={c.identity.status}>
+            <h2 id="case-identity" className="font-display text-2xl">
+              {c.identity.side === 'reporter' ? 'Your report' : 'Someone says your profile is theirs'}
+            </h2>
+            <PersonName person={c.identity.subject} />
+            <dl className="grid gap-1 text-ui sm:grid-cols-[auto_1fr] sm:gap-x-6">
+              <dt className="text-fg-muted">Where it stands</dt>
+              <dd className="font-semibold" data-testid="identity-status">
+                {c.identity.statusLabel}
+              </dd>
+              {c.identity.side === 'reporter' ? (
+                <>
+                  <dt className="text-fg-muted">Your proof</dt>
+                  <dd>{c.identity.routeLabel}</dd>
+                </>
+              ) : null}
+              {c.identity.canProve && c.identity.proofDueAt ? (
+                <>
+                  <dt className="text-fg-muted">Proof by</dt>
+                  <dd>{formatDay(c.identity.proofDueAt)}</dd>
+                </>
+              ) : null}
+            </dl>
+            {c.identity.side === 'reported' && c.identity.canProve ? (
+              <p className="max-w-[60ch] text-ui">
+                While the administrators check, the profile cannot be renamed, hidden, deleted or handed over, and requests to it wait. If it is yours, show it in any of the ways below: people who
+                know you can vouch for you, your school’s own mail or website can confirm it, or you can send a short video of yourself saying your name and today’s date. You are not told who
+                reported it, and they do not see your proof.
+              </p>
+            ) : c.identity.canProve ? (
+              <p className="max-w-[60ch] text-ui">
+                The profile is on hold. Show that you are this person: {c.identity.route === 'own_profile' ? 'your own profile is your proof; add anything else that helps.' : 'use the way you chose, or any of the others below.'} The
+                account that holds the profile does not see your proof.
+              </p>
+            ) : c.identity.status === 'open' ? (
+              <p className="max-w-[60ch] text-ui text-fg-muted">A moderator checks your report first. Nothing changes for the profile until then.</p>
+            ) : null}
+
+            {c.identity.vouches.length > 0 ? (
+              <ul className="grid gap-1 text-ui" data-testid="identity-vouches">
+                {c.identity.vouches.map((v) => (
+                  <li key={v.id} className="flex flex-wrap items-baseline gap-x-2">
+                    <PersonName person={v.voucher} />
+                    <span className="text-fg-muted">· {v.kindLabel}</span>
+                    <span className="font-semibold" data-answer={v.answer ?? 'none'}>
+                      · {v.answer ? 'Answered' : 'Not answered yet'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {c.identity.canProve && c.identity.vouches.length < c.identity.limits.vouches ? (
+              <details className="grid gap-3 rounded-sm border border-border-subtle px-4 py-3" open={Boolean(vouchInitial)}>
+                <summary className="min-h-11 cursor-pointer content-center font-semibold">Ask someone to vouch for you</summary>
+                <p className="mt-2 max-w-[60ch] text-sm text-fg-muted">
+                  One verified teacher of yours, or two verified members from different schools. They answer only to the administrators. A member whose account is newer than 30 days, or a student the
+                  other account approved, cannot vouch.
+                </p>
+                <div className="mt-3">
+                  <AskVouchForm caseId={c.id} noteMax={c.identity.limits.noteMax} initial={vouchInitial} />
+                </div>
+              </details>
+            ) : null}
+
+            {c.identity.codes.length > 0 ? (
+              <ul className="grid gap-3 text-ui" data-testid="identity-codes">
+                {c.identity.codes.map((code) => (
+                  <li key={code.id} className="grid gap-2 rounded-sm bg-surface-2 px-4 py-3">
+                    <span>
+                      <span className="font-semibold">{code.channel === 'email' ? `E-mail at ${code.target}` : 'Code for your page'}</span>
+                      <span className="text-fg-muted"> · {code.confirmed ? 'Confirmed' : `Valid until ${formatDay(code.expiresAt)}`}</span>
+                    </span>
+                    {code.channel === 'page' ? (
+                      <span>
+                        Post <code className="font-mono font-semibold" translate="no" data-testid="identity-public-code">{code.publicCode}</code> on{' '}
+                        <span translate="no" className="break-all">
+                          {code.target}
+                        </span>
+                        . An administrator looks for it there.
+                      </span>
+                    ) : null}
+                    {code.channel === 'email' && !code.confirmed && c.identity!.canProve && code.attemptsLeft > 0 ? (
+                      <ConfirmCodeForm caseId={c.id} codeId={code.id} initial={confirmInitial?.values?.codeId === code.id ? confirmInitial : null} />
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {c.identity.canProve && c.identity.codes.length < c.identity.limits.codes ? (
+              <details className="grid gap-3 rounded-sm border border-border-subtle px-4 py-3" open={Boolean(codeInitial)}>
+                <summary className="min-h-11 cursor-pointer content-center font-semibold">Confirm it through your school’s own mail or website</summary>
+                <div className="mt-3">
+                  <AddCodeForm caseId={c.id} targetMax={c.identity.limits.targetMax} initial={codeInitial} />
+                </div>
+              </details>
             ) : null}
           </section>
         ) : null}
@@ -264,12 +394,22 @@ export default async function PartyCasePage({ params, searchParams }: { params: 
           {c.kind === 'relationship_dispute' ? (
             <p className="max-w-[60ch] text-sm text-fg-muted">Only you, the moderators and the administrators can open your files. The other person cannot.</p>
           ) : null}
-          {c.canAddFiles ? (
+          {c.identity ? (
+            <p className="max-w-[60ch] text-sm text-fg-muted">
+              Only you and the administrators can open your files. A video is deleted 30 days after the decision. Please send no identity documents: we do not ask for them.
+            </p>
+          ) : null}
+          {c.canAddFiles && (!c.identity || c.identity.canProve) ? (
             <EvidenceUploader
               caseId={c.id}
               knownIds={c.files.map((file) => file.id)}
-              label="Add evidence"
-              hint="JPEG, PNG, WebP or PDF, up to 20 MB each. A file added to a case stays with it."
+              label={c.identity ? 'Add proof' : 'Add evidence'}
+              hint={
+                c.identity
+                  ? 'A short video (MP4 or WebM, up to 50 MB) of you saying your name and today’s date, or JPEG, PNG, WebP or PDF up to 20 MB.'
+                  : 'JPEG, PNG, WebP or PDF, up to 20 MB each. A file added to a case stays with it.'
+              }
+              video={Boolean(c.identity)}
             />
           ) : null}
         </section>

@@ -659,6 +659,14 @@ export default async function PersonPage({ params, searchParams }: Props) {
                 Report profile
               </Link>
             </li>
+            {/* ADR 0088: a profile another account runs, which the viewer says is theirs (a living member's profile only). */}
+            {profile.claimState === 'claimed' && profile.kind === 'living' ? (
+              <li>
+                <Link href={`${here}/identity`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="report-identity">
+                  This account is pretending to be me
+                </Link>
+              </li>
+            ) : null}
             {/* M25: an evidence-based report that a teaching relationship is wrong (it changes nothing by itself). */}
             {profile.counts.teachers + profile.counts.students > 0 ? (
               <li>

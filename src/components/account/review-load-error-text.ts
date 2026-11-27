@@ -54,6 +54,13 @@ export const REVIEW_LOAD_ERRORS = {
     message: "We couldn't load the report form. Nothing was sent.",
     back: { href: '/', label: 'Back to the home page' },
   },
+  // ADR 0088.
+  identity: {
+    eyebrow: 'Profile',
+    title: 'This account is pretending to be me',
+    message: "We couldn't load the report form. Nothing was sent.",
+    back: { href: '/', label: 'Back to the home page' },
+  },
   // M25: succession, lineage dispute reports and archival record proposals.
   succession: {
     eyebrow: 'Dashboard',

@@ -32,7 +32,9 @@ import { formatSize } from '@/lib/file-size';
 
 export const EVIDENCE_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
 const MAX_MB = 20;
-const MAX_BYTES = MAX_MB * 1024 * 1024;
+/** ADR 0088: an impersonation report's case also takes a short MP4 or WebM video, up to 50 MB. */
+export const EVIDENCE_VIDEO_ACCEPT = `${EVIDENCE_ACCEPT},video/mp4,video/webm`;
+const VIDEO_MAX_MB = 50;
 
 export interface UploadedEvidenceItem {
   id: string;
@@ -66,6 +68,7 @@ export function EvidenceUploader({
   inputId: givenInputId,
   maxFiles = 20,
   name = 'evidenceIds',
+  video = false,
 }: {
   label: string;
   hint: string;
@@ -83,6 +86,8 @@ export function EvidenceUploader({
   inputId?: string;
   maxFiles?: number;
   name?: string;
+  /** ADR 0088: also a video (MP4 or WebM, up to 50 MB): only an impersonation report's case takes one. */
+  video?: boolean;
 }) {
   const id = useId();
   const inputId = givenInputId ?? `${id}-file`;
@@ -116,7 +121,9 @@ export function EvidenceUploader({
       say(`${file.name}: not uploaded. ${message}`);
       return false;
     };
-    if (file.size > MAX_BYTES) return refuse(`Larger than ${MAX_MB} MB. Upload a smaller copy, or split the document.`);
+    const isVideo = file.type.startsWith('video/');
+    const limit = isVideo && video ? VIDEO_MAX_MB : MAX_MB;
+    if (file.size > limit * 1024 * 1024) return refuse(isVideo ? `Larger than ${limit} MB. Record a shorter video.` : `Larger than ${limit} MB. Upload a smaller copy, or split the document.`);
     try {
       const response = await fetch(`/api/evidence/upload${caseId ? `?case=${encodeURIComponent(caseId)}` : ''}`, {
         method: 'POST',
@@ -222,7 +229,7 @@ export function EvidenceUploader({
           id={inputId}
           type="file"
           multiple
-          accept={EVIDENCE_ACCEPT}
+          accept={video ? EVIDENCE_VIDEO_ACCEPT : EVIDENCE_ACCEPT}
           aria-disabled={busy || undefined}
           onClick={onPick}
           onChange={(event) => void take(event.currentTarget.files ?? [])}
