@@ -935,13 +935,14 @@ test('@M00b tracing inks the line in its states over the pencil draft, also unde
   await expect(page.locator('[data-layer="draft"] > *')).toHaveCount(count - 1);
 
   const third = (await rows.nth(2).locator('[data-name]').textContent())!;
-  await rows.nth(2).getByRole('button').click();
+  // P1-4 (ADR 0078): the name is a link to the profile now, so the row is traced beside it, on its year.
+  await rows.nth(2).getByRole('button').click({ position: { x: 24, y: 16 } });
   await expect(ink).toHaveCount(2);
   await expect(page.locator('[data-row] [aria-current="true"]')).toHaveAccessibleName(new RegExp(`^${third}`));
 
   // Tracing to the newest person inks every link.
   const last = (await rows.nth(count - 1).locator('[data-name]').textContent())!;
-  await rows.nth(count - 1).getByRole('button').click();
+  await rows.nth(count - 1).getByRole('button').click({ position: { x: 24, y: 16 } });
   await expect(ink).toHaveCount(count - 1);
   await expect(page.locator('[data-row] [aria-current="true"]')).toHaveAccessibleName(new RegExp(`^${last}`));
   await expect(page.locator('#demo-line')).toBeInViewport();

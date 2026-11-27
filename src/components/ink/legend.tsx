@@ -11,7 +11,8 @@ import { cx } from '@/lib/cx';
 import { LinkStroke, type LinkKind } from './link-stroke';
 import { Seal } from './seal';
 
-const ORDER: LinkKind[] = ['verified', 'under_review', 'unconfirmed', 'arbitration', 'cross_lineage', 'historical'];
+// P1-3 (ADR 0077): the archive's two degrees of certainty follow Verified, which a documented link shares.
+const ORDER: LinkKind[] = ['verified', 'traditional', 'contested', 'under_review', 'unconfirmed', 'arbitration', 'cross_lineage', 'historical'];
 
 /** The kinds a drawing actually uses, in legend order: a legend lists only what is drawn. */
 export function legendKinds(drawn: Iterable<LinkKind>): LinkKind[] {
