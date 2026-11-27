@@ -510,7 +510,8 @@ SELECT tr.id::text AS id,
        (tr.verification_path = 'teacher_approval' AND tr.status IN ('verified', 'in_arbitration')
          AND tr.confirmed_by_user_id IS NOT NULL AND tr.confirmed_by_user_id = t.claimed_by_user_id
          AND NOT EXISTS (SELECT 1 FROM review_case v WHERE v.person_id = t.id AND v.kind = 'instructor_verification'
-                          AND v.status = 'resolved' AND v.resolution = 'approved')) AS unverified,
+                          AND v.status = 'resolved' AND v.resolution = 'approved'
+                          AND (v.opened_by_user_id IS NULL OR v.opened_by_user_id = t.claimed_by_user_id))) AS unverified,
        (tr.status IN ('verified', 'in_arbitration') AND tr.visibility = 'public'
          AND t.visibility = 'public' AND t.deleted_at IS NULL AND s.visibility = 'public' AND s.deleted_at IS NULL) AS shown,
        (t.visibility = 'public') AS teacher_public, (s.visibility = 'public') AS student_public,

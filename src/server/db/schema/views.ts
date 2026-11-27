@@ -46,6 +46,8 @@ export const vPublicPerson = pgView('v_public_person', {
   photoSha256: text('photo_sha256'),
   // Journey review 2026-11-26 (P1-3, ADR 0077): the era of a historical record ("d. 1901").
   eraText: text('era_text'),
+  // ADR 0088 (decision 1): a moderator found an impersonation report about this profile plausible.
+  identityHold: boolean('identity_hold').notNull(),
 }).existing();
 
 /**

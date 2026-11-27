@@ -7,7 +7,7 @@
 // verification is shown as "Instructor (unverified)" (DEFAULT D04/D13) until an archivist approves
 // an instructor_verification case (M10b).
 
-import { and, count, desc, eq, gt } from 'drizzle-orm';
+import { and, count, desc, eq, gt, isNull, or } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { formatDay } from '../../lib/dates';
@@ -151,6 +151,8 @@ export async function instructorStatus(db: Executor, userId: string, accountType
         eq(reviewCase.kind, 'instructor_verification'),
         eq(reviewCase.status, 'resolved'),
         eq(reviewCase.resolution, 'approved'),
+        // ADR 0088: a verification belongs to the account that asked for it (never a moved profile's).
+        or(isNull(reviewCase.openedByUserId), eq(reviewCase.openedByUserId, userId)),
       ),
     );
   return (row?.n ?? 0) > 0 ? 'verified' : 'unverified';

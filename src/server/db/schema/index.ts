@@ -9,6 +9,7 @@ export * from './events';
 export * from './evidence';
 export * from './geography';
 export * from './governance';
+export * from './identity';
 export * from './lineage';
 export * from './organization-tools';
 export * from './organizations';
