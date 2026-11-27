@@ -10,6 +10,7 @@ export * from './evidence';
 export * from './geography';
 export * from './governance';
 export * from './lineage';
+export * from './naming';
 export * from './organization-tools';
 export * from './organizations';
 export * from './passport';

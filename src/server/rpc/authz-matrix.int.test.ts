@@ -63,6 +63,7 @@ import { createSchool } from '../services/schools';
 import { requestTrial } from '../services/trial-lessons';
 import { cancelSubscription, startCheckout, testPay } from '../services/billing';
 import { applyPendingBillingEvents, paidSubscription } from '../services/billing.test-support';
+import { adminIdOf, membershipIdOf, settleNaming } from '../services/naming.test-support';
 import { startFederationTrial } from '../services/federation-trials';
 import { suspendAccount } from '../services/suspension';
 import { takeDownProfile } from '../services/takedown';
@@ -510,6 +511,7 @@ async function federationBillingOf(opts: { subscribed?: boolean } = {}) {
   const o = await organizationOf({ active: true });
   const party = await actor('org-co-admin', { noPerson: true });
   await addOrganizationAdmin(o.owner.principal, { organizationId: o.organizationId, email: party.email }, meta);
+  await settleNaming({ organizationId: o.organizationId, kind: 'organization_admin' });
   let subscriptionId: string | null = null;
   if (opts.subscribed) {
     const checkout = await startCheckout(o.owner.principal, { planCode: 'federation', interval: 'month', organizationId: o.organizationId }, meta);
@@ -1894,8 +1896,10 @@ const ROWS: Row[] = [
     path: 'organizations.removeAdmin',
     make: async () => {
       const o = await organizationOf({ active: true });
-      const added = await addOrganizationAdmin(o.owner.principal, { organizationId: o.organizationId, email: (await actor('org-removed-admin', { noPerson: true })).email }, meta);
-      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, adminId: added.adminId } };
+      const removed = await actor('org-removed-admin', { noPerson: true });
+      await addOrganizationAdmin(o.owner.principal, { organizationId: o.organizationId, email: removed.email }, meta);
+      await settleNaming({ organizationId: o.organizationId, kind: 'organization_admin' });
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, adminId: await adminIdOf(o.organizationId, removed.id) } };
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
@@ -1920,8 +1924,10 @@ const ROWS: Row[] = [
     path: 'organizations.endMember',
     make: async () => {
       const o = await organizationOf({ federation: true });
-      const m = await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: (await actor('org-member')).slug! }, meta);
-      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, membershipId: m.membershipId } };
+      const named = await actor('org-member');
+      await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: named.slug! }, meta);
+      await settleNaming({ organizationId: o.organizationId });
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, membershipId: await membershipIdOf(o.organizationId, named.personId!) } };
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
@@ -2086,8 +2092,9 @@ const ROWS: Row[] = [
     make: async () => {
       const o = await organizationOf({ federation: true });
       const member = await actor('org-leaving');
-      const m = await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: member.slug! }, meta);
-      return { owner: member, party: o.owner, input: { membershipId: m.membershipId } };
+      await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: member.slug! }, meta);
+      await settleNaming({ organizationId: o.organizationId });
+      return { owner: member, party: o.owner, input: { membershipId: await membershipIdOf(o.organizationId, member.personId!) } };
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },

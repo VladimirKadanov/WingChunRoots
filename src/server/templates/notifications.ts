@@ -1735,6 +1735,29 @@ const schoolInstructorInvited: NotificationTemplate<{ schoolId: string; name: st
   sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000d1', name: 'Demo Wing Chun Hall' },
 };
 
+/** "naming.requested" (review 2026-11-13, ADR 0088): someone names you (or your organization) on their content; you accept or decline. */
+const NAMING_TEXT: Record<string, (context: string) => { title: string; text: string }> = {
+  organization_member: (c) => ({ title: 'An organization asks to list you as a member', text: `“${c}” asks to list you as one of its members. You are shown as a member only once you accept.` }),
+  event_instructor: (c) => ({ title: 'An event names you as an instructor', text: `The event “${c}” names you as one of its instructors. You are shown on it only once you accept.` }),
+  exam_examiner: (c) => ({ title: 'A passport names you as an examiner', text: `The training passport of ${c} names you as the examiner of an examination. Your name is shown on it only once you accept.` }),
+  entry_issuer: (c) => ({ title: 'A passport names your organization', text: `A teacher names “${c}” as the issuer of an entry in a student's training passport. The organization is shown on it only once an administrator accepts.` }),
+  organization_admin: (c) => ({ title: 'You are invited to help run an organization', text: `You are invited to be an administrator of “${c}”. You get its rights only once you accept.` }),
+};
+const namingRequested: NotificationTemplate<{ kind: string; context: string }> = {
+  name: 'naming.requested',
+  parse(payload) {
+    const data = payloadObject('naming.requested', payload);
+    if (typeof data.kind !== 'string' || !Object.hasOwn(NAMING_TEXT, data.kind)) throw new NotificationDataError('naming.requested', 'kind must be a naming kind');
+    if (typeof data.context !== 'string' || data.context.trim() === '' || data.context.length > 200) throw new NotificationDataError('naming.requested', 'context must be a short text');
+    return { kind: data.kind, context: data.context.trim() };
+  },
+  render: ({ kind, context }) => {
+    const words = NAMING_TEXT[kind]!(context);
+    return { title: words.title, body: [{ text: words.text }], action: { label: 'Accept or decline', href: '/dashboard/naming' } };
+  },
+  sample: { kind: 'organization_member', context: 'Demo Wing Chun Association' },
+};
+
 // --- Billing (M22; docs/adr/0025-billing.md) ------------------------------------------------------
 // Test mode only: every text says so. The date and what happens, never a countdown (CLAUDE.md §11).
 
@@ -2229,6 +2252,7 @@ export const NOTIFICATION_TEMPLATES = {
   'school.trial-answered': schoolTrialAnswered,
   'school.trial-declined': schoolTrialDeclined,
   'school.instructor-invited': schoolInstructorInvited,
+  'naming.requested': namingRequested,
   // M22.
   'billing.started': billingStarted,
   'billing.cancel-scheduled': billingCancelScheduled,
