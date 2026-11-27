@@ -24,7 +24,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { NOT_ON_RECORD_HEADER, NOT_ON_RECORD_PATH } from '@/lib/not-on-record';
 import { COOKIE_PREFIX } from '@/server/auth/config';
 import { principalFromHeaders } from '@/server/auth/session';
-import { mergedRecordTarget } from '@/server/services/archive-merge';
+import { mergedRecordTarget } from '@/server/services/archive-redirect';
 import { PERSON_CHECK_BUDGET_MS, personPageVisible } from '@/server/services/lineage';
 
 /** A session cookie or a bearer token is there (whether it is valid is the session's question). */

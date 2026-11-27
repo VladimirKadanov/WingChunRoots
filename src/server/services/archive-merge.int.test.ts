@@ -8,7 +8,8 @@ import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-suppor
 import { getDb } from '../db';
 import type { TestDatabase } from '../db/testing';
 import { addArchiveLink, COMMON_ROOTS_LINK, createArchiveLineage, createArchiveRecord, updateArchiveLineage } from './archive-editor';
-import { MERGE_LINKED, MERGE_MEMBER, mergeArchiveRecord, mergedRecordTarget } from './archive-merge';
+import { MERGE_LINKED, MERGE_MEMBER, mergeArchiveRecord } from './archive-merge';
+import { mergedRecordTarget } from './archive-redirect';
 import { key, member, meta, staff } from './relationships.test-support';
 
 vi.mock('next/cache', () => ({

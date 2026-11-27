@@ -231,14 +231,3 @@ export async function mergeArchiveRecord(principal: Principal | null, raw: Merge
   invalidatePublic(outcome.tags, 'procedure');
   return { slug: outcome.slug, movedLinks: outcome.movedLinks, endedLinks: outcome.endedLinks, movedNames: outcome.movedNames };
 }
-
-/**
- * The address a merged record now answers at (person_redirect), only when the kept record is public
- * (v_public_person): src/proxy.ts sends /people/<old> there with a permanent redirect.
- */
-export async function mergedRecordTarget(slug: string): Promise<string | null> {
-  if (!/^[a-z0-9-]{1,200}$/.test(slug)) return null;
-  const rows = await getDb().execute<{ slug: string }>(sql`
-    SELECT v.slug FROM person_redirect r JOIN v_public_person v ON v.id = r.person_id WHERE r.from_slug = ${slug} LIMIT 1`);
-  return rows.rows[0]?.slug ?? null;
-}
