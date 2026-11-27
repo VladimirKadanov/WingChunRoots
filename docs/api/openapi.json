@@ -22934,6 +22934,29 @@
         }
       }
     },
+    "/dashboard/organizations": {
+      "get": {
+        "operationId": "dashboard.organizations",
+        "summary": "The organizations the signed-in account administers at a glance: members, linked and waiting schools, the next event, the plan and what is left to do",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/system": {
       "get": {
         "operationId": "system.status",

@@ -44,6 +44,7 @@ import { startAnsweringAsSifuAction } from './students/requests/actions';
 import { listingForm } from './schools/form-ids';
 import { ListingAction } from './schools/listing-actions';
 import { Notifications, NotificationsProvider, UnreadLink } from './notifications';
+import { OrganizationsGlance } from './organizations-glance';
 
 export const instant = false;
 
@@ -513,9 +514,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
   const query = await searchParams;
   const client = serverClient(await headers(), guard.principal);
   // A failed read shows the error state in the app shell, with "Try again" (final check, requirements-2).
-  const loaded = await pageRead(Promise.all([client.dashboard.overview(), client.account.me()]));
+  const loaded = await pageRead(Promise.all([client.dashboard.overview(), client.account.me(), client.dashboard.organizations()]));
   if (!loaded) return <LoadError {...DASHBOARD_LOAD_ERROR} retryHref="/dashboard" />;
-  const [overview, me] = loaded;
+  const [overview, me, organizations] = loaded;
   const names = me.person?.names ?? [];
   const primary = names.find((name) => name.isPrimary);
   const original = names.find((name) => !name.isPrimary && name.kind !== 'romanization');
@@ -582,6 +583,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
           <div className="grid content-start gap-10">
             {pilotOutcome && !offer ? <FormMessage form={PILOT_ACCESS_FORM} state={pilotOutcome} single /> : null}
             {overview.staff ? <StaffWork staff={overview.staff} /> : null}
+            {/* Journey review P2-5 (ADR 0082): what an organization's admin manages comes first. */}
+            <OrganizationsGlance overview={organizations} />
             {overview.student ? <TrialStatus trials={overview.student.trials} /> : null}
             {overview.nextSteps.length > 0 && !stepsLater ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
             {!sifu && !staffOnly && overview.hasProfile && !overview.student?.waitingStudentRequests ? <TeachPrompt /> : null}

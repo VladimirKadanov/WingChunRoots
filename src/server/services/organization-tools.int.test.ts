@@ -20,6 +20,7 @@ import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { grantOrganizationPlan, revokeOrganizationPlan } from './organization-grants';
 import { commitImport, discardImport, getImport, listImports, previewImport } from './organization-import';
 import { HEATMAP_MIN_SCHOOLS, organizationAnalytics, organizationHeatmap } from './organization-insights';
+import { organizationOverview } from './organization-overview';
 import { leaveOrganization, myMemberships, organizationClaims, withdrawClaim } from './organization-separation';
 import { addOrganizationMember, applyOrganization, endOrganizationMember } from './organizations';
 import { approveRelationship, requestTeacher } from './relationships';
@@ -104,7 +105,7 @@ describe('the bulk import (In scope 1)', () => {
       [4, 'error', ['row']],
       [5, 'error', ['First_Name']],
       [6, 'error', ['Start_Year']],
-      [7, 'error', ['Sifu_Database_ID']],
+      [7, 'error', ['Teacher_Profile_Address']],
     ]);
     expect(preview.rows[0]!.teacher?.id).toBe(teacher.personId);
     expect(preview.can.commit).toBe(true);
@@ -192,7 +193,7 @@ describe('one organization never reaches another (Phase 3 completion condition)'
     // A teacher named only by another organization's private record is not found by this one.
     const privateSlug = (await getDb().select({ slug: person.slug }).from(person).where(eq(person.id, committed.rows[0]!.person!.id)))[0]!.slug;
     const probe = await previewImport(other.owner, { organizationId: other.organizationId, contentBase64: b64(`${HEADER}\nDemo,Probe Student,,,,,${privateSlug},\n`) }, meta);
-    expect(probe.rows[0]!.errors.map((e) => e.field)).toEqual(['Sifu_Database_ID']);
+    expect(probe.rows[0]!.errors.map((e) => e.field)).toEqual(['Teacher_Profile_Address']);
     expect(await withdrawClaim(org.owner, { organizationId: org.organizationId, claimId: claim!.id }, meta)).toEqual({ claimId: claim!.id, status: 'withdrawn' });
   });
 });
@@ -349,5 +350,29 @@ describe('separation (In scope 4)', () => {
     );
     expect(JSON.stringify(after)).not.toContain(publicTeacher.slug);
     expect(JSON.stringify(after)).not.toContain(teacher.slug);
+  });
+});
+
+describe('the dashboard overview of an organization (journey review P2-5, ADR 0082)', () => {
+  it('shows the members, the schools and what is left to do, for the organization’s admins only', async () => {
+    const org = await federation();
+    const one = await member('p25-member');
+    await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: one.slug, role: 'member' }, meta);
+    const preview = await previewImport(org.owner, { organizationId: org.organizationId, contentBase64: b64(`${HEADER}\nDemo,Overview Record,,,,,,\n`) }, meta);
+    await commitImport(org.owner, { organizationId: org.organizationId, importId: preview.id }, meta);
+
+    const overview = await organizationOverview(org.owner);
+    const item = overview.organizations.find((o) => o.id === org.organizationId)!;
+    expect(item).toMatchObject({ approved: true, hasPlan: true, members: 2, schoolsLinked: 0, schoolsWaiting: 0, nextEvent: null });
+    expect(item.todo.map((t) => t.key)).toEqual(['logo', 'school', 'claim-links']);
+    expect(item.todo.find((t) => t.key === 'claim-links')!.label).toBe('Pass on 1 claim link');
+
+    // Without the plan the first thing to do is the plan.
+    const bare = await federation({ plan: false });
+    const bareItem = (await organizationOverview(bare.owner)).organizations.find((o) => o.id === bare.organizationId)!;
+    expect(bareItem.todo.map((t) => t.key)).toEqual(['plan', 'logo']);
+
+    // Someone who administers nothing sees nothing, and never another organization.
+    expect((await organizationOverview(one.principal)).organizations).toEqual([]);
   });
 });

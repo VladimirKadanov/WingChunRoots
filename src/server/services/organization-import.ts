@@ -17,7 +17,7 @@
 //   duplicate, and nothing outside the organization is ever compared;
 // - a current membership of the organization (role member) and the organization's own fields
 //   (rank and city, organization_member_record);
-// - when Sifu_Database_ID names a teacher, an organization_teacher_claim "claimed by the
+// - when Teacher_Profile_Address (Sifu_Database_ID) names a teacher, an organization_teacher_claim "claimed by the
 //   organization": never a teaching_relationship (DEFAULT D12; DEFAULT M24 question 4). The teacher must be
 //   a public profile or a current member of this organization.
 //
@@ -66,7 +66,7 @@ import { writePersonKeys } from '../search/store';
 import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
 import { ServiceError } from './errors';
-import { checkRow, ImportFileError, nameKey, parseImportFile, TEMPLATE_HEADER } from './organization-import-csv';
+import { checkRow, ImportFileError, nameKey, parseImportFile, TEMPLATE_HEADER, TEMPLATE_SAMPLE } from './organization-import-csv';
 import { shownPeople } from './organization-separation-core';
 import { managed, requireAdministration } from './organizations';
 import { slugFromName } from './names';
@@ -242,7 +242,7 @@ async function memberNameKeys(db: Executor, organizationId: string): Promise<Set
 }
 
 /**
- * The teachers that Sifu_Database_ID may name, by slug: a public profile (v_public_person), or a
+ * The teachers that Teacher_Profile_Address may name, by slug: a public profile (v_public_person), or a
  * current member of this organization (its own records, private ones included). Nothing else is
  * found, so a file never learns whether a private record of another organization exists.
  */
@@ -322,7 +322,7 @@ export async function previewImport(principal: Principal | null, raw: z.input<ty
       let teacherPersonId: string | null = null;
       if (c.teacherSlug) {
         teacherPersonId = teachers.get(c.teacherSlug) ?? null;
-        if (!teacherPersonId) errors.push({ field: 'Sifu_Database_ID', message: 'No public profile or member of your organization has this address.' });
+        if (!teacherPersonId) errors.push({ field: 'Teacher_Profile_Address', message: 'No public profile or member of your organization has this address.' });
       }
       if (c.name && errors.every((e) => e.field !== 'First_Name')) {
         const k = nameKey(c.name);
@@ -370,7 +370,7 @@ export async function previewImport(principal: Principal | null, raw: z.input<ty
 
 // --- organizationTools.imports / importGet ---------------------------------------------------------
 
-export async function listImports(principal: Principal | null, raw: z.input<typeof importListInput>): Promise<{ imports: ImportSummary[]; template: string; note: string; limits: { maxRows: number; maxKb: number } }> {
+export async function listImports(principal: Principal | null, raw: z.input<typeof importListInput>): Promise<{ imports: ImportSummary[]; template: string; sample: string; note: string; limits: { maxRows: number; maxKb: number } }> {
   const p = requireUser(principal);
   const input = parseInput(importListInput, raw);
   const db = getDb();
@@ -378,7 +378,7 @@ export async function listImports(principal: Principal | null, raw: z.input<type
     const { org } = await managed(tx, p, input.organizationId);
     await expireOpen(tx, org.id);
     const rows = await tx.select().from(organizationImport).where(eq(organizationImport.organizationId, org.id)).orderBy(desc(organizationImport.createdAt), desc(organizationImport.id)).limit(50);
-    return { imports: rows.map(summaryOf), template: TEMPLATE_HEADER, note: IMPORT_NOTE, limits: { maxRows: ORGANIZATION_IMPORT_MAX_ROWS, maxKb: ORGANIZATION_IMPORT_MAX_BYTES / 1024 } };
+    return { imports: rows.map(summaryOf), template: TEMPLATE_HEADER, sample: TEMPLATE_SAMPLE, note: IMPORT_NOTE, limits: { maxRows: ORGANIZATION_IMPORT_MAX_ROWS, maxKb: ORGANIZATION_IMPORT_MAX_BYTES / 1024 } };
   });
 }
 
@@ -440,7 +440,7 @@ export async function commitImport(principal: Principal | null, raw: z.input<typ
       if (!data) problems.push({ field: 'row', message: 'The row’s data is no longer kept.' });
       else {
         if (members.has(nameKey(data.name))) problems.push({ field: 'row', message: 'A current member of your organization has this name. The row is not imported, so no one is listed twice.' });
-        if (data.teacherPersonId && !allowedTeachers.has(data.teacherPersonId)) problems.push({ field: 'Sifu_Database_ID', message: 'The teacher is no longer a public profile or a member of your organization.' });
+        if (data.teacherPersonId && !allowedTeachers.has(data.teacherPersonId)) problems.push({ field: 'Teacher_Profile_Address', message: 'The teacher is no longer a public profile or a member of your organization.' });
       }
       if (problems.length > 0 || !data) {
         await tx.update(organizationImportRow).set({ status: 'skipped', errors: problems, updatedAt: now }).where(eq(organizationImportRow.id, row.id));

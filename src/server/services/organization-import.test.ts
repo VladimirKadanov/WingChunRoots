@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ORGANIZATION_IMPORT_MAX_BYTES, ORGANIZATION_IMPORT_MAX_ROWS } from '../db/schema/organization-tools';
-import { checkRow, csvRecords, ImportFileError, nameKey, parseImportFile, TEMPLATE_HEADER, teacherSlugOf } from './organization-import-csv';
+import { checkRow, csvRecords, ImportFileError, nameKey, parseImportFile, TEMPLATE_HEADER, TEMPLATE_SAMPLE, teacherSlugOf } from './organization-import-csv';
 
 const bytes = (text: string) => new TextEncoder().encode(text);
 
@@ -22,6 +22,20 @@ describe('csvRecords', () => {
 });
 
 describe('parseImportFile', () => {
+  it('reads the teacher column by its new name, its spelled-out name and the first template’s Sifu_Database_ID (P2-5)', () => {
+    for (const header of ['Teacher_Profile_Address', 'Teacher’s profile address', "teacher's profile address", 'Sifu_Database_ID']) {
+      const file = parseImportFile(bytes(`First_Name,${header}\nDemo,/people/demo-hub-a\n`));
+      expect(file.ignoredColumns).toEqual([]);
+      expect(file.rows[0]!.sifuId).toBe('/people/demo-hub-a');
+    }
+  });
+
+  it('offers a sample file that the import reads without a problem (P2-5)', () => {
+    const file = parseImportFile(bytes(TEMPLATE_SAMPLE));
+    expect(file.rows).toHaveLength(2);
+    expect(file.rows.map((r) => checkRow(r, 2026).errors)).toEqual([[], []]);
+  });
+
   it('reads the template with a byte-order mark, in any case of the header, and never keeps the Email column', () => {
     const file = parseImportFile(bytes(`﻿${TEMPLATE_HEADER.toLowerCase()},Notes\nDemo,Student One,demo-one@example.test,陳大文,2015,Second level,demo-hub-a,Demo City,ignored\n`));
     expect(file.emailColumn).toBe(true);
@@ -66,12 +80,12 @@ describe('checkRow', () => {
 
   it('names the column of every problem', () => {
     const checked = checkRow(row({ firstName: '', chineseName: 'Demo', startYear: '15', rank: 'x'.repeat(81), sifuId: 'Not an address!' }), 2026);
-    expect(checked.errors.map((e) => e.field)).toEqual(['First_Name', 'Chinese_Name', 'Start_Year', 'Current_Rank', 'Sifu_Database_ID']);
+    expect(checked.errors.map((e) => e.field)).toEqual(['First_Name', 'Chinese_Name', 'Start_Year', 'Current_Rank', 'Teacher_Profile_Address']);
     expect(checkRow(row({ firstName: 'Демо' }), 2026).errors[0]!.field).toBe('First_Name');
     expect(checkRow(row({ startYear: '2031' }), 2026).errors[0]!.message).toMatch(/between 1900 and 2026/);
   });
 
-  it('reads Sifu_Database_ID as a slug, a /people/ path or a profile address', () => {
+  it('reads Teacher_Profile_Address as a slug, a /people/ path or a profile address', () => {
     expect(teacherSlugOf('demo-hub-a')).toBe('demo-hub-a');
     expect(teacherSlugOf('/people/demo-hub-a/')).toBe('demo-hub-a');
     expect(teacherSlugOf('https://example.test/people/demo-hub-a')).toBe('demo-hub-a');

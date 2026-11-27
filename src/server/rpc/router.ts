@@ -317,6 +317,7 @@ import { lineageCardSchema, lineageGraphSchema, lineagePathsSchema, personProfil
 import { organizationListSchema, organizationPageSchema } from '../dto/organizations';
 import { commitImport, discardImport, getImport, importIdInput, importListInput, importPreviewInput, listImports, previewImport } from '../services/organization-import';
 import { insightsInput, organizationAnalytics, organizationHeatmap } from '../services/organization-insights';
+import { organizationOverview } from '../services/organization-overview';
 import { claimsInput, leaveInput, leaveOrganization, myMemberships, organizationClaims, withdrawClaim, withdrawClaimInput } from '../services/organization-separation';
 import {
   addAdminInput,
@@ -1908,6 +1909,14 @@ export const router = {
     nav: base
       .route({ method: 'GET', path: '/dashboard/nav', summary: "The signed-in account's dashboard menu: account type, profile, administered organizations, unread and waiting counts" })
       .handler(({ context }) => dashboardNav(context.principal)),
+    // Journey review P2-5 (docs/adr/0082-organization-overview.md).
+    organizations: base
+      .route({
+        method: 'GET',
+        path: '/dashboard/organizations',
+        summary: 'The organizations the signed-in account administers at a glance: members, linked and waiting schools, the next event, the plan and what is left to do',
+      })
+      .handler(({ context }) => organizationOverview(context.principal)),
   },
   // M12: /admin/system (plan §3.1 "Наблюдение"): counts, queue names and times only.
   system: {
