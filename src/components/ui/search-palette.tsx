@@ -62,6 +62,9 @@ interface SearchAnswer {
     verified: boolean;
     /** ADR 0056: an unclaimed living record (not on WingChunRoots yet). Optional: an older cached answer lacks it. */
     invitable?: boolean;
+    /** Journey review P2-9 (ADR 0085). Optional: an older cached answer lacks them. */
+    record?: 'claimed' | 'unclaimed' | 'historical';
+    verifiedInstructor?: boolean;
     /** M14: the profile photo (a public person only; null without one). */
     photo?: { small: string; large: string } | null;
     /** ADR 0047: the latest public rank and a public school of a featured profile; null otherwise. */
@@ -80,6 +83,8 @@ interface SearchAnswer {
 
 /** A person result, as select mode hands it over (M09). */
 export type PersonHit = SearchAnswer['people'][number];
+
+const RECORD_LABELS = { claimed: 'Claimed profile', unclaimed: 'Unclaimed record', historical: 'Historical record' } as const;
 /** A school result, as select mode for schools hands it over (role replay 2026-11-25, P2-4). */
 export type SchoolHit = SearchAnswer['schools'][number];
 
@@ -279,10 +284,17 @@ function ItemBody({ item, select = false }: { item: Item; select?: boolean }) {
             {hit.matched ? <Name name={hit.matched} className="text-ui text-fg-muted [overflow-wrap:anywhere]" /> : null}
           </span>
           <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-fg-subtle">
-            {hit.verified ? (
-              <span className="inline-flex items-center gap-1 font-semibold text-fg-muted">
+            {/* Journey review P2-9 (ADR 0085): "Verified" is for links; a person's line says what
+                kind of record they are, and "Verified instructor" where the reviewers checked it. */}
+            {hit.record ? (
+              <span className="font-semibold text-fg-muted" data-testid="search-person-record" data-record={hit.record}>
+                {RECORD_LABELS[hit.record]}
+              </span>
+            ) : null}
+            {hit.verifiedInstructor ? (
+              <span className="inline-flex items-center gap-1 font-semibold text-fg-muted" data-testid="search-person-instructor">
                 <Seal kind="check" size={14} />
-                Verified
+                Verified instructor
               </span>
             ) : null}
             {where ? <span className="[overflow-wrap:anywhere]">{where}</span> : null}

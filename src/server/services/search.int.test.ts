@@ -243,6 +243,21 @@ describe('search.query', () => {
     expect(Object.fromEntries(hits.map((h) => [h.id, h.invitable]))).toEqual({ [waiting]: true, [kept]: false, [past]: false });
   });
 
+  it('says what kind of record each person is, instead of one badge for all (P2-9, ADR 0085)', async () => {
+    const own = await insertPublicPerson('demo-record-claimed', [latin('Demo Record Claimed')]);
+    const open = await insertPublicPerson('demo-record-unclaimed', [latin('Demo Record Unclaimed')]);
+    const past = await insertPublicPerson('demo-record-historical', [latin('Demo Record Historical')]);
+    const account = await createAccount({ label: 'record-claimed' });
+    await getDb().update(person).set({ stewardship: 'self', claimedByUserId: account.id }).where(eq(person.id, own));
+    await getDb().update(person).set({ kind: 'historical', lifeStatus: 'deceased' }).where(eq(person.id, past));
+    const hits = (await searchQuery(null, { q: 'Demo Record' })).people.filter((h) => h.slug.startsWith('demo-record-'));
+    expect(Object.fromEntries(hits.map((h) => [h.id, [h.record, h.verifiedInstructor]]))).toEqual({
+      [own]: ['claimed', false],
+      [open]: ['unclaimed', false],
+      [past]: ['historical', false],
+    });
+  });
+
   it('a two-letter surname finds a name that ends with it', async () => {
     await insertPublicPerson('demo-short-surname', [latin('Demo Siu Ming Ng')]);
     expect(await peopleSlugs('Ng')).toContain('demo-short-surname');

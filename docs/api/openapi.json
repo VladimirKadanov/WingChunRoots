@@ -1414,6 +1414,17 @@
                           "invitable": {
                             "type": "boolean"
                           },
+                          "record": {
+                            "type": "string",
+                            "enum": [
+                              "claimed",
+                              "unclaimed",
+                              "historical"
+                            ]
+                          },
+                          "verifiedInstructor": {
+                            "type": "boolean"
+                          },
                           "photo": {
                             "anyOf": [
                               {
@@ -1476,7 +1487,9 @@
                           "countryCode",
                           "lineageName",
                           "verified",
-                          "invitable"
+                          "invitable",
+                          "record",
+                          "verifiedInstructor"
                         ],
                         "additionalProperties": false
                       }

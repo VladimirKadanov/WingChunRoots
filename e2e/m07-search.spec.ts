@@ -240,7 +240,8 @@ test('@M07 search results contain only public persons and no private fields', as
     // M14: `photo` is public (the app's own addresses of a public person's photo, or null). ADR 0047:
     // `rank` and `school` are public too (a featured profile's latest public rank and a public school, or null).
     // ADR 0056: `invitable` is public (an unclaimed living record, which its profile page offers to claim).
-    expect(Object.keys(person).sort()).toEqual(['city', 'countryCode', 'displayName', 'id', 'invitable', 'lineageName', 'matched', 'photo', 'rank', 'school', 'slug', 'verified']);
+    // Journey review P2-9 (ADR 0085): `record` and `verifiedInstructor` are public states of the record.
+    expect(Object.keys(person).sort()).toEqual(['city', 'countryCode', 'displayName', 'id', 'invitable', 'lineageName', 'matched', 'photo', 'rank', 'record', 'school', 'slug', 'verified', 'verifiedInstructor']);
   }
   // Role replay 2026-11-25 (P2-5): the answer has events, the city named and the group to show first.
   expect(Object.keys(answer).sort()).toEqual(['events', 'first', 'lineages', 'morePeople', 'organizations', 'people', 'place', 'query', 'schools']);

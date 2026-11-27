@@ -86,6 +86,8 @@ interface PersonRow extends Record<string, unknown> {
   lineage_name: string | null;
   verified: boolean;
   invitable: boolean;
+  record: 'claimed' | 'unclaimed' | 'historical';
+  verified_instructor: boolean;
 }
 
 /**
@@ -137,6 +139,11 @@ export async function searchPeople(tx: Executor, forms: readonly QueryForm[], fi
              EXISTS (SELECT 1 FROM v_public_edge e
                       WHERE e.status = 'verified' AND (e.student_person_id = p.id OR e.teacher_person_id = p.id)) AS verified,
              (p.stewardship = 'unclaimed' AND p.kind = 'living' AND p.life_status <> 'deceased') AS invitable,
+             -- Journey review P2-9 (ADR 0085): what tells people apart, instead of one badge for all.
+             CASE WHEN p.kind = 'historical' OR p.life_status = 'deceased' THEN 'historical'
+                  WHEN p.stewardship = 'self' THEN 'claimed'
+                  ELSE 'unclaimed' END AS record,
+             COALESCE(p.instructor_status = 'verified', false) AS verified_instructor,
              h.score + CASE WHEN n.is_primary THEN ${num(RANK.primary)} ELSE 0 END AS score
         FROM hits h
         JOIN v_public_person p ON p.id = h.person_id
@@ -168,6 +175,8 @@ export async function searchPeople(tx: Executor, forms: readonly QueryForm[], fi
       lineageName: row.lineage_name,
       verified: row.verified,
       invitable: row.invitable,
+      record: row.record,
+      verifiedInstructor: row.verified_instructor,
     };
   });
   return { people, more: result.rows.length > LIMITS.people };

@@ -39,6 +39,14 @@ export const personHitSchema = z.object({
    * Public already: the profile page offers "claim" on the same records.
    */
   invitable: z.boolean(),
+  /**
+   * Journey review P2-9 (docs/adr/0085-record-labels.md): what kind of record the person is: a
+   * profile its person claimed (`claimed`), a record nobody has claimed (`unclaimed`), or a
+   * historical or deceased person's record (`historical`). Search shows this, not "Verified".
+   */
+  record: z.enum(['claimed', 'unclaimed', 'historical']),
+  /** The person is an instructor whose evidence the reviewers checked (v_public_person.instructor_status). */
+  verifiedInstructor: z.boolean(),
   /** M14: the public profile photo (the 96 px thumbnail and the 512 px image), or null. */
   photo: photoSchema.nullable().optional(),
   /**
