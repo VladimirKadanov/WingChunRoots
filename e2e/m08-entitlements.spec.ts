@@ -427,18 +427,19 @@ test('@M08 /plans labels planned features as not yet available and states that p
   await expect(page.getByTestId('plans-banner')).toHaveText(BANNER);
 
   // A comparison per audience (students, instructors); in each, every feature of the matrix in its
-  // group. From md up the planned features follow in the same table; below md they wait behind a
-  // closed disclosure with their own table (review round 1, design-3), opened here.
+  // group. The table shows what exists now; the planned features wait behind a closed disclosure
+  // with their own table at every width (journey review P3-13), opened here.
   let opened = 0;
   for (const id of ['students', 'instructors']) {
     const section = page.locator(`section#${id}`);
     const disclosure = section.getByTestId('planned-features');
-    if (await disclosure.isVisible()) {
-      await expect(disclosure).not.toHaveAttribute('open');
-      await expect(disclosure.locator('summary')).toContainText(PLANNED);
-      await disclosure.locator('summary').click();
-      opened += 1;
-    }
+    await expect(disclosure).toBeVisible();
+    await expect(disclosure).not.toHaveAttribute('open');
+    await expect(disclosure.locator('summary')).toContainText(PLANNED);
+    await disclosure.locator('summary').click();
+    opened += 1;
+    // The comparison table itself has no planned row.
+    await expect(section.locator('table').first().locator('tbody[data-group="planned"]')).toHaveCount(0);
     // ADR 0044: a hidden row (the videos, not offered for now) is on no /plans table.
     for (const f of FEATURES.filter((x) => x.hidden)) await expect(section.locator(`tr[data-feature="${f.key}"]`), f.key).toHaveCount(0);
     for (const f of FEATURES.filter((x) => !x.hidden)) {

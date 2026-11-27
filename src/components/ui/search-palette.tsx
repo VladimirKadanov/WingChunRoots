@@ -118,6 +118,12 @@ const SHEET_QUERY = '(min-width: 40rem) and (min-height: 32rem)';
  */
 const ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 /** The empty palette's links (phone review 2026-11, ADR 0053). */
+/** Journey review P3-14: the next steps when no public record matches. */
+const NOT_FOUND_LINKS = [
+  { href: '/dashboard/teachers/new', label: 'Not on the record? Add and invite your teacher' },
+  { href: '/onboarding', label: 'Is this you? Set up your profile' },
+] as const;
+
 const QUICK_LINKS: readonly { label: string; href: string }[] = [
   { label: 'Find a school near you', href: '/schools' },
   { label: 'Upcoming events', href: '/events' },
@@ -724,6 +730,26 @@ function Palette({ open, onOpenChange, onSelect, onSelectSchool, selectLabel = '
                     Only public profiles are searched. Names are spelled many ways: try the Chinese characters, Jyutping, pinyin, the Hong
                     Kong spelling or Cyrillic.
                   </p>
+                ) : null}
+                {/* Journey review P3-14: nothing found is a way on too (the pages ask a visitor to sign in first). */}
+                {trimmed && answer && count === 0 && !loading && !failed && !select ? (
+                  <nav aria-label="Next steps" className="grid px-2 pb-3" data-testid="palette-not-found-links">
+                    {NOT_FOUND_LINKS.map((link) => (
+                      <a
+                        key={link.href}
+                        href={link.href}
+                        onClick={(event) => {
+                          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                          event.preventDefault();
+                          go(link.href);
+                        }}
+                        className="flex min-h-11 items-center justify-between gap-3 rounded-sm px-2 text-ui hover:bg-surface-3"
+                      >
+                        {link.label}
+                        <ArrowRightIcon size={16} className="text-fg-muted" />
+                      </a>
+                    ))}
+                  </nav>
                 ) : null}
                 {!trimmed && recent.length === 0 && select ? (
                   <p className="px-4 py-4 text-sm text-fg-muted">

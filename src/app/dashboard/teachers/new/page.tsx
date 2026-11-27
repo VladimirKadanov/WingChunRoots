@@ -18,6 +18,7 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { HowThisWorks } from '@/components/account/how-this-works';
 import { LoadError } from '@/components/account/load-error';
 import { NEW_TEACHER_LOAD_ERROR } from '@/components/account/load-errors/new-teacher';
 import { PageRedirect } from '@/components/account/page-redirect';
@@ -204,8 +205,11 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
     <Shell
       lead={
         <>
-          Find your teacher by name, then ask them to confirm that they taught you. Each teacher answers their own request; one teacher&apos;s
-          answer never confirms another. Not on WingChunRoots, or no longer alive? Choose “Not found? Add them”.
+          <p>Find your teacher by name, then ask them to confirm that they taught you.</p>
+          <HowThisWorks className="mt-1">
+            <p>Each teacher answers their own request; one teacher&apos;s answer never confirms another.</p>
+            <p>Not on WingChunRoots, or no longer alive? Choose “Not found? Add them”.</p>
+          </HowThisWorks>
         </>
       }
     >

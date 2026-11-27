@@ -332,6 +332,16 @@ describe('trial lesson requests: who reads and answers one', () => {
     expect(audits.map((x) => x.action).sort()).toEqual(['trial.answer', 'trial.close', 'trial.close', 'trial.decline', 'trial.request', 'trial.request', 'trial.request']);
   });
 
+  it('journey review P3-1: two weeks after the answer the sender is asked to name their teacher', async () => {
+    const s = await listedSchool('nudge');
+    const a = await sender('nudge-a');
+    const q = await requestTrial(a.principal, { schoolId: s.id, contactMethod: 'email' }, meta);
+    await answerTrial(s.sifu.principal, { inquiryId: q.id, reply: 'Come on Tuesday.' }, meta);
+    expect((await myTrialInquiries(a.principal)).inquiries[0]!.nameYourTeacher).toBe(false);
+    await getDb().update(trialInquiry).set({ closedAt: new Date(Date.now() - 15 * 86_400_000) }).where(eq(trialInquiry.id, q.id));
+    expect((await myTrialInquiries(a.principal)).inquiries[0]!.nameYourTeacher).toBe(true);
+  });
+
   it('mySchools counts the open requests of each school', async () => {
     const s = await listedSchool('count');
     await requestTrial((await sender('count-a')).principal, { schoolId: s.id, contactMethod: 'email' }, meta);

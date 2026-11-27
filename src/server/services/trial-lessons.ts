@@ -346,7 +346,15 @@ export interface OwnTrialInquiry {
   scrubbed: boolean;
   createdAt: string;
   closedAt: string | null;
+  /**
+   * Journey review P3-1: an answered request at least TRIAL_TEACHER_NUDGE_DAYS old, from someone
+   * who names no teacher yet: the page asks "Started training? Name your teacher".
+   */
+  nameYourTeacher: boolean;
 }
+
+/** P3-1: how long after the school's answer the visitor is asked whether they started training. */
+export const TRIAL_TEACHER_NUDGE_DAYS = 14;
 
 /** trial.mine: the account's own requests, the newest first. */
 export async function myTrialInquiries(principal: Principal | null): Promise<{ inquiries: OwnTrialInquiry[] }> {
@@ -366,9 +374,14 @@ export async function myTrialInquiries(principal: Principal | null): Promise<{ i
     scrubbed: boolean;
     created_at: Date | string;
     closed_at: Date | string | null;
+    nudge: boolean;
   }>(sql`
     SELECT t.id, s.id AS school_id, s.slug, s.name, v.id IS NOT NULL AS public, t.status, t.preferred_times, t.message,
-           t.contact_method, t.contact_value, t.reply, t.scrubbed_at IS NOT NULL AS scrubbed, t.created_at, t.closed_at
+           t.contact_method, t.contact_value, t.reply, t.scrubbed_at IS NOT NULL AS scrubbed, t.created_at, t.closed_at,
+           (t.status = 'answered' AND t.closed_at <= now() - make_interval(days => ${TRIAL_TEACHER_NUDGE_DAYS})
+             AND NOT EXISTS (SELECT 1 FROM person me JOIN teaching_relationship r ON r.student_person_id = me.id
+                              WHERE me.claimed_by_user_id = ${p.user.id}::uuid AND me.deleted_at IS NULL
+                                AND r.status IN ('pending_teacher', 'awaiting_claim', 'under_review', 'verified', 'in_arbitration'))) AS nudge
       FROM trial_inquiry t JOIN school s ON s.id = t.school_id LEFT JOIN v_public_school v ON v.id = s.id
      WHERE t.sender_user_id = ${p.user.id}::uuid
      ORDER BY t.created_at DESC, t.id DESC
@@ -387,6 +400,7 @@ export async function myTrialInquiries(principal: Principal | null): Promise<{ i
       scrubbed: r.scrubbed,
       createdAt: new Date(r.created_at).toISOString(),
       closedAt: r.closed_at === null ? null : new Date(r.closed_at).toISOString(),
+      nameYourTeacher: r.nudge === true,
     })),
   };
 }

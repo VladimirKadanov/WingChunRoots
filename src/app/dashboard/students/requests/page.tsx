@@ -22,6 +22,7 @@ import type { ReactNode } from 'react';
 import { LoadError } from '@/components/account/load-error';
 import { STUDENT_REQUESTS_LOAD_ERROR } from '@/components/account/load-errors/student-requests';
 import { FormMessage } from '@/components/account/fields';
+import { HowThisWorks } from '@/components/account/how-this-works';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { StartAsSifu } from '@/components/dashboard/start-as-sifu';
 import { NameText } from '@/components/account/person-names';
@@ -118,10 +119,13 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
           </Link>
         </p>
         <h1 className="mt-2 font-display text-feature">Student requests</h1>
-        <p className="mt-3 max-w-[60ch] text-ui text-fg-muted">
-          Students who name you as their teacher ask you to confirm it. Approve a request and the link is confirmed; it is shown publicly once both of you have chosen “Show my profile publicly”, and until then
-          you both see it here and under Your teachers. Decline it with a reason and the student can correct it and send it again. You never edit a request yourself.
-        </p>
+        <p className="mt-3 max-w-[60ch] text-ui text-fg-muted">Students who name you as their teacher ask you to confirm it.</p>
+        <HowThisWorks className="mt-1">
+          <p>
+            Approve a request and the link is confirmed; it is shown publicly once both of you have chosen “Show my profile publicly”, and until then you both see it here and under Your teachers.
+          </p>
+          <p>Decline it with a reason and the student can correct it and send it again. You never edit a request yourself.</p>
+        </HowThisWorks>
         <p className="mt-3 text-ui">
           <Link href="/dashboard/students/invite" className="link inline-flex min-h-11 items-center font-semibold" data-testid="invite-students-link">
             Invite your students with a link or a QR code

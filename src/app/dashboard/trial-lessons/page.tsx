@@ -9,6 +9,7 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 
+import { HowThisWorks } from '@/components/account/how-this-works';
 import { LoadError } from '@/components/account/load-error';
 import { OWN_TRIAL_LOAD_ERROR } from '@/components/account/load-errors/trial-lessons';
 import { PageRedirect } from '@/components/account/page-redirect';
@@ -51,11 +52,14 @@ export default async function OwnTrialLessonsPage({ searchParams }: { searchPara
           </Link>
         </p>
         <h1 className="mt-2 font-display text-feature">Your trial lesson requests</h1>
-        <p className="mt-3 max-w-[60ch] text-ui text-fg-muted">
-          The schools you asked for a trial lesson. A school sees your profile name and the contact you chose; its answer shows here and in your
-          notifications. You can withdraw a request that waits for an answer, and then your name, contact and message are removed from it. A request
-          nobody answers is closed after 90 days and loses them the same way.
-        </p>
+        <p className="mt-3 max-w-[60ch] text-ui text-fg-muted">The schools you asked for a trial lesson, and their answers.</p>
+        <HowThisWorks className="mt-1">
+          <p>A school sees your profile name and the contact you chose; its answer shows here and in your notifications.</p>
+          <p>
+            You can withdraw a request that waits for an answer, and then your name, contact and message are removed from it. A request nobody answers is
+            closed after 90 days and loses them the same way.
+          </p>
+        </HowThisWorks>
         <div className="mt-8 grid gap-6">
           {query.sent === '1' ? (
             <p id="outcome" role="status" tabIndex={-1} className="rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm" data-testid="trial-sent">
@@ -114,6 +118,15 @@ export default async function OwnTrialLessonsPage({ searchParams }: { searchPara
                     </div>
                   ) : null}
                   {q.status === 'open' ? <WithdrawRequest inquiryId={q.id} school={q.school.name} initial={q.initial} /> : null}
+                  {/* Journey review P3-1: a few weeks after the answer, the next step on the record. */}
+                  {q.nameYourTeacher ? (
+                    <p className="text-ui" data-testid="own-trial-name-teacher">
+                      Started training?{' '}
+                      <Link href="/dashboard/teachers/new" className="link inline-flex min-h-11 items-center font-semibold">
+                        Name your teacher
+                      </Link>
+                    </p>
+                  ) : null}
                 </li>
               ))}
             </ul>
