@@ -150,6 +150,8 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
       // Hides the profile (its consent is withdrawn above). A profile staff hold is hidden already: the
       // withdrawal is recorded for the restore (taken_down_visibility) and nothing public changes.
       if (own && own.stewardship === 'self') {
+        // ADR 0088: a profile on hold cannot be hidden while the administrators decide.
+        await refuseWhileHeld(tx, own.id);
         profileHidden = await setOwnVisibility(tx, p, own, false, meta);
         profileHeld = own.takenDownAt != null;
         personId = own.id;

@@ -86,7 +86,7 @@ CREATE UNIQUE INDEX "identity_report_one_open_key" ON "identity_report" ("report
 CREATE INDEX "identity_report_subject_person_id_idx" ON "identity_report" ("subject_person_id");--> statement-breakpoint
 CREATE INDEX "identity_report_reported_user_id_idx" ON "identity_report" ("reported_user_id");--> statement-breakpoint
 CREATE INDEX "identity_report_held_by_user_id_idx" ON "identity_report" ("held_by_user_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "identity_vouch_case_voucher_key" ON "identity_vouch" ("review_case_id","voucher_user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "identity_vouch_case_side_voucher_key" ON "identity_vouch" ("review_case_id","side","voucher_user_id");--> statement-breakpoint
 CREATE INDEX "identity_vouch_voucher_user_id_idx" ON "identity_vouch" ("voucher_user_id");--> statement-breakpoint
 CREATE INDEX "identity_vouch_voucher_person_id_idx" ON "identity_vouch" ("voucher_person_id");--> statement-breakpoint
 CREATE INDEX "identity_vouch_requested_by_user_id_idx" ON "identity_vouch" ("requested_by_user_id");--> statement-breakpoint

@@ -309,8 +309,8 @@ async function ownOpenCase(db: Executor, userId: string, caseId: string, lock = 
       assignedToUserId: reviewCase.assignedToUserId,
       party: sql<boolean>`EXISTS (SELECT 1 FROM teaching_relationship r JOIN person x ON x.id IN (r.teacher_person_id, r.student_person_id) AND x.deleted_at IS NULL
                 WHERE r.id = review_case.relationship_id AND x.claimed_by_user_id = ${userId}::uuid)`,
-      // ADR 0088: the account an identity report is about is its other side.
-      reported: sql<boolean>`EXISTS (SELECT 1 FROM identity_report ir WHERE ir.review_case_id = review_case.id AND ir.reported_user_id = ${userId}::uuid)`,
+      // ADR 0088: the account an identity report is about is its other side, once the profile is held.
+      reported: sql<boolean>`EXISTS (SELECT 1 FROM identity_report ir WHERE ir.review_case_id = review_case.id AND ir.reported_user_id = ${userId}::uuid AND ir.held_at IS NOT NULL)`,
     })
     .from(reviewCase)
     .where(eq(reviewCase.id, caseId));

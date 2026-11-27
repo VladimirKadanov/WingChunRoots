@@ -133,7 +133,13 @@ export const REPORT_STATUS_LABELS: Record<string, string> = {
 };
 
 /** Free mail services: an address there shows nothing about a school. */
-const FREE_MAIL = /^(gmail|googlemail|yahoo|ymail|outlook|hotmail|live|msn|icloud|me|mac|aol|proton|protonmail|pm|gmx|web|yandex|mail|abv|dir|inbox|zoho|tutanota|tuta|fastmail|qq|163|126)\.[a-z.]+$/;
+const FREE_MAIL_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'ymail.com', 'outlook.com', 'hotmail.com', 'hotmail.co.uk', 'live.com', 'msn.com', 'icloud.com', 'me.com', 'mac.com',
+  'aol.com', 'proton.me', 'protonmail.com', 'pm.me', 'gmx.com', 'gmx.de', 'gmx.net', 'web.de', 'yandex.com', 'yandex.ru', 'mail.ru', 'mail.com', 'abv.bg', 'dir.bg', 'mail.bg',
+  'inbox.lv', 'zoho.com', 'tutanota.com', 'tuta.io', 'fastmail.com', 'qq.com', '163.com', '126.com',
+]);
+/** Whether a domain is a free mail service (the domain itself, or Yahoo's and Hotmail's country domains). */
+const isFreeMail = (domain: string) => FREE_MAIL_DOMAINS.has(domain) || /^(yahoo|hotmail|outlook|live)\.(co\.)?[a-z]{2,3}$/.test(domain);
 
 const text = (max: number, required: string) =>
   z
@@ -452,6 +458,8 @@ async function triage(principal: Principal | null, raw: z.input<typeof identityT
       if (input.outcome === 'close') {
         await resolveCase(tx, p, c, { decision: 'reject', reason: input.reason, idempotencyKey: input.idempotencyKey }, 'rejected', meta);
         await tx.update(identityReport).set({ status: 'closed', decidedAt: now, updatedAt: now }).where(eq(identityReport.id, report.id));
+        // Decision 7: a video sent before the check goes 30 days after this decision too.
+        await scheduleVideoPurge(tx, c.id, now);
         await writeAudit(tx, {
           action: 'identity.close',
           actorUserId: p.user.id,
@@ -718,7 +726,11 @@ export async function askIdentityVouch(principal: Principal | null, raw: z.input
     const field = (message: string) => new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { slug: message });
     if (!voucher?.userId) throw field('No member has this profile address.');
     if (voucher.id === report.subjectPersonId || voucher.userId === report.reporterUserId || voucher.userId === report.reportedUserId) throw field('Ask someone who is not part of this report.');
-    const [earlier] = await tx.select({ id: identityVouch.id }).from(identityVouch).where(and(eq(identityVouch.reviewCaseId, c.id), eq(identityVouch.voucherUserId, voucher.userId)));
+    // Per side: each side may ask the same person, and never learns that the other side did.
+    const [earlier] = await tx
+      .select({ id: identityVouch.id })
+      .from(identityVouch)
+      .where(and(eq(identityVouch.reviewCaseId, c.id), eq(identityVouch.side, side), eq(identityVouch.voucherUserId, voucher.userId)));
     if (earlier) return { id: earlier.id, replayed: true };
     const [asked] = await tx.select({ n: count() }).from(identityVouch).where(and(eq(identityVouch.reviewCaseId, c.id), eq(identityVouch.side, side)));
     if ((asked?.n ?? 0) >= IDENTITY_VOUCHES_PER_SIDE) throw new ServiceError('CONFLICT', `You have asked ${IDENTITY_VOUCHES_PER_SIDE} people already, the most for one report.`);
@@ -874,7 +886,7 @@ export async function addIdentityCode(principal: Principal | null, raw: z.input<
     if (!email.success) throw field('Enter an e-mail address.');
     address = email.data;
     target = address.slice(address.lastIndexOf('@') + 1);
-    if (FREE_MAIL.test(target)) throw field('Use an address at your school’s own domain, not a free mail service.');
+    if (isFreeMail(target)) throw field('Use an address at your school’s own domain, not a free mail service.');
   } else {
     let page: URL;
     try {
@@ -983,7 +995,10 @@ export async function checkIdentityPageCode(principal: Principal | null, raw: z.
     if (await ownSide(tx, p, c)) throw new ServiceError('FORBIDDEN', 'This case is about you: another administrator checks it.');
     if (code.confirmedAt) return { confirmed: true as const, replayed: true };
     if (!isOpenCase(c.status)) throw new ServiceError('CONFLICT', 'This case has been decided or closed.');
+    const report = await reportOfCase(tx, c.id);
+    if (report?.status !== 'held') throw new ServiceError('CONFLICT', 'This report is not on hold, so it takes no proof now.');
     const now = new Date();
+    if (code.expiresAt < now) throw new ServiceError('CONFLICT', 'This code has expired. The side can ask for a new one.');
     await tx.update(identityCode).set({ confirmedAt: now, confirmedByUserId: p.user.id, updatedAt: now }).where(eq(identityCode.id, code.id));
     await tx.update(reviewCase).set({ updatedAt: now }).where(eq(reviewCase.id, c.id));
     await writeAudit(tx, {
@@ -1235,7 +1250,8 @@ export async function decideIdentityReport(tx: Transaction, p: Principal, c: Cas
   const now = new Date();
   if (input.decision === 'needs_info') {
     await askParties(tx, p, c, input, meta);
-    for (const [userId] of [[report.reporterUserId], [report.reportedUserId]] as const) if (userId) await notify(tx, userId, 'case.question', { caseId: c.id }, { key: `case-question:${c.id}:${input.idempotencyKey}` });
+    // One key for each side: the e-mail key comes from it, and two recipients never share one.
+    for (const [userId, side] of [[report.reporterUserId, 'reporter'], [report.reportedUserId, 'reported']] as const) if (userId) await notify(tx, userId, 'case.question', { caseId: c.id }, { key: `case-question:${c.id}:${side}:${input.idempotencyKey}` });
     return { tags: [], photos: [] };
   }
   if (input.decision === 'reject') {
@@ -1319,8 +1335,14 @@ export async function sweepIdentityReports(db: ReturnType<typeof getDb>, now: Da
   // Plain SQL for the two lookups, so that a night without work reads two statements and no more.
   const overdue = (
     await db.execute<{ case_id: string }>(sql`
-SELECT review_case_id AS case_id FROM identity_report
- WHERE status = 'held' AND type = 'impostor' AND proof_due_at < ${now.toISOString()}::timestamptz
+SELECT r.review_case_id AS case_id FROM identity_report r
+ WHERE r.status = 'held' AND r.type = 'impostor' AND r.proof_due_at < ${now.toISOString()}::timestamptz AND r.reporter_user_id IS NOT NULL
+   -- The same "no proof from the reporter" test as below, so that kept reports never fill the batch.
+   AND NOT EXISTS (SELECT 1 FROM identity_vouch v WHERE v.review_case_id = r.review_case_id AND v.side = 'reporter' AND v.answered_at IS NOT NULL)
+   AND NOT EXISTS (SELECT 1 FROM identity_code k WHERE k.review_case_id = r.review_case_id AND k.side = 'reporter' AND k.confirmed_at IS NOT NULL)
+   AND NOT EXISTS (SELECT 1 FROM evidence_link l JOIN evidence_file f ON f.id = l.evidence_file_id AND f.deleted_at IS NULL
+                    WHERE l.review_case_id = r.review_case_id AND f.uploaded_by_user_id = r.reporter_user_id)
+ ORDER BY r.proof_due_at
  LIMIT 200`)
   ).rows.map((r) => ({ caseId: r.case_id }));
   for (const { caseId } of overdue) {
@@ -1360,6 +1382,9 @@ SELECT review_case_id AS case_id FROM identity_report
     await db.execute<{ case_id: string }>(sql`
 SELECT r.review_case_id AS case_id FROM identity_report r JOIN person p ON p.id = r.subject_person_id AND p.identity_hold_at IS NOT NULL
  WHERE r.status = 'held' AND r.hold_until < ${now.toISOString()}::timestamptz
+   -- A hold another report still keeps is not this run's work, so it never fills the batch.
+   AND NOT EXISTS (SELECT 1 FROM identity_report o WHERE o.subject_person_id = r.subject_person_id AND o.status = 'held' AND o.id <> r.id AND o.hold_until >= ${now.toISOString()}::timestamptz)
+ ORDER BY r.hold_until
  LIMIT 200`)
   ).rows.map((r) => ({ caseId: r.case_id }));
   for (const { caseId } of expired) {

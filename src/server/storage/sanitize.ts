@@ -8,7 +8,8 @@
 //     XMP, IPTC and the comments. A file sharp cannot decode is refused;
 //   - a PDF is stored as uploaded, byte for byte (its SHA-256 equals the client's);
 //   - ADR 0088 (impersonation reports): a short private video, MP4 (an ISO BMFF `ftyp` box at byte
-//     4) or WebM (EBML 1A 45 DF A3), is also stored as uploaded. sniffMime never returns one: only
+//     4 with a video brand, not an HEIC or AVIF image's) or WebM (EBML 1A 45 DF A3 with the DocType
+//     "webm"), is also stored as uploaded. sniffMime never returns one: only
 //     sniffVideo does, and only an identity report's case takes it (evidence.ts).
 
 import sharp, { type Sharp } from 'sharp';
@@ -45,9 +46,21 @@ export function sniffMime(head: Uint8Array): EvidenceDocumentMime | null {
 
 /** ADR 0088: the video type of a file by its first bytes (MP4 or WebM), or null. */
 export function sniffVideo(head: Uint8Array): EvidenceVideoMime | null {
-  if (startsWith(head, FTYP, 4)) return 'video/mp4';
-  if (startsWith(head, EBML)) return 'video/webm';
+  // MP4: `ftyp` and a video major brand. HEIC and AVIF images share the box, so a brand outside the
+  // list (heic, mif1, avif…) is no video. QuickTime (`qt  `) is what an iPhone records; it plays as MP4.
+  if (startsWith(head, FTYP, 4) && head.length >= 12 && MP4_BRANDS.has(String.fromCharCode(...head.subarray(8, 12)))) return 'video/mp4';
+  // WebM: an EBML header whose DocType is "webm" (Matroska files say "matroska").
+  if (startsWith(head, EBML) && includes(head.subarray(0, 64), WEBM_DOCTYPE)) return 'video/webm';
   return null;
+}
+
+const MP4_BRANDS = new Set(['isom', 'iso2', 'iso3', 'iso4', 'iso5', 'iso6', 'iso8', 'mp41', 'mp42', 'avc1', 'dash', 'M4V ', 'mmp4', 'qt  ']);
+/** The EBML DocType element (42 82), its one-byte size (0x84) and "webm". */
+const WEBM_DOCTYPE = [0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6d];
+
+function includes(bytes: Uint8Array, needle: readonly number[]): boolean {
+  for (let i = 0; i + needle.length <= bytes.length; i++) if (startsWith(bytes, needle, i)) return true;
+  return false;
 }
 
 export const isImage = (mime: EvidenceMime): mime is Exclude<EvidenceDocumentMime, 'application/pdf'> => mime.startsWith('image/');

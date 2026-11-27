@@ -101,7 +101,7 @@ export const identityVouch = pgTable(
     ...timestamps(),
   },
   (t) => [
-    uniqueIndex('identity_vouch_case_voucher_key').on(t.reviewCaseId, t.voucherUserId),
+    uniqueIndex('identity_vouch_case_side_voucher_key').on(t.reviewCaseId, t.side, t.voucherUserId),
     index('identity_vouch_voucher_user_id_idx').on(t.voucherUserId),
     index('identity_vouch_voucher_person_id_idx').on(t.voucherPersonId),
     index('identity_vouch_requested_by_user_id_idx').on(t.requestedByUserId),

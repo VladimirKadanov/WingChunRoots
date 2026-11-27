@@ -335,3 +335,24 @@ describe('the videos of a decided report', () => {
     expect(audit).toBeTruthy();
   });
 });
+
+describe('review fixes', () => {
+  it('asks both sides for more information, and lets each side ask the same person without learning of the other', async () => {
+    const moderator = await staff(`id-mod-${suffix()}`, 'moderator');
+    const admin = await staff(`id-admin-${suffix()}`, 'admin');
+    const w = await impersonated('fixes');
+    const caseId = await fileAndHold(w, moderator);
+
+    const theirs = await askIdentityVouch(w.impostor.principal, { caseId, slug: w.teacher.slug, kind: 'teacher' }, meta);
+    const mine = await askIdentityVouch(w.reporter.principal, { caseId, slug: w.teacher.slug, kind: 'teacher' }, meta);
+    expect(mine.replayed).toBe(false);
+    expect(mine.id).not.toBe(theirs.id);
+
+    await decideReviewCase(admin.principal, { caseId, decision: 'needs_info', reason: 'A fictional question for both sides.', idempotencyKey: key() }, meta);
+    for (const userId of [w.reporter.account.id, w.impostor.account.id]) {
+      const asked = await getDb().select({ id: notification.id }).from(notification).where(and(eq(notification.userId, userId), eq(notification.template, 'case.question')));
+      expect(asked.length, userId).toBe(1);
+    }
+  });
+});
+

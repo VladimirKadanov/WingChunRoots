@@ -15589,6 +15589,13 @@
           "opclass": null
         },
         {
+          "value": "side",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
           "value": "voucher_user_id",
           "isExpression": false,
           "asc": true,
@@ -15601,7 +15608,7 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "identity_vouch_case_voucher_key",
+      "name": "identity_vouch_case_side_voucher_key",
       "entityType": "indexes",
       "schema": "public",
       "table": "identity_vouch"
