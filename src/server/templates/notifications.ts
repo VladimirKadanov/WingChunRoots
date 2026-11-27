@@ -1719,6 +1719,22 @@ const schoolTrialDeclined: NotificationTemplate<TrialNotice & { reason: string |
   sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000d1', inquiryId: '0190a5c0-0000-7000-8000-0000000000d2', name: 'Demo Wing Chun Hall', reason: null },
 };
 
+/** "school.instructor-invited" (journey review P3-10, ADR 0087): a school's owner asks a member to teach there. */
+const schoolInstructorInvited: NotificationTemplate<{ schoolId: string; name: string }> = {
+  name: 'school.instructor-invited',
+  parse(payload) {
+    const data = payloadObject('school.instructor-invited', payload);
+    if (typeof data.name !== 'string' || data.name.trim() === '' || data.name.length > 200) throw new NotificationDataError('school.instructor-invited', 'name must be a short text');
+    return { schoolId: uuidOf('school.instructor-invited', 'schoolId', payload), name: data.name.trim() };
+  },
+  render: ({ name }) => ({
+    title: 'A school lists you as an instructor',
+    body: [{ text: `“${name}” asks you to be listed as one of its instructors. You are shown on its page only once you accept.` }],
+    action: { label: 'Accept or decline', href: '/dashboard/schools#instructor-invitations' },
+  }),
+  sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000d1', name: 'Demo Wing Chun Hall' },
+};
+
 // --- Billing (M22; docs/adr/0025-billing.md) ------------------------------------------------------
 // Test mode only: every text says so. The date and what happens, never a countdown (CLAUDE.md §11).
 
@@ -2212,6 +2228,7 @@ export const NOTIFICATION_TEMPLATES = {
   'school.trial-requested': schoolTrialRequested,
   'school.trial-answered': schoolTrialAnswered,
   'school.trial-declined': schoolTrialDeclined,
+  'school.instructor-invited': schoolInstructorInvited,
   // M22.
   'billing.started': billingStarted,
   'billing.cancel-scheduled': billingCancelScheduled,

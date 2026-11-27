@@ -1489,7 +1489,7 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
        UNION SELECT r.teacher_person_id FROM teaching_relationship r WHERE r.student_person_id = ${own?.id ?? null}::uuid
           AND r.status IN (${sql.join(PUBLIC_RELATIONSHIP_STATUSES.map((s) => sql`${s}`), sql`, `)})
        UNION SELECT si.person_id FROM school_instructor si JOIN school s ON s.id = si.school_id
-          WHERE s.created_by_user_id = ${p.user.id}::uuid AND s.deleted_at IS NULL
+          WHERE s.created_by_user_id = ${p.user.id}::uuid AND s.deleted_at IS NULL AND si.status <> 'invited'
        UNION SELECT m.person_id FROM organization_membership m
           WHERE ${orgIds.length > 0 ? sql`m.organization_id = ANY (${SQL_IDS(orgIds)})` : sql`false`}
             AND (m.ends_on IS NULL OR m.ends_on > current_date)

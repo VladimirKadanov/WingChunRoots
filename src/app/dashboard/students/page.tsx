@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { LoadError } from '@/components/account/load-error';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { NameText } from '@/components/account/person-names';
+import { buttonVariants } from '@/components/ui/button-variants';
 import { guardRoute } from '@/server/auth/web';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
@@ -28,6 +29,9 @@ export const metadata: Metadata = {
 };
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
+
+/** P3-11: from this many students the list has a name filter. */
+const STUDENT_FILTER_FROM = 10;
 
 const one = (value: string | string[] | undefined) => (typeof value === 'string' ? value : '');
 
@@ -59,6 +63,11 @@ export default async function StudentsPassportPage({ searchParams }: { searchPar
         ? 'Your rank ladder is saved.'
         : null;
   const canGrade = view.students.some((s) => s.canRecord);
+  // Journey review P3-11: a long list gets a name filter (without JavaScript: a GET form).
+  const q = one(query.q).trim().slice(0, 100);
+  const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  const shown = q ? view.students.filter((s) => fold(s.name.value).includes(fold(q))) : view.students;
+  const filterable = view.students.length > STUDENT_FILTER_FROM;
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
@@ -103,8 +112,37 @@ export default async function StudentsPassportPage({ searchParams }: { searchPar
                   : 'You have no profile yet. Finish setting up your profile first: you record for your students from it.'}
               </p>
             ) : (
+              <>
+              {filterable || q ? (
+                <form method="get" action={STUDENTS_PAGE} role="search" aria-label="Find a student" className="mb-3 flex flex-wrap items-end gap-3" data-testid="students-filter">
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    Student&apos;s name
+                    <input
+                      name="q"
+                      type="search"
+                      defaultValue={q}
+                      maxLength={100}
+                      autoComplete="off"
+                      className="min-h-11 w-[min(22rem,100%)] rounded-sm border border-border-strong bg-bg px-3 text-ui font-normal"
+                    />
+                  </label>
+                  <button type="submit" className={buttonVariants({ variant: 'secondary' })}>
+                    Find
+                  </button>
+                  {q ? (
+                    <Link href={STUDENTS_PAGE} className="link inline-flex min-h-11 items-center text-ui">
+                      Show all {view.students.length}
+                    </Link>
+                  ) : null}
+                </form>
+              ) : null}
+              {q && shown.length === 0 ? (
+                <p className="text-fg-muted" data-testid="students-filter-empty">
+                  No student&apos;s name contains “{q}”.
+                </p>
+              ) : null}
               <ul className="grid gap-1" aria-label="Your students">
-                {view.students.map((s) => (
+                {shown.map((s) => (
                   <li key={s.personId} data-testid="passport-student" data-relationship={s.relationship ?? 'organization'}>
                     <Link href={studentPage(s.personId)} className="flex min-h-11 flex-wrap items-center gap-x-3 rounded-sm px-2 py-1.5 hover:bg-surface-2">
                       <span className="link font-display text-lg">
@@ -115,6 +153,7 @@ export default async function StudentsPassportPage({ searchParams }: { searchPar
                   </li>
                 ))}
               </ul>
+              </>
             )}
           </Block>
         </div>

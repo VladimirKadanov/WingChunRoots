@@ -22,6 +22,7 @@ import {
   SCHOOL_PHOTO_KINDS,
   SCHOOL_PHOTO_STATUSES,
   SCHOOL_INSTRUCTOR_ROLES,
+  SCHOOL_INSTRUCTOR_STATUSES,
   SCHOOL_STATUSES,
   timestamps,
 } from './common';
@@ -159,12 +160,15 @@ export const schoolInstructor = pgTable(
       .notNull()
       .references(() => person.id, { onDelete: 'cascade' }),
     role: text('role', { enum: SCHOOL_INSTRUCTOR_ROLES }).notNull().default('instructor'),
+    /** Journey review P3-10 (ADR 0087): listed, invited (not shown) or accepted. */
+    status: text('status', { enum: SCHOOL_INSTRUCTOR_STATUSES }).notNull().default('listed'),
     ...timestamps(),
   },
   (t) => [
     primaryKey({ name: 'school_instructor_pkey', columns: [t.schoolId, t.personId] }),
     index('school_instructor_person_id_idx').on(t.personId),
     check('school_instructor_role_check', inList(t.role.name, SCHOOL_INSTRUCTOR_ROLES)),
+    check('school_instructor_status_check', inList(t.status.name, SCHOOL_INSTRUCTOR_STATUSES)),
   ],
 );
 

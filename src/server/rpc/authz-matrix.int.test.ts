@@ -1536,6 +1536,17 @@ const ROWS: Row[] = [
   },
   { path: 'schools.options', make: () => ({ input: {} }), expect: { ...own('CONFLICT'), member: 'ok' } },
   {
+    // Journey review P3-10 (ADR 0087): only the invited member answers the invitation.
+    path: 'schools.answerInstructor',
+    make: async () => {
+      const s = await draftSchool();
+      const invited = await actor('school-invited');
+      await getDb().execute(sql`INSERT INTO school_instructor (school_id, person_id, role, status) VALUES (${s.schoolId}::uuid, ${invited.personId}::uuid, 'instructor', 'invited')`);
+      return { owner: invited, input: { schoolId: s.schoolId, accept: true } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
     path: 'schools.create',
     make: async () => {
       const owner = await actor('school-creator', { sifu: true });
@@ -2902,6 +2913,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     roles: ['anonymous', 'member', 'owner'],
   },
   { action: 'src/app/dashboard/schools/actions.ts#answerOrganizationLinkAction', row: 'organizations.answerSchoolLink', form: (i) => ({ ...same(i), answer: 'accept' }), roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/schools/actions.ts#answerInstructorAction', row: 'schools.answerInstructor', form: (i) => ({ ...same(i), answer: 'accept' }), roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/admin/organizations/actions.ts#grantOrganizationPlanAction', row: 'organizations.grant', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/organizations/actions.ts#revokeOrganizationPlanAction', row: 'organizations.revokeGrant', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   // M24: the organization tools' buttons post the procedures' fields; `party` is another organization's owner.

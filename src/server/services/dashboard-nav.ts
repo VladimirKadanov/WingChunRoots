@@ -4,7 +4,7 @@
 // cached (the @nav slot reads it per request behind <Suspense>). Each page still guards itself:
 // the menu is only a way there.
 
-import { and, asc, count, eq, isNull, or } from 'drizzle-orm';
+import { and, asc, count, eq, isNull, ne, or } from 'drizzle-orm';
 
 import { requireUser } from '../auth/guards';
 import { isStaffRole, type Principal } from '../auth/principal';
@@ -77,7 +77,7 @@ export async function dashboardNav(principal: Principal | null): Promise<Dashboa
           .select({ n: count() })
           .from(schoolInstructor)
           .innerJoin(school, eq(school.id, schoolInstructor.schoolId))
-          .where(and(eq(schoolInstructor.personId, own.id), isNull(school.deletedAt)))
+          .where(and(eq(schoolInstructor.personId, own.id), ne(schoolInstructor.status, 'invited'), isNull(school.deletedAt)))
           .then(([row]) => row?.n ?? 0),
       ])
     : [0, 0];

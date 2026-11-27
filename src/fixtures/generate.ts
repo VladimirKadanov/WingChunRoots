@@ -945,7 +945,7 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     });
     schoolPrivateLocations.push({ schoolId: id, exactPoint: exact, addressLine: 'Fictional demo address', createdAt: at, updatedAt: at });
     spec.instructors.forEach((p, i) =>
-      schoolInstructors.push({ schoolId: id, personId: p.row.id, role: i === 0 ? 'head_instructor' : 'instructor', createdAt: at, updatedAt: at }),
+      schoolInstructors.push({ schoolId: id, personId: p.row.id, role: i === 0 ? 'head_instructor' : 'instructor', status: 'listed', createdAt: at, updatedAt: at }),
     );
   }
 
@@ -1307,7 +1307,7 @@ function demoSchoolActivity(seed: number, r: DemoSchoolActivityRefs): Pick<Fixtu
       firstTrialFree: false,
     });
     schoolPrivateLocations.push({ schoolId, exactPoint: exact, addressLine: 'Fictional demo address', createdAt: spec.created, updatedAt: spec.last });
-    schoolInstructors.push({ schoolId, personId: r.instructor, role: 'head_instructor', createdAt: spec.created, updatedAt: spec.created });
+    schoolInstructors.push({ schoolId, personId: r.instructor, role: 'head_instructor', status: 'listed', createdAt: spec.created, updatedAt: spec.created });
     const key = `${schoolId}:${spec.last.getTime()}`;
     const confirmBy = new Date(Math.max(spec.last.getTime() + SCHOOL_HIDDEN_DAYS * 86_400_000, spec.awaiting.getTime() + SCHOOL_CONFIRM_GRACE_DAYS * 86_400_000));
     notifications.push(

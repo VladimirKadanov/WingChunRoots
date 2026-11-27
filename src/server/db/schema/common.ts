@@ -189,6 +189,12 @@ export const SCHOOL_STATUSES = ['draft', 'pending_review', 'active', 'hidden', '
 export const SCHOOL_FORMS = ['siu_nim_tao', 'chum_kiu', 'biu_jee', 'muk_yan_jong', 'luk_dim_boon_kwan', 'baat_jaam_do'] as const;
 export const SCHOOL_INSTRUCTOR_ROLES = ['head_instructor', 'instructor', 'assistant'] as const;
 /**
+ * Journey review P3-10 (ADR 0087): how an instructor came onto a school. `listed`: the head
+ * instructor or one of their confirmed students (shown while that link holds); `invited`: another
+ * member asked to teach there, not shown until they accept; `accepted`: they accepted.
+ */
+export const SCHOOL_INSTRUCTOR_STATUSES = ['listed', 'invited', 'accepted'] as const;
+/**
  * M20 (docs/adr/0023-school-activity.md): the activity check of a listed school (specification
  * §7.3). `current` while its listing account edited or confirmed it within SCHOOL_AWAITING_DAYS;
  * `awaiting_confirmation` from day 90, when the owner is asked to confirm it (still public); `hidden`

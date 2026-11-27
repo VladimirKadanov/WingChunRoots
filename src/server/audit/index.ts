@@ -20,6 +20,9 @@ export type AuditAction =
   | 'person.create'
   // Journey review P2-10 (ADR 0086): a duplicate record merged into the kept one (ids and counts only).
   | 'person.merge'
+  // Journey review P3-10 (ADR 0087): an invited member accepts or declines teaching at a school.
+  | 'school.instructor_accept'
+  | 'school.instructor_decline'
   // M08: plans (plan §6.5, §6.6).
   | 'grant.create'
   | 'grant.revoke'

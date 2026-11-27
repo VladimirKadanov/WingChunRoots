@@ -190,6 +190,8 @@ export const NOTIFICATION_CATALOG = {
   'school.trial-requested': mailed('schools', 'notice'),
   'school.trial-answered': mailed('schools', 'notice'),
   'school.trial-declined': mailed('schools', 'notice'),
+  // Journey review P3-10 (ADR 0087): a school's owner asks a member to teach there; they accept or decline.
+  'school.instructor-invited': mailed('schools', 'notice'),
   // M22: a paid subscription in test mode (docs/adr/0025-billing.md; DEFAULT M22, question 6): in
   // the Billing category, e-mailed always, as security and account notices are.
   'billing.started': mailed('billing', 'notice'),

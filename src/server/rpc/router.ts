@@ -259,6 +259,8 @@ import {
   schoolsSearch,
   schoolUpdateInput,
   schoolViewportInput,
+  answerInstructorInput,
+  answerInstructorInvitation,
   submitSchool,
   updateSchool,
 } from '../services/schools';
@@ -1319,6 +1321,15 @@ export const router = {
     mine: base
       .route({ method: 'GET', path: '/schools/mine', summary: 'The schools the signed-in account listed, with their status and whether the pin shows' })
       .handler(({ context }) => mySchools(context.principal)),
+    // Journey review P3-10 (docs/adr/0087-school-instructor-invite.md).
+    answerInstructor: base
+      .route({
+        method: 'POST',
+        path: '/schools/instructor-invitations/answer',
+        summary: 'Accept or decline a school’s invitation to be listed as one of its instructors (the invited member only); audited',
+      })
+      .input(answerInstructorInput)
+      .handler(({ context, input }) => answerInstructorInvitation(context.principal, input, context.meta)),
     edit: base
       .route({ method: 'GET', path: '/schools/mine/{id}', summary: "One of the account's own schools for the editor, with the review state, the upgrade offer and the cities (optionally those matching `city`)" })
       .input(schoolIdInput.extend({ city: schoolEditorInput.shape.city }))

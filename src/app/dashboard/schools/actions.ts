@@ -9,6 +9,8 @@
 // Success goes to the school's page in the dashboard with what happened (?saved=1, ?sent=1,
 // ?confirmed=1), by the school's id only.
 //
+// Journey review P3-10: the answer to an invitation to teach at a school (schools.answerInstructor).
+//
 // M21: the schedule and fees (schools.updateSchedule) and the answers to trial lesson requests
 // (trial.answer, trial.decline, trial.close).
 
@@ -22,7 +24,7 @@ import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { linkForm } from '../organization/form-ids';
-import { LISTING_BACK, type ListingBack, listingForm, SCHEDULE_FORM, SCHOOL_ACTION_FORM, SCHOOL_FORM, trialForm } from './form-ids';
+import { instructorForm, LISTING_BACK, type ListingBack, listingForm, SCHEDULE_FORM, SCHOOL_ACTION_FORM, SCHOOL_FORM, trialForm } from './form-ids';
 
 /** M21: the rows of the schedule form at most (the 30 slots a schedule holds, and none more). */
 const SCHEDULE_ROWS_MAX = 30;
@@ -51,6 +53,7 @@ function readFields(form: FormData) {
     ['contactEmail', 508],
     ['contactPhone', 80],
     ['addressLine', 400],
+    ['inviteSlug', 400],
     ['description', 4000],
     ['idempotencyKey', 64],
   ] as const) {
@@ -80,6 +83,7 @@ function readFields(form: FormData) {
       description: values.description ?? null,
       formsTaught: formsTaught as never[],
       instructorIds,
+      inviteSlug: values.inviteSlug ?? null,
     },
     // A typed point that does not parse is the pin's error, as the procedure's own message says.
     badPoint: (lat !== '' || lng !== '') && point === null,
@@ -182,6 +186,21 @@ export async function answerOrganizationLinkAction(_previous: FormState, form: F
     return formResult({ form: linkForm(linkId), page: LIST, anchor: outcomeTarget(linkForm(linkId), state, true) }, state);
   }
   redirect(`${LIST}?organization=${answer === 'accept' ? 'accepted' : 'refused'}#organizations`);
+}
+
+/** Journey review P3-10 (ADR 0087): "Accept" or "Decline" a school's invitation to teach there (schools.answerInstructor). */
+export async function answerInstructorAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const schoolId = textValue(form, 'schoolId', 40);
+  const answer = textValue(form, 'answer', 10);
+  try {
+    await serverClient(await headers(), await getRequestPrincipal()).schools.answerInstructor({ schoolId, accept: answer === 'accept' ? true : answer === 'decline' ? false : (answer as unknown as boolean) });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(`${LIST}#instructor-invitations`);
+    const state = formStateFromFailure(error);
+    return formResult({ form: instructorForm(schoolId), page: LIST, anchor: outcomeTarget(instructorForm(schoolId), state, true) }, state);
+  }
+  redirect(`${LIST}?instructor=${answer === 'accept' ? 'accepted' : 'declined'}#instructor-invitations`);
 }
 
 /** "End link" from the school's side (organizations.endSchoolLink). */

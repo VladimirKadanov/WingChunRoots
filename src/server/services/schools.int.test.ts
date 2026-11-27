@@ -26,7 +26,7 @@ import { carryOutDeletionFromCommandLine, consentWithdraw, requestAccountDeletio
 import { profileUpdate } from './profile';
 import { key, member, meta, newLineage, principalOf, staff } from './relationships.test-support';
 import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
-import { confirmSchool, createSchool, mySchools, radiusQuery, schoolEditor, schoolGet, schoolsInViewport, schoolsSearch, submitSchool, updateSchool } from './schools';
+import { answerInstructorInvitation, confirmSchool, createSchool, INVITE_NOT_FOUND, mySchools, radiusQuery, schoolEditor, schoolGet, schoolsInViewport, schoolsSearch, submitSchool, updateSchool } from './schools';
 
 const cache = vi.hoisted(() => ({ revalidated: [] as string[] }));
 vi.mock('next/cache', () => ({
@@ -238,6 +238,43 @@ describe('listing a school', () => {
     await getDb().update(school).set({ addressLine: address }).where(eq(school.id, created.id));
     const view = await getDb().execute<{ address_line: string | null }>(sql`SELECT address_line FROM v_public_school WHERE id = ${created.id}::uuid`);
     expect(view.rows[0]?.address_line ?? null).toBeNull();
+  });
+
+  it('invites any member with a public profile as an instructor; shown only once they accept (P3-10, ADR 0087)', async () => {
+    const pro = await asSifu('p310-owner', 'pro_sifu');
+    const base = await fields();
+    const guest = await member('p310-guest');
+    const created = await createSchool(pro.principal, { ...base, inviteSlug: `https://example.test/people/${guest.slug}`, idempotencyKey: key() }, meta);
+    const [row] = await getDb().select({ status: schoolInstructor.status }).from(schoolInstructor).where(and(eq(schoolInstructor.schoolId, created.id), eq(schoolInstructor.personId, guest.personId)));
+    expect(row!.status).toBe('invited');
+    const notices = await getDb().execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM notification WHERE user_id = ${guest.account.id} AND template = 'school.instructor-invited'`);
+    expect(notices.rows[0]?.n).toBe(1);
+    await getDb().update(school).set({ status: 'active' }).where(eq(school.id, created.id));
+    const shownBefore = await getDb().execute<{ ids: string[] }>(sql`SELECT instructor_person_ids::text[] AS ids FROM v_public_school WHERE id = ${created.id}::uuid`);
+    expect(shownBefore.rows[0]?.ids ?? []).not.toContain(guest.personId);
+    const mine = await mySchools(guest.principal);
+    expect(mine.invitations.map((i) => i.id)).toEqual([created.id]);
+    expect(mine.teachingAt).toEqual([]);
+    // An unknown address, or a record without its own account, is refused.
+    await expect(updateSchool(pro.principal, { ...base, id: created.id, instructorIds: [guest.personId], inviteSlug: 'demo-no-such-person' }, meta)).rejects.toMatchObject({ fields: { inviteSlug: INVITE_NOT_FOUND } });
+
+    expect((await answerInstructorInvitation(guest.principal, { schoolId: created.id, accept: true }, meta)).status).toBe('accepted');
+    const shownAfter = await getDb().execute<{ ids: string[] }>(sql`SELECT instructor_person_ids::text[] AS ids FROM v_public_school WHERE id = ${created.id}::uuid`);
+    expect(shownAfter.rows[0]?.ids).toContain(guest.personId);
+    // An edit keeps the acceptance.
+    await updateSchool(pro.principal, { ...base, id: created.id, instructorIds: [guest.personId], description: 'Changed (fictional).' }, meta);
+    const [kept] = await getDb().select({ status: schoolInstructor.status }).from(schoolInstructor).where(and(eq(schoolInstructor.schoolId, created.id), eq(schoolInstructor.personId, guest.personId)));
+    expect(kept!.status).toBe('accepted');
+    // Someone else has no invitation to answer.
+    const other = await member('p310-other');
+    await expect(answerInstructorInvitation(other.principal, { schoolId: created.id, accept: true }, meta)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    // A second invitation is declined: the row goes.
+    const second = await member('p310-second');
+    await updateSchool(pro.principal, { ...base, id: created.id, instructorIds: [guest.personId], inviteSlug: second.slug, description: 'Again (fictional).' }, meta);
+    expect((await answerInstructorInvitation(second.principal, { schoolId: created.id, accept: false }, meta)).status).toBe('declined');
+    const gone = await getDb().select().from(schoolInstructor).where(and(eq(schoolInstructor.schoolId, created.id), eq(schoolInstructor.personId, second.personId)));
+    expect(gone).toEqual([]);
   });
 
   it('a reviewer cannot decide their own listing, and a returned listing is a draft with the reason', async () => {

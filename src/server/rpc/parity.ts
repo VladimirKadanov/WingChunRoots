@@ -115,6 +115,7 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/organization/actions.ts#requestOrganizationSchoolAction': { rpc: ['organizations.requestSchool'] },
   'src/app/dashboard/organization/actions.ts#endOrganizationSchoolAction': { rpc: ['organizations.endSchoolLink'] },
   'src/app/dashboard/schools/actions.ts#answerOrganizationLinkAction': { rpc: ['organizations.answerSchoolLink'] },
+  'src/app/dashboard/schools/actions.ts#answerInstructorAction': { rpc: ['schools.answerInstructor'] },
   'src/app/dashboard/schools/actions.ts#endOrganizationLinkAction': { rpc: ['organizations.endSchoolLink'] },
   // M21: trial lesson requests and the schedule and fees.
   'src/app/schools/[slug]/trial/actions.ts#requestTrialAction': { rpc: ['trial.request'] },

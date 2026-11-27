@@ -8,7 +8,7 @@
 // cached (no 'use cache': the page reads the session).
 
 import { allowanceSentence } from '@/lib/allowance-text';
-import { and, asc, count, desc, eq, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
 
 import { hasStaff2FA, requireUser } from '../auth/guards';
 import { isStaffRole, type Principal, type StaffRole } from '../auth/principal';
@@ -316,7 +316,8 @@ async function ownSchools(db: ReturnType<typeof getDb>, userId: string, ownId: s
     })
     .from(school)
     .innerJoin(place, eq(place.id, school.placeId))
-    .leftJoin(schoolInstructor, and(eq(schoolInstructor.schoolId, school.id), eq(schoolInstructor.personId, ownId)))
+    // P3-10 (ADR 0087): an invitation not yet accepted is not a school of yours.
+    .leftJoin(schoolInstructor, and(eq(schoolInstructor.schoolId, school.id), eq(schoolInstructor.personId, ownId), ne(schoolInstructor.status, 'invited')))
     .where(and(isNull(school.deletedAt), or(eq(school.createdByUserId, userId), eq(schoolInstructor.personId, ownId))))
     .orderBy(asc(school.name), asc(school.id));
   const trials = await openTrialCounts(

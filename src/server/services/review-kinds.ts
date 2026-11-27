@@ -208,7 +208,7 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
     SELECT EXISTS (SELECT 1 FROM teaching_relationship r WHERE r.teacher_person_id = ${c.personId}::uuid
                      AND r.status IN ('verified', 'in_arbitration', 'pending_teacher', 'awaiting_claim'))
         OR EXISTS (SELECT 1 FROM school_instructor i JOIN school s ON s.id = i.school_id
-                    WHERE i.person_id = ${c.personId}::uuid AND s.deleted_at IS NULL) AS teaches`).then((r) => r.rows);
+                    WHERE i.person_id = ${c.personId}::uuid AND s.deleted_at IS NULL AND i.status <> 'invited') AS teaches`).then((r) => r.rows);
   const madeSifu = teaches?.teaches ? await sifuOnClaim(tx, p, c.openedByUserId, c.id, meta) : false;
   // awaiting_claim → pending_teacher: only now, after the approved claim (plan §6.7). Every
   // request that waits for this record moves, not only the one of this case: other students may

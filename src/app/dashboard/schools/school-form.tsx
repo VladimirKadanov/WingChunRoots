@@ -56,7 +56,7 @@ export interface SchoolFormProps {
   /** The city search the page answered ("Find a city or town"), to name its matches. */
   cityQuery: string | null;
   forms: { key: string; label: string }[];
-  instructorOptions: { id: string; label: string; self: boolean }[];
+  instructorOptions: { id: string; label: string; self: boolean; invite?: 'invited' | 'accepted' | null }[];
   styles: { light: string; dark: string };
   /** A new school's request key (one per form: a resent form saves once). */
   idempotencyKey: string | null;
@@ -76,6 +76,7 @@ const LABELS: Record<string, string> = {
   description: 'About the school',
   formsTaught: 'Forms taught',
   instructorIds: 'Instructors',
+  inviteSlug: 'Invite another instructor',
 };
 
 const radioClass = cx(
@@ -394,13 +395,39 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
 
       <fieldset className="grid gap-1" data-field="">
         <legend className="mb-1 text-sm font-semibold">{LABELS.instructorIds}</legend>
-        <p className="text-sm text-fg-muted">You are the head instructor. Others can be added from the students you confirmed.</p>
+        <p className="text-sm text-fg-muted">
+          You are the head instructor. Your confirmed students are listed at once; any other member with a public profile is invited and listed once they accept.
+        </p>
         <FieldError id={`${fieldId(form, 'instructorIds')}-error`} error={error('instructorIds')} />
         {others.length > 0 ? (
-          others.map((o) => <Check key={o.id} name="instructorIds" value={o.id} label={o.label} defaultChecked={saved('instructor', o.id, school?.instructorIds)} />)
+          others.map((o) => (
+            <Check
+              key={o.id}
+              name="instructorIds"
+              value={o.id}
+              label={o.invite === 'invited' ? `${o.label} (invited, waiting for them to accept)` : o.invite === 'accepted' ? `${o.label} (accepted)` : o.label}
+              defaultChecked={saved('instructor', o.id, school?.instructorIds)}
+            />
+          ))
         ) : (
           <p className="text-sm text-fg-muted">None of your confirmed students can be added yet.</p>
         )}
+        {/* Journey review P3-10 (ADR 0087): any member with a public profile, by the address of their profile. */}
+        <TextField
+          form={form}
+          name="inviteSlug"
+          label={LABELS.inviteSlug}
+          state={state}
+          optional
+          autoComplete="off"
+          spellCheck={false}
+          autoCapitalize="none"
+          translate="no"
+          maxLength={200}
+          hint="The address of their profile, or the part after /people/. They get a notification and accept or decline."
+          defaultValue=""
+          className="mt-3"
+        />
       </fieldset>
 
       <div>
