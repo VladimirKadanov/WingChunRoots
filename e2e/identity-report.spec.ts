@@ -123,6 +123,7 @@ test('@identity a member reports a profile pretending to be them: the moderator 
 
   // The reporter asks the profile's teacher to vouch.
   await page.goto(`/dashboard/cases/${caseId}`);
+  await visible(page.getByText('Ask someone to vouch for you')).click();
   const vouchForm = visible(page.getByTestId('identity-vouch-form'));
   await vouchForm.getByLabel('Their profile address').fill(`/people/${teacher.slug}`);
   await vouchForm.getByLabel('My verified teacher, or a verified instructor').check();
@@ -155,12 +156,13 @@ test('@identity a member reports a profile pretending to be them: the moderator 
   await admin.page.goto(`/admin/review/${caseId}`);
   await expect(visible(admin.page.getByTestId('identity-side-reporter').getByTestId('identity-proof-vouching'))).toContainText(/1/);
   await visible(admin.page.getByTestId('assign-self')).getByRole('button').click();
-  await expect(visible(admin.page.getByTestId('case-outcome'))).toBeVisible();
+  await admin.page.waitForURL(/[?&]done=assigned/);
   const verify = visible(admin.page.getByTestId('decide-verify'));
   await verify.locator('summary').click();
   await expect(verify.getByRole('checkbox')).toBeChecked();
   await verify.getByRole('textbox').fill('Fictional: the profile’s verified teacher confirmed who the reporter is.');
   await verify.getByRole('button').last().click();
+  await admin.page.waitForURL(/[?&]done=verified/);
   await expect(visible(admin.page.getByTestId('case-outcome'))).toBeVisible();
 
   const after = await getDb().execute<{ claimed_by: string | null; held: string | null; banned: boolean | null; status: string }>(sql`
