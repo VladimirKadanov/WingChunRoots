@@ -363,4 +363,17 @@ export const BG_ARCHIVE: AdminDict = {
   'Public source line, optional': 'Публичен ред за източника, по избор',
   'Shown to everyone after "According to".': 'Показва се на всички след „According to“.',
   'Choose how sure the record is.': 'Изберете колко сигурен е записът.',
+  // Journey review P2-10 (ADR 0086): merging duplicates and the common roots.
+  'Record to keep': 'Записът, който остава',
+  'This record’s links, names and evidence move there, and its address opens the kept record.': 'Връзките, имената и доказателствата на този запис се преместват там, а адресът му отваря запазения запис.',
+  'Merge into the chosen record': 'Слей с избрания запис',
+  'Merged. The old address now opens the kept record, {address}.': 'Слято. Старият адрес вече отваря запазения запис, {address}.',
+  'Merge into…': 'Слей с…',
+  'This is a member’s own record. A member’s record is never merged here; their links come from their teachers or a claim.': 'Това е собственият запис на член. Запис на член не се слива тук; връзките му идват от учителите му или от иск.',
+  'Choose another record to keep: this is the same one.': 'Изберете друг запис, който да остане: това е същият.',
+  'These two records are linked to each other. End that link first, then merge.': 'Двата записа са свързани помежду си. Първо прекратете тази връзка, после ги слейте.',
+  'This record has more than names, links and evidence (an event, a passport, a school, a claim, an invitation, a follow or an organization). Only a record with names, links and evidence is merged.': 'Този запис има повече от имена, връзки и доказателства (събитие, паспорт, школа, иск, покана, следване или организация). Слива се само запис с имена, връзки и доказателства.',
+  'This record has a link that is still waiting (a request or a claim). Decide it first, then merge.': 'Този запис има връзка, която още чака (заявка или иск). Първо я решете, после слейте.',
+  'Give the address of the record to keep.': 'Посочете адреса на записа, който остава.',
+  'This link is kept in the common roots already. Every lineage shares it from there; it is not recorded twice.': 'Тази връзка вече е записана в общите корени. Всяка линия я споделя оттам; не се записва два пъти.',
 };

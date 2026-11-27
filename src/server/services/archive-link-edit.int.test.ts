@@ -116,7 +116,7 @@ describe('archiveEditor.editLink', () => {
     expect(sourceOnly.changed).toBe(true);
     const [kept] = await getDb().select({ id: trainingPeriod.id }).from(trainingPeriod).where(eq(trainingPeriod.relationshipId, l.id));
     expect(kept!.id).toBe(period!.id);
-    expect((await editsOf(l.id)).map((a) => [a.role, (a.after as { changed: unknown }).changed])).toEqual([['admin', { years: false, source: true }]]);
+    expect((await editsOf(l.id)).map((a) => [a.role, (a.after as { changed: unknown }).changed])).toEqual([['admin', { years: false, source: true, certainty: false, publicSource: false }]]);
 
     cache.revalidateTag.mockClear();
     const same = await editArchiveLink(admin.principal, { relationshipId: l.id, fromYear: 1850, toYear: 1862, source: ' A fictional chronicle, second edition. ', reason: 'Again.' }, meta);

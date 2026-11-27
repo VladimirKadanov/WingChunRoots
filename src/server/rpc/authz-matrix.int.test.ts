@@ -1455,6 +1455,15 @@ const ROWS: Row[] = [
     },
     expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
   },
+  // Journey review P2-10 (ADR 0086): merge a duplicate record into the kept one.
+  {
+    path: 'archiveEditor.mergeRecord',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { fromSlug: p.student.slug, intoSlug: p.teacher.slug, reason: 'Matrix (fictional) duplicate' } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
   // Review 2026-11: a staff take-down of a profile (moderator or administrator) and account suspension (administrator).
   {
     path: 'moderation.takeDown',
@@ -2849,6 +2858,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/admin/archive/actions.ts#addLinkAction', row: 'archiveEditor.addLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/archive/actions.ts#endLinkAction', row: 'archiveEditor.endLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/archive/actions.ts#editLinkAction', row: 'archiveEditor.editLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#mergeRecordAction', row: 'archiveEditor.mergeRecord', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   // Review 2026-11: the take-down and restore forms of the review pages post the procedures' fields.
   { action: 'src/app/admin/review/actions.ts#takeDownAction', row: 'moderation.takeDown', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/review/actions.ts#restoreAction', row: 'moderation.restore', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },

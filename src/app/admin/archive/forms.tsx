@@ -100,7 +100,7 @@ export function EditLineageForm({
   lineage,
   initial,
 }: {
-  lineage: { id: string; slug: string; name: string; description: string | null; rootSlug: string | null; featuredOnHome?: boolean };
+  lineage: { id: string; slug: string; name: string; description: string | null; rootSlug: string | null; featuredOnHome?: boolean; commonRoots?: boolean };
   initial?: FormState | null;
 }) {
   const t = useAdminT();
@@ -123,6 +123,16 @@ export function EditLineageForm({
         hint={t('One lineage at a time: choosing this one takes the place of any other. With none chosen, the home page shows a different public lineage each day.')}
         state={state}
         defaultChecked={lineage.featuredOnHome ?? false}
+      />
+      {/* Journey review P2-10 (ADR 0086): the shared teachers before the branches split. */}
+      <input type="hidden" name="commonRootsShown" value="1" />
+      <CheckboxField
+        form={formId}
+        name="commonRoots"
+        label={t('This lineage holds the common roots')}
+        hint={t('The teachers every branch shares, before the branches split, kept once here. A link kept here is not recorded again in another lineage. One lineage at a time.')}
+        state={state}
+        defaultChecked={lineage.commonRoots ?? false}
       />
       <div>
         <SubmitButton pending={pending} pendingLabel={t('Saving…')} variant="secondary">

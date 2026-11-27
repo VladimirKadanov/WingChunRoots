@@ -212,6 +212,12 @@ export default async function ExplorePage({ searchParams }: Props) {
                       <h3 className="font-display text-xl [overflow-wrap:anywhere]">
                         <LineageName name={l.name} />
                       </h3>
+                      {/* Journey review P2-10 (ADR 0086): the shared teachers, listed first. */}
+                      {l.commonRoots ? (
+                        <p className="text-sm font-semibold" data-testid="explore-common-roots">
+                          Common roots: the teachers before the branches split
+                        </p>
+                      ) : null}
                       <p className="text-sm text-fg-muted">
                         Root:{' '}
                         <Link href={`/people/${l.root.slug}`} prefetch={false} className="link inline-flex min-h-11 items-center">

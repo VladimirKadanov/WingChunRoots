@@ -47,12 +47,18 @@ export const lineage = pgTable(
     description: text('description'),
     /** Journey review 2026-11-26 (P1-4, ADR 0078): the lineage the home page draws; at most one. */
     featuredOnHome: boolean('featured_on_home').notNull().default(false),
+    /**
+     * Journey review P2-10 (ADR 0086): the shared teachers before the branches split, kept once; at
+     * most one. A link recorded here is not recorded again in another lineage.
+     */
+    commonRoots: boolean('common_roots').notNull().default(false),
     ...timestamps(),
     deletedAt: deletedAt(),
   },
   (t) => [
     uniqueIndex('lineage_slug_key').on(t.slug),
     uniqueIndex('lineage_featured_on_home_key').on(t.featuredOnHome).where(sql`${t.featuredOnHome}`),
+    uniqueIndex('lineage_common_roots_key').on(t.commonRoots).where(sql`${t.commonRoots}`),
     index('lineage_root_person_id_idx').on(t.rootPersonId),
     check('lineage_slug_format', sql`${t.slug} ~ ${sql.raw(`'${SLUG_PATTERN}'`)}`),
   ],

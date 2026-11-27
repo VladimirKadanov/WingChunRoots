@@ -7,3 +7,4 @@ export const LINEAGE_EDIT_FORM = 'archive-lineage-edit';
 export const LINK_ADD_FORM = 'archive-link-add';
 export const LINK_END_FORM = 'archive-link-end';
 export const LINK_EDIT_FORM = 'archive-link-edit';
+export const RECORD_MERGE_FORM = 'archive-record-merge';

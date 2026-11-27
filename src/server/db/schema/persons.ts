@@ -267,6 +267,23 @@ export const personNameKey = pgTable(
   ],
 );
 
+/**
+ * Journey review P2-10 (docs/adr/0086-archive-duplicates.md): the address of a record merged into
+ * another one. /people/<from_slug> answers with a permanent redirect to the kept record while that
+ * one is public. Staff only; the record itself keeps its slug with deleted_at set.
+ */
+export const personRedirect = pgTable(
+  'person_redirect',
+  {
+    fromSlug: text('from_slug').primaryKey(),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('person_redirect_person_id_idx').on(t.personId)],
+);
+
 /** Biographies, one per language tag. */
 export const personBio = pgTable(
   'person_bio',

@@ -24,6 +24,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { NOT_ON_RECORD_HEADER, NOT_ON_RECORD_PATH } from '@/lib/not-on-record';
 import { COOKIE_PREFIX } from '@/server/auth/config';
 import { principalFromHeaders } from '@/server/auth/session';
+import { mergedRecordTarget } from '@/server/services/archive-merge';
 import { PERSON_CHECK_BUDGET_MS, personPageVisible } from '@/server/services/lineage';
 
 /** A session cookie or a bearer token is there (whether it is valid is the session's question). */
@@ -59,6 +60,21 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : error instanceof Error ? error.name : 'unknown';
     console.error(`[proxy] the person check failed (${code}); the page answers for itself`);
     return NextResponse.next();
+  }
+  // Journey review P2-10 (ADR 0086): the address of a record merged into another one answers with a
+  // permanent redirect to the kept record, while that one is public. Only the page addresses: the
+  // data forms of the two paths keep the not-on-record answer.
+  if (request.nextUrl.pathname.startsWith('/people/')) {
+    try {
+      const target = await withinDeadline(mergedRecordTarget(slug), PERSON_CHECK_BUDGET_MS);
+      if (target) {
+        const url = request.nextUrl.clone();
+        url.pathname = request.nextUrl.pathname.replace(/^\/people\/[^/]+/, `/people/${target}`);
+        return NextResponse.redirect(url, 308);
+      }
+    } catch {
+      // A failed look-up keeps the not-on-record answer.
+    }
   }
   const headers = new Headers(request.headers);
   headers.set(NOT_ON_RECORD_HEADER, 'person');

@@ -3879,6 +3879,9 @@
                             "minimum": -9007199254740991,
                             "maximum": 9007199254740991
                           },
+                          "commonRoots": {
+                            "type": "boolean"
+                          },
                           "root": {
                             "type": "object",
                             "properties": {
@@ -3907,6 +3910,7 @@
                           "slug",
                           "name",
                           "people",
+                          "commonRoots",
                           "root"
                         ],
                         "additionalProperties": false
@@ -11957,6 +11961,9 @@
                   "featuredOnHome": {
                     "type": "boolean"
                   },
+                  "commonRoots": {
+                    "type": "boolean"
+                  },
                   "reason": {
                     "anyOf": [
                       {
@@ -12483,6 +12490,68 @@
                 },
                 "required": [
                   "relationshipId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/archive-editor/records/merge": {
+      "post": {
+        "operationId": "archiveEditor.mergeRecord",
+        "summary": "Merge a duplicate record kept by the archive into the kept one: its links, names and evidence move, a link both have ends, its address redirects to the kept record; members’ records are refused; audited",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fromSlug": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "intoSlug": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "fromSlug",
+                  "intoSlug",
+                  "reason"
                 ]
               }
             }

@@ -23,10 +23,11 @@ import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { archiveEditorOptions, type ArchiveRecordRef } from '@/server/services/archive-editor';
 import { PEOPLE_FILTERS } from '@/server/services/archive-grids';
-import { RECORD_CREATE_FORM } from '../form-ids';
+import { RECORD_CREATE_FORM, RECORD_MERGE_FORM } from '../form-ids';
 import { CreateRecordForm } from '../forms';
 import { CardLabel, cell, Chip, Chips, Column, CountLine, fieldClass, Header, Missing, Pager, rowClass, tableClass, theadClass } from '../grid-parts';
 import { archiveLoadError, scriptLabel } from '../labels';
+import { MergeRecordForm } from '../merge-record-form';
 import { recordFacts } from '../parts';
 import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
@@ -105,6 +106,10 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
     );
   }
   const recordResult = await readFormResult(RECORD_CREATE_FORM, query.outcome);
+  // Journey review P2-10 (ADR 0086): a refused merge comes back open at its form.
+  const mergeFrom = SLUG.test(one(query.merge)) ? one(query.merge) : '';
+  const mergeResult = mergeFrom ? await readFormResult(RECORD_MERGE_FORM, query.outcome) : null;
+  const merged = query.done === 'merged' && SLUG.test(one(query.record)) ? one(query.record) : null;
   const created = query.done === 'record' && SLUG.test(one(query.record)) ? one(query.record) : null;
   const creating = one(query.new) === 'record' || recordResult?.status === 'error' || (Boolean(back) && !created);
   const draftName = one(query.name).trim().slice(0, 120);
@@ -118,6 +123,12 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
   const newHref = `${peopleHref(filters)}${peopleHref(filters).includes('?') ? '&' : '?'}new=record${back ? `&back=${back}` : ''}#new-record`;
   const chip = (show: Show) => peopleHref({ ...filters, show }, 1, '#people');
   // The outcome sentence around the new record's address (kept whole, so each language orders it its own way).
+  const [mergedBefore = '', mergedAfter = ''] = t('Merged. The old address now opens the kept record, {address}.').split('{address}');
+  // Only a record the archive keeps is merged, into another one of the same possible duplicates.
+  const mergeChoices = (slug: string) =>
+    filters.show === 'duplicates'
+      ? list.rows.filter((r) => r.duplicate && r.record.slug !== slug && r.record.stewardship !== 'self').map((r) => ({ slug: r.record.slug, label: `${r.record.name.value} · ${r.record.slug}` }))
+      : [];
   const [createdBefore = '', createdAfter = ''] = t('The record is created, with the address {address}. It is not public yet: add a link to show it.').split('{address}');
 
   return (
@@ -139,6 +150,19 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
           <span aria-hidden="true">+</span> {t('New record')}
         </Link>
       </header>
+
+      {merged ? (
+        <div key={`merged-${String(query.n)}`} className="mt-5 max-w-[46rem]">
+          <OutcomeNote testId="archive-merged">
+            {mergedBefore}
+            <code translate="no">{merged}</code>
+            {mergedAfter}{' '}
+            <Link href={`/admin/review/records/${merged}`} className="link">
+              {t('Open the record')}
+            </Link>
+          </OutcomeNote>
+        </div>
+      ) : null}
 
       {created ? (
         <div key={`${String(query.done)}-${String(query.n)}`} className="mt-5 max-w-[46rem]">
@@ -258,6 +282,14 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
                         <code className="block text-sm text-fg-muted" translate="no">
                           {record.slug}
                         </code>
+                        {duplicate && record.stewardship !== 'self' && mergeChoices(record.slug).length > 0 ? (
+                          <details className="mt-1" open={mergeFrom === record.slug || undefined} data-testid="record-merge">
+                            <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-semibold">{t('Merge into…')}</summary>
+                            <div className="mt-2 max-w-[28rem]">
+                              <MergeRecordForm t={t} from={record.slug} choices={mergeChoices(record.slug)} initial={mergeFrom === record.slug ? mergeResult : null} />
+                            </div>
+                          </details>
+                        ) : null}
                       </td>
                       <td role="cell" className={cell}>
                         <CardLabel>{t('Original:')}</CardLabel>

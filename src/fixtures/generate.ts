@@ -319,6 +319,7 @@ class Builder {
       description: `${FICTIONAL_MARK}: a made-up lineage for tests and the local pilot.`,
       // P1-4 (ADR 0078): lineage A is the one the home page draws, so the page is the same every day.
       featuredOnHome: key === 'a',
+      commonRoots: false,
       createdAt: at,
       updatedAt: at,
       deletedAt: null,

@@ -80,4 +80,7 @@ export const BG_ARCHIVE_CLIENT: AdminDict = {
   'Shown to everyone after "According to", for example "the hall\'s oral history". Keep private notes in Source.': 'Показва се на всички след „According to“, например „the hall\'s oral history“ (на английски). Личните бележки остават в „Източник“.',
   'Show this lineage on the home page': 'Покажи тази линия на началната страница',
   'One lineage at a time: choosing this one takes the place of any other. With none chosen, the home page shows a different public lineage each day.': 'Една линия наведнъж: изборът на тази заменя всяка друга. Ако няма избрана, началната страница показва всеки ден различна публична линия.',
+  // Journey review P2-10 (ADR 0086): merging duplicates and the common roots.
+  'This lineage holds the common roots': 'Тази линия съдържа общите корени',
+  'The teachers every branch shares, before the branches split, kept once here. A link kept here is not recorded again in another lineage. One lineage at a time.': 'Учителите, общи за всички клонове преди разделянето им, записани веднъж тук. Връзка, записана тук, не се записва отново в друга линия. Само една линия наведнъж.',
 };

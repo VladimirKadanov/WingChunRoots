@@ -2,7 +2,7 @@
 
 // The Server Actions of the archive editor (milestone M26, docs/adr/0034-archive-editor.md): thin
 // wrappers over archiveEditor.createLineage, archiveEditor.updateLineage, archiveEditor.createRecord,
-// archiveEditor.addLink, archiveEditor.endLink and archiveEditor.editLink (src/server/rpc/parity.ts), called in-process with
+// archiveEditor.addLink, archiveEditor.endLink, archiveEditor.editLink and archiveEditor.mergeRecord (src/server/rpc/parity.ts), called in-process with
 // this request's session, so the forms and /api/v1 run the same checks (an archivist or an
 // administrator with a verified second factor). A failure comes back to its form; success opens the
 // page at its outcome note (#outcome), which takes the focus. A refusal's message and field errors
@@ -21,7 +21,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult, keepFormResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { LINEAGE_CREATE_FORM, LINEAGE_EDIT_FORM, LINK_ADD_FORM, LINK_EDIT_FORM, LINK_END_FORM, RECORD_CREATE_FORM } from './form-ids';
+import { LINEAGE_CREATE_FORM, LINEAGE_EDIT_FORM, LINK_ADD_FORM, LINK_EDIT_FORM, LINK_END_FORM, RECORD_CREATE_FORM, RECORD_MERGE_FORM } from './form-ids';
 import { translateFormState } from './labels';
 
 const HOME = '/admin/archive';
@@ -75,7 +75,7 @@ export async function createLineageAction(_previous: FormState, form: FormData):
 
 /** "Save the lineage" (archiveEditor.updateLineage). */
 export async function updateLineageAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const values = keepValues(form, ['lineageId', 'slug', 'name', 'description', 'rootSlug', 'reason'], ['featuredOnHome']);
+  const values = keepValues(form, ['lineageId', 'slug', 'name', 'description', 'rootSlug', 'reason'], ['featuredOnHome', 'commonRoots']);
   const page = lineagePage(textValue(form, 'slug', 200));
   let changed = false;
   try {
@@ -85,6 +85,7 @@ export async function updateLineageAction(_previous: FormState, form: FormData):
       description: textValue(form, 'description', 4000) || null,
       rootSlug: textValue(form, 'rootSlug', 200) || null,
       ...(form.has('featuredOnHomeShown') ? { featuredOnHome: textValue(form, 'featuredOnHome', 4) === 'on' } : {}),
+      ...(form.has('commonRootsShown') ? { commonRoots: textValue(form, 'commonRoots', 4) === 'on' } : {}),
       reason: textValue(form, 'reason', 4000),
     });
     changed = result.changed;
@@ -208,4 +209,26 @@ export async function editLinkAction(_previous: FormState, form: FormData): Prom
     return keepFormResult({ form: LINK_EDIT_FORM, page, anchor: outcomeTarget(`${LINK_EDIT_FORM}-${relationshipId}`, state, true) }, state);
   }
   redirect(doneAt(base, changed ? 'edited' : 'unchanged', link));
+}
+
+/**
+ * "Merge into the chosen record" (archiveEditor.mergeRecord, docs/adr/0086-archive-duplicates.md),
+ * from the people grid's possible duplicates: success names the kept record; a refusal is kept for
+ * the page (a Server Component form, ./merge-record-form.tsx).
+ */
+export async function mergeRecordAction(_previous: FormState, form: FormData): Promise<never> {
+  const fromSlug = textValue(form, 'fromSlug', 200);
+  const values = keepValues(form, ['fromSlug', 'intoSlug', 'reason']);
+  const page = SLUG.test(fromSlug) ? `${PEOPLE}?show=duplicates&merge=${fromSlug}` : `${PEOPLE}?show=duplicates`;
+  let slug: string;
+  try {
+    const result = await (await client()).archiveEditor.mergeRecord({ fromSlug, intoSlug: textValue(form, 'intoSlug', 200), reason: textValue(form, 'reason', 4000) });
+    slug = result.slug;
+  } catch (error) {
+    unstable_rethrow(error);
+    sendAway(error, page);
+    const state = translateFormState(await getAdminT(), formStateFromFailure(error, values));
+    return keepFormResult({ form: RECORD_MERGE_FORM, page, anchor: outcomeTarget(`${RECORD_MERGE_FORM}-${fromSlug}`, state, true) }, state);
+  }
+  redirect(doneAt(PEOPLE, 'merged', `&record=${slug}`));
 }

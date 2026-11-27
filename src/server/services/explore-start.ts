@@ -24,26 +24,28 @@ interface Row extends Record<string, unknown> {
   root_slug: string;
   root_name: string;
   people: number;
+  common_roots: boolean;
 }
 
 async function cachedExploreStart(): Promise<ExploreStartDto> {
   'use cache';
   cacheLife('hours');
   const result = await getPublicDb().execute<Row>(sql`
-    SELECT l.lineage_id AS id, l.lineage_slug AS slug, l.lineage_name AS name,
+    SELECT l.lineage_id AS id, l.lineage_slug AS slug, l.lineage_name AS name, l.lineage_common_roots AS common_roots,
            p.id AS root_id, p.slug AS root_slug, p.display_name AS root_name,
            (SELECT count(*)::int FROM (
               SELECT e2.student_person_id AS pid FROM v_public_edge e2 WHERE e2.lineage_id = l.lineage_id
               UNION SELECT e3.teacher_person_id FROM v_public_edge e3 WHERE e3.lineage_id = l.lineage_id) members) AS people
-      FROM (SELECT DISTINCT lineage_id, lineage_slug, lineage_name, lineage_root_person_id FROM v_public_edge
+      FROM (SELECT DISTINCT lineage_id, lineage_slug, lineage_name, lineage_root_person_id, lineage_common_roots FROM v_public_edge
              WHERE lineage_root_person_id IS NOT NULL) l
       JOIN v_public_person p ON p.id = l.lineage_root_person_id
-     ORDER BY l.lineage_name, l.lineage_id`);
+     ORDER BY l.lineage_common_roots DESC, l.lineage_name, l.lineage_id`);
   const lineages = result.rows.map((r) => ({
     id: r.id,
     slug: r.slug,
     name: r.name,
     people: r.people,
+    commonRoots: r.common_roots,
     root: { id: r.root_id, slug: r.root_slug, displayName: r.root_name },
   }));
   tagCacheEntry([EXPLORE_START_TAG, ...lineages.map((l) => lineageTag(l.id)), ...lineages.map((l) => personTag(l.root.id))]);

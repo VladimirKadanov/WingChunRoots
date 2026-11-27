@@ -212,6 +212,7 @@ import {
   updateLineageInput,
 } from '../services/archive-editor';
 import { archiveLinks, archiveLinksInput, archiveOverview, archiveOverviewInput, archivePeople, archivePeopleInput, archivePerson, archivePersonInput, archiveTree, archiveTreeInput } from '../services/archive-grids';
+import { mergeArchiveRecord, mergeRecordInput } from '../services/archive-merge';
 import {
   addReviewNote,
   archiveGetInput,
@@ -1207,6 +1208,16 @@ export const router = {
       })
       .input(editLinkInput)
       .handler(({ context, input }) => editArchiveLink(context.principal, input, context.meta)),
+    // Journey review P2-10 (docs/adr/0086-archive-duplicates.md): one record entered twice becomes one.
+    mergeRecord: staffWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/archive-editor/records/merge',
+        summary:
+          'Merge a duplicate record kept by the archive into the kept one: its links, names and evidence move, a link both have ends, its address redirects to the kept record; members’ records are refused; audited',
+      })
+      .input(mergeRecordInput)
+      .handler(({ context, input }) => mergeArchiveRecord(context.principal, input, context.meta)),
     // Control panel 2026-11 (docs/adr/0035-control-panel.md): the editor's working views, for thousands of records.
     overview: staffWithSecondFactor
       .route({ method: 'GET', path: '/archive-editor/overview', summary: 'Every lineage with its people, generations, sourced share and last edit, searched and sorted, and the archive figures (an archivist or an administrator)' })

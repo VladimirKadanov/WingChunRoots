@@ -79,6 +79,8 @@ export const vPublicEdge = pgView('v_public_edge', {
   publicSource: text('public_source'),
   // P1-4 (ADR 0078): the lineage the home page draws.
   lineageFeatured: boolean('lineage_featured').notNull(),
+  // P2-10 (ADR 0086): the shared teachers before the branches split ("Common roots").
+  lineageCommonRoots: boolean('lineage_common_roots').notNull(),
 }).existing();
 
 /**

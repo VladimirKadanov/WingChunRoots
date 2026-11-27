@@ -18,6 +18,8 @@ export type AuditAction =
   // Journey review P2-4 (ADR 0081): the account's e-mail address changed (confirmed from the new one).
   | 'account.email_change'
   | 'person.create'
+  // Journey review P2-10 (ADR 0086): a duplicate record merged into the kept one (ids and counts only).
+  | 'person.merge'
   // M08: plans (plan §6.5, §6.6).
   | 'grant.create'
   | 'grant.revoke'

@@ -17,7 +17,7 @@ import { editLinkAction } from './actions';
 import { LINK_EDIT_FORM } from './form-ids';
 import { fieldClass } from './grid-parts';
 
-function Problem({ id, text }: { id: string; text: string | undefined }) {
+export function Problem({ id, text }: { id: string; text: string | undefined }) {
   if (!text) return null;
   return (
     <p id={id} className="flex items-start gap-1.5 text-sm text-danger">
@@ -27,7 +27,7 @@ function Problem({ id, text }: { id: string; text: string | undefined }) {
   );
 }
 
-function Field({
+export function Field({
   form,
   name,
   label,

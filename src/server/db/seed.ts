@@ -81,6 +81,7 @@ import {
   personName,
   personNameKey,
   personPhoto,
+  personRedirect,
   personVideo,
   pilotAccessRequest,
   place,
@@ -162,6 +163,8 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   person,
   personBio,
   personClaim,
+  // ADR 0086: the old addresses of merged records (no demo rows).
+  personRedirect,
   // ADR 0048: the private follows of the kung fu family (no demo rows).
   personFollow,
   // ADR 0047: the links of a featured profile (no demo rows).
