@@ -237,6 +237,7 @@ import { systemStatus } from '../services/system';
 import { twoFactorOverview } from '../services/two-factor';
 import { profilePublish, profileGet, profileUpdate, profileUpdateInput } from '../services/profile';
 import { consentWithdraw, consentWithdrawInput, privacyOverview, requestAccountDeletion, requestDeletionInput } from '../services/privacy';
+import { exportAccountData } from '../services/account-export';
 import { searchInput, searchQuery } from '../services/search';
 import { searchResultSchema } from '../dto/search';
 import { reportMissingPlace, reportMissingPlaceInput } from '../services/places';
@@ -488,6 +489,10 @@ export const router = {
       .route({ method: 'POST', path: '/account/request-deletion', summary: 'Ask for the account to be deleted: opens a review case and notifies the admins, audited' })
       .input(requestDeletionInput)
       .handler(({ context, input }) => requestAccountDeletion(context.principal, input, context.meta)),
+    // Review 2026-11-13 (ADR 0088): "Download my data" on /account/privacy; audited, never cached.
+    export: signedIn
+      .route({ method: 'GET', path: '/account/export', summary: "The signed-in account's own data as one JSON document (no secrets, no other person's private details); audited" })
+      .handler(({ context }) => exportAccountData(context.principal, context.meta)),
   },
   consent: {
     record: signedIn

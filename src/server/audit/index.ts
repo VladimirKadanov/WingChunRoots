@@ -17,6 +17,8 @@ export type AuditAction =
   | 'auth.2fa.reset'
   // Journey review P2-4 (ADR 0081): the account's e-mail address changed (confirmed from the new one).
   | 'account.email_change'
+  // Review 2026-11-13 (ADR 0088): the account downloaded its own data (no content in the row).
+  | 'account.export'
   | 'person.create'
   // Journey review P2-10 (ADR 0086): a duplicate record merged into the kept one (ids and counts only).
   | 'person.merge'

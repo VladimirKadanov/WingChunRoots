@@ -671,6 +671,7 @@ const ROWS: Row[] = [
   // Own-account changes run as a fresh account (the owner), so the shared actors stay as they are.
   { path: 'account.setType', make: async () => ({ owner: await actor('type'), input: { accountType: 'sifu' } }), expect: { ...signedInOnly, owner: 'ok' } },
   { path: 'account.privacy', make: noInput, expect: own() },
+  { path: 'account.export', make: noInput, expect: own() },
   { path: 'account.requestDeletion', make: async () => ({ owner: await actor('deleting'), input: { confirm: true } }), expect: { ...signedInOnly, owner: 'ok' } },
   { path: 'consent.record', make: async () => ({ owner: await actor('consenting'), input: { kinds: ['terms'] } }), expect: { ...signedInOnly, owner: 'ok' } },
   { path: 'consent.withdraw', make: async () => ({ owner: await actor('withdrawing'), input: { kinds: ['privacy_ack'] } }), expect: { ...signedInOnly, owner: 'ok' } },
