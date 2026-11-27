@@ -42,7 +42,7 @@ import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { cacheLife } from 'next/cache';
 import * as z from 'zod';
 
-import { formatEventWhen, isTimeZone, monthKey, monthLabel, toWallTime, wallTimeToInstant } from '../../lib/event-time';
+import { canonicalTimeZone, formatEventWhen, isTimeZone, monthKey, monthLabel, toWallTime, wallTimeToInstant } from '../../lib/event-time';
 import { writeAudit } from '../audit';
 import { hasStaff2FA, requireStaff2FA, requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
@@ -537,7 +537,7 @@ const ownerColumns = {
   organizerUserId: event.organizerUserId,
   organizationId: event.organizationId,
   startsAt: event.startsAt,
-  timezone: event.timezone,
+  timezone: canonicalTimeZone(event.timezone),
   posterStorageKey: event.posterStorageKey,
 };
 
@@ -633,7 +633,7 @@ async function cleanFields(db: Executor, input: z.output<typeof eventFields>, no
   let timezone: string | null = null;
   let placeId: string | null = null;
   if (input.online) {
-    if (isTimeZone(input.timezone)) timezone = input.timezone;
+    if (isTimeZone(input.timezone)) timezone = canonicalTimeZone(input.timezone);
     else fields.timezone = 'Choose the time zone the times are in.';
   } else if (!input.placeId) {
     fields.placeId = 'Choose the city, or mark the event as online.';
@@ -642,10 +642,16 @@ async function cleanFields(db: Executor, input: z.output<typeof eventFields>, no
     if (!city) fields.placeId = 'Choose the city from the list.';
     else {
       placeId = city.id;
-      if (isTimeZone(city.timezone)) timezone = city.timezone;
-      else if (isTimeZone(input.timezone)) timezone = input.timezone;
+      if (isTimeZone(city.timezone)) timezone = canonicalTimeZone(city.timezone);
+      else if (isTimeZone(input.timezone)) timezone = canonicalTimeZone(input.timezone);
       else fields.timezone = 'This city has no time zone on record: choose the one the times are in.';
     }
+  }
+  // Review 2026-11-13 (N1): the database must know the zone too, or `AT TIME ZONE` fails later on
+  // the organizer's quota and on the passport pages of the event's people.
+  if (timezone && !(await databaseKnowsZone(db, timezone))) {
+    fields.timezone = 'Choose another time zone from the list: this one is not supported.';
+    timezone = null;
   }
 
   let startsAt: Date | null = null;
@@ -1402,12 +1408,27 @@ export const COMMON_TIME_ZONES = [
  * Every zone the platform knows: the organizer's own (their city's) first, then the common ones,
  * then the rest in order (journey review P3-7; before it the list began at Africa/Abidjan).
  */
-function zones(own: string | null): string[] {
-  const list = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
+function zones(own: string | null, databaseZones: ReadonlySet<string>): string[] {
+  // Review 2026-11-13 (N1): current names only (Asia/Kolkata, not Asia/Calcutta), and only the
+  // zones the database knows as well.
+  const intl = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
+  const list = [...new Set(intl.map(canonicalTimeZone))].filter((z) => databaseZones.has(z) && isTimeZone(z)).sort();
   const known = new Set(['UTC', ...list]);
   const first = [...(own && known.has(own) ? [own] : []), ...COMMON_TIME_ZONES.filter((z) => known.has(z))];
   const seen = new Set(first);
   return [...new Set(first), ...['UTC', ...list].filter((z) => !seen.has(z))];
+}
+
+/** Whether PostgreSQL knows the zone (pg_timezone_names), so `AT TIME ZONE` on the event works. */
+async function databaseKnowsZone(db: Executor, zone: string): Promise<boolean> {
+  const r = await db.execute<{ ok: boolean }>(sql`SELECT EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = ${zone}) AS ok`);
+  return r.rows[0]?.ok === true;
+}
+
+/** The zone names PostgreSQL knows. */
+async function databaseZones(db: Executor): Promise<Set<string>> {
+  const r = await db.execute<{ name: string }>(sql`SELECT name FROM pg_timezone_names`);
+  return new Set(r.rows.map((row) => row.name));
 }
 
 /** events.editor: what the event form offers; `id` loads one of the account's events (404 for any other). */
@@ -1514,8 +1535,8 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
     kinds: EVENT_KINDS.map((key) => ({ key, label: EVENT_KIND_LABELS[key] })),
     schools: [...ownSchools.map((s) => ({ ...s, organizationId: null })), ...orgSchools],
     instructorOptions,
-    timezones: zones(ownZone),
-    defaultTimezone: ownZone ?? 'UTC',
+    timezones: zones(ownZone ? canonicalTimeZone(ownZone) : null, await databaseZones(db)),
+    defaultTimezone: ownZone ? canonicalTimeZone(ownZone) : 'UTC',
   };
 }
 

@@ -287,6 +287,19 @@ function lastSunday(year: number, month: number): string {
   return String(last.getUTCDate() - last.getUTCDay()).padStart(2, '0');
 }
 
+describe('time zones (review 2026-11-13)', () => {
+  it('an old zone name is stored under its current name, the form offers current names only, and the quota still counts', async () => {
+    const sifu = await proSifu('events-zone');
+    const made = await createEvent(sifu.principal, { title: 'Demo online zone evening', kind: 'seminar', startsAt: at('05-04', '18:00'), endsAt: at('05-04', '20:00'), online: true, timezone: 'Asia/Calcutta' }, meta);
+    const [row] = await getDb().select({ timezone: event.timezone }).from(event).where(eq(event.id, made.id));
+    expect(row?.timezone).toBe('Asia/Kolkata');
+    const editor = await eventEditor(sifu.principal, {});
+    expect(editor.timezones).toContain('Asia/Kolkata');
+    expect(editor.timezones).not.toContain('Asia/Calcutta');
+    expect(await codeOf(createEvent(sifu.principal, { ...seminar(at('05-11'), at('05-11', '17:00')), title: 'Demo May seminar' }, meta))).toBe('ok');
+  });
+});
+
 describe('who may publish', () => {
   it('Free Sifu and a Student account are refused with ENTITLEMENT_REQUIRED', async () => {
     const free = await member('events-free', { sifu: true });
