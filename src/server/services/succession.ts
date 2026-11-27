@@ -35,6 +35,7 @@ import { GOVERNANCE_DAILY_LIMIT, GOVERNANCE_TEXT_MAX, LIVE_NOMINATION_STATUSES, 
 import { type Executor, effectivePlan, organizationPlan, requireEntitlement } from '../entitlements/access';
 import { feature } from '../entitlements/plans';
 import type { Transaction } from '../jobs/outbox';
+import { refuseWhileHeld } from './identity-hold';
 import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
 import { pgErrorOf, ServiceError } from './errors';
@@ -278,6 +279,8 @@ export async function nominateSuccessor(principal: Principal | null, raw: z.inpu
       await lockAccountCases(tx, p.user.id);
       const own = await ownPerson(tx, p.user.id);
       if (!own) throw new ServiceError('CONFLICT', 'Set up your profile first: a successor is chosen among your verified students.');
+      // ADR 0088: nothing is handed over while an impersonation report holds the profile.
+      await refuseWhileHeld(tx, own);
       if (!(await maySucceed(tx, p.user.id))) {
         throw new ServiceError('ENTITLEMENT_REQUIRED', 'A digital successor comes with Professional Sifu, or with an organization you own that holds Federation.', {}, {
           entitlement: await requireEntitlement({ kind: 'user', userId: p.user.id }, 'successor', { db: tx }),

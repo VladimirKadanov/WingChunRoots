@@ -14,7 +14,7 @@ import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 
 import type { Principal, StaffRole } from '../auth/principal';
 import { uuidv7 } from '../db/ids';
-import { authUser, organization, organizationAdmin, person, reviewCase, reviewEvent, teachingRelationship } from '../db/schema';
+import { authUser, identityReport, organization, organizationAdmin, person, reviewCase, reviewEvent, teachingRelationship } from '../db/schema';
 import { OPEN_REVIEW_CASE_STATUSES, type REVIEW_EVENT_ACTIONS, STAFF_ROLES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import type { Transaction } from '../jobs/outbox';
@@ -54,6 +54,10 @@ export const DECIDERS: Readonly<Record<Exclude<ReviewCaseKind, 'deletion_request
   lineage_report: ['moderator', 'admin'],
   decision_appeal: ['moderator', 'archivist', 'admin'],
   record_proposal: ['archivist'],
+  // ADR 0088 (owner decision 3, 2026-11-27): an administrator with the second factor decides an
+  // impersonation report and moves the profile, alone. A moderator or an administrator makes the
+  // first check that puts the profile on hold (identity-reports.ts triage), which is no decision.
+  identity_report: ['admin'],
 };
 
 /**
@@ -61,7 +65,7 @@ export const DECIDERS: Readonly<Record<Exclude<ReviewCaseKind, 'deletion_request
  * the reviewer of a dispute opens both sides' files (evidence.ts accessOfFiles), so a reviewer who
  * cannot decide it never holds it. The other kinds: any reviewer, who may ask for information.
  */
-export const ASSIGNED_TO_DECIDERS: ReadonlySet<ReviewCaseKind> = new Set(['relationship_dispute', 'profile_report', 'succession_request', 'lineage_report']);
+export const ASSIGNED_TO_DECIDERS: ReadonlySet<ReviewCaseKind> = new Set(['relationship_dispute', 'profile_report', 'succession_request', 'lineage_report', 'identity_report']);
 
 /** The roles a case of `kind` may be assigned to. */
 export function assignableRoles(kind: ReviewCaseKind): readonly StaffRole[] {
@@ -120,7 +124,7 @@ export async function caseById(db: Executor, id: string, lock = false): Promise<
  */
 export async function partiesOf(
   db: Executor,
-  c: Pick<CaseRow, 'kind' | 'relationshipId' | 'openedByUserId' | 'personId'> & { organizationId?: string | null },
+  c: Pick<CaseRow, 'kind' | 'relationshipId' | 'openedByUserId' | 'personId'> & { organizationId?: string | null; id?: string },
 ): Promise<Set<string>> {
   const out = new Set<string>();
   // A dispute is opened by the moderator who set the arbitration: they are its reviewer, not a party.
@@ -137,6 +141,11 @@ export async function partiesOf(
     const [named] = await db.select({ userId: person.claimedByUserId }).from(person).where(eq(person.id, c.personId));
     if (named?.userId) out.add(named.userId);
   }
+  // ADR 0088: the account that held the reported profile stays a party after the profile moves.
+  if (c.kind === 'identity_report' && c.id) {
+    const [report] = await db.select({ reported: identityReport.reportedUserId }).from(identityReport).where(eq(identityReport.reviewCaseId, c.id));
+    if (report?.reported) out.add(report.reported);
+  }
   // M15: an organization's applicant and its admins, now or before, are parties to its application.
   if (c.organizationId) {
     const rows = await db.select({ userId: organizationAdmin.userId }).from(organizationAdmin).where(eq(organizationAdmin.organizationId, c.organizationId));
@@ -148,7 +157,7 @@ export async function partiesOf(
 }
 
 /** Whether this reviewer is one of the case's parties: nobody reviews their own case. */
-export async function ownSide(db: Executor, p: Principal, c: Pick<CaseRow, 'kind' | 'relationshipId' | 'openedByUserId' | 'personId'> & { organizationId?: string | null }): Promise<boolean> {
+export async function ownSide(db: Executor, p: Principal, c: Pick<CaseRow, 'kind' | 'relationshipId' | 'openedByUserId' | 'personId'> & { organizationId?: string | null; id?: string }): Promise<boolean> {
   return (await partiesOf(db, c)).has(p.user.id);
 }
 

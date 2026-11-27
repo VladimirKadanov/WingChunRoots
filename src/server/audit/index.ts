@@ -62,6 +62,17 @@ export type AuditAction =
   // Role replay 2026-11-25 (P3-8, ADR 0067): a reviewer asks a teacher about a claim; the teacher answers.
   | 'review.ask_teacher'
   | 'claim_confirmation.answer'
+  // ADR 0088: impersonation reports.
+  | 'identity.report'
+  | 'identity.hold'
+  | 'identity.close'
+  | 'identity.release'
+  | 'identity.vouch_ask'
+  | 'identity.vouch_answer'
+  | 'identity.code_create'
+  | 'identity.code_confirm'
+  | 'identity.decide'
+  | 'identity.transfer'
   | 'review.resolve'
   // M11: schools (plan §6.6). The rows name the fields that changed, never a point or a contact.
   | 'school.create'

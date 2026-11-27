@@ -13,15 +13,19 @@
 // Anyone else gets 404, the same answer as for no such case (plan §6.4). In a dispute each party
 // reads the reviewers' words and their own, never the other party's replies or files (DEFAULT D19).
 // Files are added with the evidence field (POST /api/evidence/upload?case=<id>, evidence.ts).
+//
+// ADR 0088: an impersonation report has two sides, the reporter and, once a moderator put the
+// profile on hold, the account that holds it. Each reads the reviewers' words and its own part only
+// (identity-reports.ts identityPartyView): never the other side's name, replies, files or vouches.
 
-import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
 import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
-import { person, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
+import { identityReport, person, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
 import type { Executor } from '../entitlements/access';
 import type { NameData } from '../templates/email/types';
 import { CLAIM_STATUS_LABELS, REVIEW_KIND_LABELS, type ReviewCaseKind, type ReviewCaseStatus } from '../templates/review';
@@ -30,13 +34,14 @@ import { peopleRefs, type PersonRef } from './dashboard';
 import { pgErrorOf, ServiceError } from './errors';
 import { type AppealState, appealStateOf } from './disputes';
 import { caseHasRoom, type EvidenceFileView, fileView, filesOfCases } from './evidence';
+import { identityPartyView, type IdentityPartyView, reportOfCase, sideOf } from './identity-reports';
 import { fieldErrors, idempotencyKey, keyReused, namesFor, rowById } from './relationships';
 import { type CaseRow, caseById, caseNotFound, caseReplayOf, isCaseKeyConflict, isOpenCase, partiesOf, recordCaseEvent, tellAssignee } from './review-core';
 
 export const CASE_REPLY_MAX = 2000;
 /** M25: the governance cases an account opens, which it follows here as their claimant. */
 const OPENED_KINDS = ['person_claim', 'instructor_verification', 'organization_application', 'succession_request', 'lineage_report', 'decision_appeal', 'record_proposal'] as const;
-const PARTY_KINDS: readonly ReviewCaseKind[] = [...OPENED_KINDS, 'relationship_dispute'];
+const PARTY_KINDS: readonly ReviewCaseKind[] = [...OPENED_KINDS, 'relationship_dispute', 'identity_report'];
 
 export const caseIdInput = z.object({ id: z.uuid({ error: 'No such case.' }) });
 
@@ -62,7 +67,7 @@ export interface PartyCaseRow {
 
 export interface PartyCaseView extends PartyCaseRow {
   /** The viewer's side: the claimant (claim, verification) or a party of the disputed relationship. */
-  role: 'claimant' | 'student' | 'teacher';
+  role: 'claimant' | 'student' | 'teacher' | 'reporter' | 'reported';
   /** The record a profile claim is about: its names and the "Unclaimed record" label until approved. */
   record: { names: NameData[]; unclaimed: boolean } | null;
   /** The relationship of a claim or a dispute. */
@@ -76,11 +81,17 @@ export interface PartyCaseView extends PartyCaseRow {
   canAddFiles: boolean;
   /** M25: whether this decision can be appealed by this party, and the appeal of it. */
   appeal: AppealState | null;
+  /** ADR 0088: this side's own part of an impersonation report. */
+  identity: IdentityPartyView | null;
 }
 
 /** The viewer's side of a case, or null when they are none of its parties. */
 async function roleIn(db: Executor, c: CaseRow, userId: string): Promise<PartyCaseView['role'] | null> {
   if (!PARTY_KINDS.includes(c.kind)) return null;
+  if (c.kind === 'identity_report') {
+    const report = await reportOfCase(db, c.id);
+    return report ? sideOf(report, userId) : null;
+  }
   if (c.kind !== 'relationship_dispute') return c.openedByUserId === userId ? 'claimant' : null;
   if (!c.relationshipId) return null;
   const result = await db.execute<{ side: 'teacher' | 'student' }>(sql`
@@ -110,8 +121,16 @@ function partyCases(db: Executor, userId: string, ownId: string | null) {
         .where(or(eq(teachingRelationship.teacherPersonId, ownId), eq(teachingRelationship.studentPersonId, ownId)))
     : null;
   return or(
-    and(inArray(reviewCase.kind, [...OPENED_KINDS]), eq(reviewCase.openedByUserId, userId)),
+    and(inArray(reviewCase.kind, [...OPENED_KINDS, 'identity_report']), eq(reviewCase.openedByUserId, userId)),
     disputed ? and(eq(reviewCase.kind, 'relationship_dispute'), inArray(reviewCase.relationshipId, disputed)) : sql`false`,
+    // ADR 0088: a report about the account's profile, once a moderator put it on hold.
+    and(
+      eq(reviewCase.kind, 'identity_report'),
+      inArray(
+        reviewCase.id,
+        db.select({ id: identityReport.reviewCaseId }).from(identityReport).where(and(eq(identityReport.reportedUserId, userId), isNotNull(identityReport.heldAt))),
+      ),
+    ),
   );
 }
 
@@ -181,6 +200,7 @@ export async function getPartyCase(principal: Principal | null, raw: z.input<typ
     open,
     canAddFiles: room,
     appeal: await appealStateOf(db, c, p.user.id),
+    identity: await identityPartyView(db, c, p.user.id),
   };
 }
 

@@ -156,37 +156,49 @@ export async function suspendAccount(principal: Principal | null, raw: SuspendIn
   const actor = requireStaff2FA(principal, ['admin']);
   const input = parseOrThrow(suspendInput, raw);
   const until = input.until ? new Date(input.until) : null;
-  return getDb().transaction(async (tx) => {
-    const target = await lockTarget(tx, input);
-    await requireStandingAdmin(tx, actor);
-    if (target.id === actor.user.id) throw new ServiceError('FORBIDDEN', 'Another administrator suspends your own account.');
-    if (isErasedEmail(target.email)) throw new ServiceError('CONFLICT', 'This account was erased.');
-    if (accountSuspended(target)) throw new ServiceError('CONFLICT', 'This account is suspended already.');
-    if (target.role === 'admin' && (await otherActiveAdmins(tx, target.id)) === 0) {
-      throw new ServiceError('FORBIDDEN', 'This is the last active administrator: it cannot be suspended.');
-    }
-    // The sessions go first (the trigger on banned does the same for a ban set any other way), so
-    // the count is ours to report.
-    const ended = await tx.delete(authSession).where(eq(authSession.userId, target.id)).returning({ id: authSession.id });
-    await tx.delete(authVerification).where(eq(authVerification.value, target.id));
-    await tx
-      .update(authUser)
-      .set({ banned: true, banReason: input.reason, banExpires: until, updatedAt: new Date() })
-      .where(eq(authUser.id, target.id));
-    await writeAudit(tx, {
-      action: 'account.suspend',
-      actorUserId: actor.user.id,
-      actorRole: actor.user.role,
-      subjectType: 'user',
-      subjectId: target.id,
-      before: { suspended: false },
-      after: { suspended: true, until: until?.toISOString() ?? null, sessionsEnded: ended.length, role: target.role },
-      reason: input.reason,
-      requestId: meta.requestId,
-      ipHmac: meta.ipHmac,
-    });
-    return { userId: target.id, suspended: true, until: until?.toISOString() ?? null, sessionsEnded: ended.length };
+  return getDb().transaction((tx) => applySuspension(tx, actor, { userId: input.userId ?? null, email: input.email ?? null, reason: input.reason, until }, meta));
+}
+
+/**
+ * The suspension itself, in the caller's transaction (accounts.suspend, and an upheld impersonation
+ * report when the administrator keeps "Also suspend" ticked, ADR 0088), with the same refusals.
+ */
+export async function applySuspension(
+  tx: Transaction,
+  actor: Principal,
+  input: { userId: string | null; email: string | null; reason: string; until: Date | null },
+  meta: RequestMeta,
+): Promise<SuspensionResult> {
+  const until = input.until;
+  const target = await lockTarget(tx, input);
+  await requireStandingAdmin(tx, actor);
+  if (target.id === actor.user.id) throw new ServiceError('FORBIDDEN', 'Another administrator suspends your own account.');
+  if (isErasedEmail(target.email)) throw new ServiceError('CONFLICT', 'This account was erased.');
+  if (accountSuspended(target)) throw new ServiceError('CONFLICT', 'This account is suspended already.');
+  if (target.role === 'admin' && (await otherActiveAdmins(tx, target.id)) === 0) {
+    throw new ServiceError('FORBIDDEN', 'This is the last active administrator: it cannot be suspended.');
+  }
+  // The sessions go first (the trigger on banned does the same for a ban set any other way), so
+  // the count is ours to report.
+  const ended = await tx.delete(authSession).where(eq(authSession.userId, target.id)).returning({ id: authSession.id });
+  await tx.delete(authVerification).where(eq(authVerification.value, target.id));
+  await tx
+    .update(authUser)
+    .set({ banned: true, banReason: input.reason, banExpires: until, updatedAt: new Date() })
+    .where(eq(authUser.id, target.id));
+  await writeAudit(tx, {
+    action: 'account.suspend',
+    actorUserId: actor.user.id,
+    actorRole: actor.user.role,
+    subjectType: 'user',
+    subjectId: target.id,
+    before: { suspended: false },
+    after: { suspended: true, until: until?.toISOString() ?? null, sessionsEnded: ended.length, role: target.role },
+    reason: input.reason,
+    requestId: meta.requestId,
+    ipHmac: meta.ipHmac,
   });
+  return { userId: target.id, suspended: true, until: until?.toISOString() ?? null, sessionsEnded: ended.length };
 }
 
 /** accounts.unsuspend: lifts a suspension, with a reason. The sessions it ended stay ended: the person signs in again. */

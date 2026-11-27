@@ -83,6 +83,7 @@ import { QUEUE } from '../jobs/queues';
 import type { NameData } from '../templates/email/types';
 import { REJECTION_REASON_CODES, type RejectionReason, rejectionReasonText, isRejectionReason } from '../templates/relationships';
 import { CLAIM_REFUSED_TEXT, CLAIM_STATUS_LABELS, type ReviewCaseStatus } from '../templates/review';
+import { refuseWhileHeld } from './identity-hold';
 import type { RequestMeta } from './context';
 import { approvalOffer, peopleRefs, type PersonRef, type UpgradeOffer, waitingRequests } from './dashboard';
 import { notify } from './notify';
@@ -1297,6 +1298,8 @@ export async function approveRelationship(principal: Principal | null, raw: z.in
         .from(person)
         .where(and(inArray(person.id, [row.teacherPersonId, row.studentPersonId]), isNotNull(person.deletedAt)));
       if (removed) throw new ServiceError('CONFLICT', 'This request can no longer be answered: the profile was removed.');
+      // ADR 0088: requests to a teacher profile on hold wait until the administrators decide.
+      await refuseWhileHeld(tx, row.teacherPersonId);
       // Flows-core L3 (review 2026-11): the request of an erased account is withdrawn by the erasure
       // (account-erasure.ts), which holds this same global lock, so it is no longer pending here.
 

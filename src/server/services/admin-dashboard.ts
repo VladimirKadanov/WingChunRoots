@@ -42,7 +42,7 @@ export const REVIEW_KIND_GROUPS: readonly { key: string; label: string; kinds: r
   { key: 'schools', label: 'School listings', kinds: ['school_listing'] },
   { key: 'organizations', label: 'Organizations', kinds: ['organization_application'] },
   { key: 'records', label: 'Record proposals', kinds: ['record_proposal'] },
-  { key: 'disputes', label: 'Disputes, reports and appeals', kinds: ['relationship_dispute', 'profile_report', 'lineage_report', 'decision_appeal', 'succession_request'] },
+  { key: 'disputes', label: 'Disputes, reports and appeals', kinds: ['relationship_dispute', 'profile_report', 'identity_report', 'lineage_report', 'decision_appeal', 'succession_request'] },
   { key: 'deletions', label: 'Account deletion requests', kinds: ['deletion_request'] },
 ];
 

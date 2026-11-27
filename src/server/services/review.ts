@@ -83,6 +83,8 @@ import { appealFacts, appealOfCase, decidedBeforeAppeal, lineageReportFacts } fr
 import { decideGovernanceKind, GOVERNANCE_KINDS } from './governance-review';
 import { successionFacts } from './succession';
 import { type CaseConfirmation, confirmationsOfCase, mayAskTeacher } from './claim-confirmations';
+import { decideIdentityReport, identityCaseView, type IdentityCaseView, identityFacts, reportOfCase } from './identity-reports';
+import { deletePhotoFiles } from './photos';
 import { assignableRoles, caseById, caseColumns, type CaseRow, caseReplayOf, DECIDERS, isCaseKeyConflict, ownSide, partiesOf, recordCaseEvent } from './review-core';
 import { queueRecomputeForPerson } from './lineage-membership';
 import { ARCHIVE_EDITOR_ONLY, ARCHIVE_EDITOR_ROLES } from './archive-editor';
@@ -152,7 +154,7 @@ export const REVIEW_GROUPS = {
   schools: { label: 'School listings', kinds: ['school_listing'] },
   organizations: { label: 'Organizations', kinds: ['organization_application'] },
   records: { label: 'Record proposals', kinds: ['record_proposal'] },
-  disputes: { label: 'Disputes, reports and appeals', kinds: ['relationship_dispute', 'profile_report', 'lineage_report', 'decision_appeal', 'succession_request'] },
+  disputes: { label: 'Disputes, reports and appeals', kinds: ['relationship_dispute', 'profile_report', 'identity_report', 'lineage_report', 'decision_appeal', 'succession_request'] },
 } as const satisfies Record<string, { label: string; kinds: readonly Exclude<ReviewCaseKind, 'deletion_request'>[] }>;
 export type ReviewGroup = keyof typeof REVIEW_GROUPS;
 const REVIEW_GROUP_KEYS = Object.keys(REVIEW_GROUPS) as [ReviewGroup, ...ReviewGroup[]];
@@ -213,6 +215,10 @@ export const reviewDecideInput = z
      * DEFAULT review-2026-11, "Uphold the report" still only closes the case.
      */
     takeDown: z.boolean().nullish().transform((v) => v === true),
+    /** ADR 0088 (identity_report, verify only): also suspend the account that held the profile (decision 5). */
+    suspend: z.boolean().nullish().transform((v) => v === true),
+    /** ADR 0088 (identity_report, reject only): "could not be settled" rather than "not upheld". */
+    unsettled: z.boolean().nullish().transform((v) => v === true),
     /**
      * Review 2026-11-14 (historical_claim, verify only, and only while the teacher's life status is
      * `unknown`): the plain choice the verify panel asks for. `established`: the evidence shows that
@@ -227,6 +233,8 @@ export const reviewDecideInput = z
     if (!input.reason && input.decision === 'reject') ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Write the reason the claimant will read.' });
     if (!input.reason && input.decision === 'needs_info') ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Write what the claimant should add.' });
     if (input.takeDown && input.decision !== 'verify') ctx.addIssue({ code: 'custom', path: ['takeDown'], message: 'A profile is taken down only when the report is upheld.' });
+    if (input.suspend && input.decision !== 'verify') ctx.addIssue({ code: 'custom', path: ['suspend'], message: 'An account is suspended only when the report is upheld.' });
+    if (input.unsettled && input.decision !== 'reject') ctx.addIssue({ code: 'custom', path: ['unsettled'], message: 'This choice belongs to not upholding a report.' });
     if (input.deceased && input.decision !== 'verify') ctx.addIssue({ code: 'custom', path: ['deceased'], message: 'This choice belongs to verifying a claim.' });
     if (input.takeDown && !input.reason) ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Write the reason the owner will read.' });
     if (input.takeDown && input.reason && input.reason.length > TAKEDOWN_REASON_MAX) {
@@ -495,6 +503,31 @@ export const DECISION_TEXT: Record<Exclude<ReviewCaseKind, 'deletion_request'>, 
     },
     needs_info: { ...ASK, reason: 'Question for the proposer', hint: 'Required. The proposer reads it on their case page and can add evidence.', done: 'Your question was sent to the proposer.' },
   },
+  // ADR 0088: an impersonation report, decided by an administrator alone (decision 3).
+  identity_report: {
+    verify: {
+      label: 'Uphold the report',
+      pending: 'Saving…',
+      reason: 'Reason',
+      hint: 'Both sides read it. An impostor report moves the profile to the reporter: the students the other account approved go back to pending, and its photos are removed. A duplicate report takes the copy down.',
+      optional: true,
+      done: 'The report is upheld and both sides were told. What changed is on the case.',
+    },
+    reject: {
+      label: 'Do not uphold it',
+      pending: 'Saving…',
+      reason: 'Reason',
+      hint: 'Required. Both sides read it. The hold on the profile lifts.',
+      optional: false,
+      done: 'The report is closed, the hold is lifted and both sides were told.',
+    },
+    needs_info: {
+      ...ASK,
+      reason: 'Question for both sides',
+      hint: 'Required. Both sides read it on their case page and can add proof.',
+      done: 'Your question was sent to both sides. The case waits for their answers.',
+    },
+  },
 };
 
 export interface ReviewListRow {
@@ -603,6 +636,8 @@ export interface ReviewCaseView {
    * have an account, and what each was asked and answered. Empty for a party and for other kinds.
    */
   confirmations: CaseConfirmation[];
+  /** ADR 0088: an impersonation report's type, hold, vouches, codes and proof per side; null for other kinds and for a side. */
+  identity: IdentityCaseView | null;
   /** Why this reviewer may not decide, when they may not (shown on the card). */
   decideNote: string | null;
   /** For an administrator: the reviewers a case can be given to. */
@@ -746,6 +781,8 @@ const DECIDABLE_IN: Partial<Record<ReviewCaseKind, string>> = {
   historical_claim: 'under_review',
   person_claim: 'awaiting_claim',
   relationship_dispute: 'in_arbitration',
+  // ADR 0088: after the moderators' check put the profile on hold (identity_report.status).
+  identity_report: 'held',
 };
 
 /** Who decides a kind, in the words of the case card. */
@@ -761,6 +798,7 @@ const DECIDER_TEXT: Partial<Record<ReviewCaseKind, string>> = {
   lineage_report: 'A moderator or an administrator upholds a lineage dispute report or does not. You can add notes.',
   decision_appeal: 'The deciders of the appealed kind, other than its first decider, decide an appeal. You can add notes.',
   record_proposal: 'An archivist applies a proposed change to a shared record or does not. You can ask the proposer for more information and add notes.',
+  identity_report: 'An administrator decides an impersonation report. A moderator or an administrator makes the first check. You can add notes.',
 };
 
 /** What this reviewer may do on a case, and why not. `subjectStatus`: the relationship's, or the listed school's (M11). */
@@ -803,7 +841,7 @@ function abilities(p: Principal, c: CaseRow, subjectStatus: string | null, own: 
       verify: may && decidable && decider && (mine || admin),
       reject: may && decidable && decider && (mine || admin),
       // A report is upheld or dismissed; a dispute's parties are asked by its deciders.
-      needsInfo: may && decidable && kind !== 'profile_report' && (mine || admin) && (kind !== 'relationship_dispute' || decider),
+      needsInfo: may && decidable && kind !== 'profile_report' && (mine || admin) && ((kind !== 'relationship_dispute' && kind !== 'identity_report') || decider),
       note: !own,
     },
     decideNote,
@@ -866,7 +904,8 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
   }
   const schoolView = c.kind === 'school_listing' && c.schoolId ? await schoolCaseView(db, c.schoolId) : null;
   const organizationView = c.kind === 'organization_application' && c.organizationId ? await organizationCaseView(db, c.organizationId) : null;
-  const abilitiesNow = abilities(p, c, relationship?.status ?? schoolView?.status ?? organizationView?.status ?? null, own);
+  const identityStatus = c.kind === 'identity_report' ? ((await reportOfCase(db, c.id))?.status ?? null) : null;
+  const abilitiesNow = abilities(p, c, relationship?.status ?? schoolView?.status ?? organizationView?.status ?? identityStatus, own);
   // M25: the first decider never decides an appeal of their decision, nor the case it reopened.
   const firstDecider =
     c.kind === 'decision_appeal' ? (await appealOfCase(db, c.id))?.originalDeciderUserId === p.user.id : await decidedBeforeAppeal(db, c.id, p.user.id);
@@ -881,6 +920,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
         ? { ...facts, takeDown: { ...facts.takeDown, allowed: !own && hasStaff2FA(p, TAKEDOWN_ROLES) } }
         : facts;
   const confirmations = own ? [] : await confirmationsOfCase(db, c);
+  const identity = await identityCaseView(db, p, c, own);
   const reviewers = can.assignOthers
     ? (
         await db
@@ -923,6 +963,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     decisions: c.kind === 'person_claim' && c.relationshipId === null ? SELF_CLAIM_DECISIONS : DECISION_TEXT[c.kind as Exclude<ReviewCaseKind, 'deletion_request'>],
     can: { ...can, askTeacher: confirmations.length > 0 && mayAskTeacher(p, c, own) && !firstDecider },
     confirmations,
+    identity,
     decideNote,
     reviewers,
   };
@@ -950,6 +991,9 @@ async function subjectOf(db: Executor, c: CaseRow, viewerId: string): Promise<Re
   if (c.kind === 'record_proposal') {
     const facts = await proposalFacts(db, c.id);
     return facts ? { label: 'The shared record', person: c.personId ? ((await peopleRefs([c.personId])).get(c.personId) ?? null) : null, facts } : null;
+  }
+  if (c.kind === 'identity_report') {
+    return { label: 'The profile reported', person: c.personId ? ((await peopleRefs([c.personId])).get(c.personId) ?? null) : null, facts: await identityFacts(db, c.id) };
   }
   if (!c.personId || (c.kind !== 'person_claim' && c.kind !== 'instructor_verification' && c.kind !== 'profile_report')) return null;
   const ref = (await peopleRefs([c.personId])).get(c.personId) ?? null;
@@ -1195,6 +1239,9 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
   const db = getDb();
   // M11: a school listing is decided by school-review.ts (no relationship, no evidence).
   const [kindOf] = await db.select({ kind: reviewCase.kind }).from(reviewCase).where(eq(reviewCase.id, input.caseId));
+  if ((input.suspend || input.unsettled) && kindOf && kindOf.kind !== 'identity_report') {
+    throw new ServiceError('BAD_REQUEST', 'Only an impersonation report suspends an account or closes unsettled.', { suspend: 'Only an impersonation report suspends an account.' });
+  }
   if (input.takeDown && kindOf && kindOf.kind !== 'profile_report') throw new ServiceError('BAD_REQUEST', 'Only an upheld report about a profile takes the profile down.', { takeDown: 'Only an upheld report about a profile takes the profile down.' });
   if (kindOf?.kind === 'school_listing') {
     const replayed = await decideSchoolListing(p, input, meta);
@@ -1370,6 +1417,8 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
       return { replayed: false, tags: await publicTags(tx, row) };
     });
     if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');
+    // ADR 0088: the photos an impostor added, once the decision that removed them committed.
+    if ('photos' in outcome && outcome.photos && outcome.photos.length > 0) await deletePhotoFiles(outcome.photos);
     return { case: await getReviewCase(p, { id: input.caseId }), replayed: outcome.replayed };
   } catch (error) {
     if (isKeyConflict(error) || isNoteKeyConflict(error) || isCaseKeyConflict(error)) throw keyReused();
@@ -1391,7 +1440,7 @@ async function decideOtherKind(
   input: z.output<typeof reviewDecideInput>,
   admin: boolean,
   meta: RequestMeta,
-): Promise<{ replayed: boolean; tags: string[] }> {
+): Promise<{ replayed: boolean; tags: string[]; photos?: { id: string; storageKey: string }[] }> {
   // M11: a school listing is decided by school-review.ts before this transaction (decideReviewCase).
   if (seen.kind === 'school_listing' || seen.kind === 'organization_application') throw new ServiceError('CONFLICT', 'This case has been decided or closed.');
   const row = seen.relationshipId ? await rowById(tx, seen.relationshipId, true) : null;
@@ -1405,7 +1454,7 @@ async function decideOtherKind(
   }
   if (await ownSide(tx, p, c)) throw new ServiceError('FORBIDDEN', 'This case is about you: another reviewer decides it.');
   const kind = c.kind as Exclude<ReviewCaseKind, 'deletion_request'>;
-  if ((input.decision !== 'needs_info' || kind === 'relationship_dispute') && !hasStaff2FA(p, DECIDERS[kind])) {
+  if ((input.decision !== 'needs_info' || kind === 'relationship_dispute' || kind === 'identity_report') && !hasStaff2FA(p, DECIDERS[kind])) {
     throw new ServiceError('FORBIDDEN', DECIDER_TEXT[kind]?.split('.')[0]?.concat('.') ?? 'You cannot decide cases of this kind.');
   }
   if (input.decision === 'needs_info' && kind === 'profile_report') throw new ServiceError('CONFLICT', 'A report is upheld or dismissed.');
@@ -1413,6 +1462,10 @@ async function decideOtherKind(
   if (!isOpen(c.status)) throw new ServiceError('CONFLICT', 'This case has been decided or closed.');
   // M25: after an upheld appeal, the first decider does not decide the case again.
   if (await decidedBeforeAppeal(tx, c.id, p.user.id)) throw new ServiceError('FORBIDDEN', 'You decided this case before its appeal: another member of staff decides it now.');
+  if (c.kind === 'identity_report') {
+    const decided = await decideIdentityReport(tx, p, c, input, meta);
+    return { replayed: false, tags: decided.tags, photos: decided.photos };
+  }
   const outcome = GOVERNANCE_KINDS.has(c.kind) ? await decideGovernanceKind(tx, p, c, input, meta) : await decideKind(tx, p, c, row, input, meta);
   return { replayed: false, tags: outcome.tags };
 }

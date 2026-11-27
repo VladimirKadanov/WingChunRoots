@@ -126,6 +126,10 @@ export function FactStrip({ profile, className }: { profile: PersonProfileDto; c
   }
   if (profile.claimState !== 'unknown') facts.push({ key: 'record', node: claimText(profile.claimState) });
   // M10b (DEFAULT D04/D13): a Sifu account chose its type itself; an archivist verifies it.
+  // ADR 0088: in words, never by colour alone.
+  if (profile.identityHold) {
+    facts.push({ key: 'identity', node: <span data-testid="identity-hold-fact">Identity under review</span> });
+  }
   if (profile.instructor) {
     facts.push({
       key: 'instructor',

@@ -141,6 +141,9 @@ export const NOTIFICATION_CATALOG = {
   'claim.decided': mailed('review', 'claim-decided'),
   // Role replay 2026-11-25 (P3-8, ADR 0067): a reviewer asks a teacher about a claim.
   'claim.confirmation_asked': mailed('review', 'notice'),
+  // ADR 0088: impersonation reports. Account notices: never switched off (they are about the profile).
+  'identity.notice': mailed('account', 'notice'),
+  'identity.vouch_asked': mailed('review', 'notice'),
   'invitation.claimed': mailed('teaching', 'notice'),
   'instructor.decided': mailed('review', 'instructor-decided'),
   // DEFAULT D19: both parties of an arbitration, its decision included (e-mailed since M10b).

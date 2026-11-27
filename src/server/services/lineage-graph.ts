@@ -978,12 +978,14 @@ export interface ProfileRow {
   instructor_status: 'verified' | 'unverified' | null;
   /** Journey review 2026-11-26 (P1-3): the era of a historical record. */
   era_text: string | null;
+  /** ADR 0088: an impersonation report holds the profile while the administrators decide. */
+  identity_hold: boolean;
 }
 
 export async function publicProfileRow(ex: Executor, personId: string): Promise<ProfileRow | null> {
   const list = await rows<ProfileRow>(
     ex,
-    sql`SELECT id::text AS id, slug, kind, life_status, stewardship, country_code, city_name, display_name, alt_names, bio, instructor_status, era_text
+    sql`SELECT id::text AS id, slug, kind, life_status, stewardship, country_code, city_name, display_name, alt_names, bio, instructor_status, era_text, identity_hold
           FROM v_public_person WHERE id = ${personId}::uuid`,
   );
   return list[0] ?? null;

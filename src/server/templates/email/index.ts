@@ -8,6 +8,7 @@ import { cloneElement, isValidElement, type ReactElement } from 'react';
 import { accountExists } from './account-exists';
 import { claimDecided } from './claim-decided';
 import { finishSignUp } from './finish-sign-up';
+import { identityCode } from './identity-code';
 import { instructorDecided } from './instructor-decided';
 import { invitation } from './invitation';
 import { mailCheck } from './mail-check';
@@ -29,6 +30,7 @@ export type { EmailTemplate, NameData } from './types';
 export type { AccountExistsData } from './account-exists';
 export type { ClaimDecidedData } from './claim-decided';
 export type { FinishSignUpData } from './finish-sign-up';
+export type { IdentityCodeData } from './identity-code';
 export type { InstructorDecidedData } from './instructor-decided';
 export type { InvitationData } from './invitation';
 export type { MailCheckData } from './mail-check';
@@ -62,6 +64,8 @@ export const EMAIL_TEMPLATES = {
   'relationship-arbitration': relationshipArbitration,
   // M18: the e-mail of a notice without a dedicated e-mail (src/server/templates/catalog.ts).
   notice,
+  // ADR 0088: the one-time code of an impersonation report's own-channel proof.
+  'identity-code': identityCode,
 } as const;
 
 export type EmailTemplateName = keyof typeof EMAIL_TEMPLATES;

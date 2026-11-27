@@ -194,6 +194,11 @@ export const personProfileSchema = z.object({
    * approved their evidence and "unverified" until then; null for anyone else.
    */
   instructor: z.enum(['verified', 'unverified']).nullable(),
+  /**
+   * ADR 0088: an impersonation report holds the profile while the administrators check who it
+   * belongs to. The profile says "Identity under review" and shows no instructor mark meanwhile.
+   */
+  identityHold: z.boolean().optional(),
   visibility: visibilitySchema,
   /** The signed-in account's own person. */
   isOwn: z.boolean(),

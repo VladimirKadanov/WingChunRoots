@@ -285,6 +285,26 @@ import {
   withdrawTrial,
 } from '../services/trial-lessons';
 import {
+  addIdentityCode,
+  answerIdentityVouch,
+  askIdentityVouch,
+  checkIdentityPageCode,
+  confirmIdentityCode,
+  fileIdentityReport,
+  getIdentityReportOption,
+  getIdentityVouch,
+  identityAddCodeInput,
+  identityAskVouchInput,
+  identityCheckCodeInput,
+  identityConfirmCodeInput,
+  identityGetInput,
+  identityReportInput,
+  identityTriageInput,
+  identityVouchAnswerInput,
+  identityVouchIdInput,
+  triageIdentityReport,
+} from '../services/identity-reports';
+import {
   answerClaimConfirmation,
   askTeacherToConfirm,
   claimConfirmationAnswerInput,
@@ -1071,6 +1091,60 @@ export const router = {
       .route({ method: 'POST', path: '/claim-confirmations/answer', summary: 'Answer the reviewers’ question once (yes, no or not sure, with an optional note only they read); the assigned reviewer is told; audited' })
       .input(claimConfirmationAnswerInput)
       .handler(({ context, input }) => answerClaimConfirmation(context.principal, input, context.meta)),
+  },
+  // ADR 0088: "This account is pretending to be me" (impersonation reports).
+  identity: {
+    get: signedIn
+      .route({ method: 'GET', path: '/identity-reports/option/{slug}', summary: 'Whether you may report a public profile as pretending to be you, as an impostor report (you have no profile) or a duplicate (you have one), and the proof routes' })
+      .input(identityGetInput)
+      .handler(({ context, input }) => getIdentityReportOption(context.principal, input)),
+    report: signedIn
+      .route({
+        method: 'POST',
+        path: '/identity-reports',
+        summary: 'Report that a public profile run by another account is yours (one open report per account, three in 30 days): a review case; nothing changes for the profile until a moderator checks it; audited',
+      })
+      .input(identityReportInput)
+      .handler(({ context, input }) => fileIdentityReport(context.principal, input, context.meta)),
+    triage: moderatorWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/identity-reports/triage',
+        summary: 'The first check of an impersonation report (a moderator or administrator with a verified second factor): hold the profile for 30 days (proof due in 14; its account is told) or close the report with a reason; audited',
+      })
+      .input(identityTriageInput)
+      .handler(({ context, input }) => triageIdentityReport(context.principal, input, context.meta)),
+    askVouch: signedIn
+      .route({ method: 'POST', path: '/identity-reports/vouches', summary: 'One side of a held impersonation report asks a verified teacher or a verified member (by profile address) to vouch for it; they are notified; audited' })
+      .input(identityAskVouchInput)
+      .handler(({ context, input }) => askIdentityVouch(context.principal, input, context.meta)),
+    addCode: signedIn
+      .route({
+        method: 'POST',
+        path: '/identity-reports/codes',
+        summary: 'One side of a held impersonation report asks for an own-channel code: mailed to an address at the school’s own domain (only the domain is kept), or a public code to post on the school’s page; audited',
+      })
+      .input(identityAddCodeInput)
+      .handler(({ context, input }) => addIdentityCode(context.principal, input, context.meta)),
+    confirmCode: signedIn
+      .route({ method: 'POST', path: '/identity-reports/codes/confirm', summary: 'Type back the mailed code (five tries); audited when confirmed' })
+      .input(identityConfirmCodeInput)
+      .handler(({ context, input }) => confirmIdentityCode(context.principal, input, context.meta)),
+    checkCode: adminWithSecondFactor
+      .route({ method: 'POST', path: '/identity-reports/codes/check', summary: 'An administrator with a verified second factor confirms seeing a public code on the school’s page; audited' })
+      .input(identityCheckCodeInput)
+      .handler(({ context, input }) => checkIdentityPageCode(context.principal, input, context.meta)),
+  },
+  // ADR 0088: the side of a person asked to vouch.
+  identityVouches: {
+    get: signedIn
+      .route({ method: 'GET', path: '/identity-vouches/{id}', summary: 'A request to you to vouch for a member in an impersonation report; 404 for anyone else' })
+      .input(identityVouchIdInput)
+      .handler(({ context, input }) => getIdentityVouch(context.principal, input)),
+    answer: signedIn
+      .route({ method: 'POST', path: '/identity-vouches/answer', summary: 'Answer once (yes, no or not sure, with an optional note only the administrators read); audited' })
+      .input(identityVouchAnswerInput)
+      .handler(({ context, input }) => answerIdentityVouch(context.principal, input, context.meta)),
   },
   // M25 (docs/adr/0028-governance.md): governance. Succession, lineage dispute reports, appeals and
   // proposed changes to the shared archival records; every decision is a case of the review queue

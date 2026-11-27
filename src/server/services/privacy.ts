@@ -23,6 +23,7 @@ import { type ConsentKind, consentVersion, REQUIRED_SIGN_UP_CONSENTS } from '../
 import { lockAccount } from './account-lock';
 import { eraseAccount, lockOpenDeletionCase } from './account-erasure';
 import { withdrawConsents } from './consent';
+import { refuseWhileHeld } from './identity-hold';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 import { neighbourTags, setOwnVisibility } from './profile';
@@ -204,6 +205,8 @@ export async function requestAccountDeletion(principal: Principal | null, raw: u
     const existing = await openDeletionRequest(tx, p.user.id);
     if (existing) return { request: existing, created: false };
     const [own] = await tx.select({ id: person.id }).from(person).where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)));
+    // ADR 0088: an account whose profile an impersonation report holds asks for deletion after the decision.
+    await refuseWhileHeld(tx, own?.id);
     const [created] = await tx
       .insert(reviewCase)
       .values({ kind: 'deletion_request', status: 'open', personId: own?.id ?? null, openedByUserId: p.user.id })
