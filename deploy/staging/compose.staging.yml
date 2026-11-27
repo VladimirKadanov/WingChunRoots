@@ -7,7 +7,7 @@
 #   - migrate, web and worker run the image built by .github/workflows/staging-image.yml (WCR_IMAGE),
 #     never a build on the server (a Next.js build needs more memory than the server has spare);
 #   - Caddy in front of web and Mailpit: HTTPS (Let's Encrypt), one shared password for everything
-#     except /healthz, noindex on every answer; web trusts only Caddy's address (TRUSTED_PROXIES);
+#     except /healthz and POST /api/billing/webhook (signed by the provider), noindex on every answer; web trusts only Caddy's address (TRUSTED_PROXIES);
 #   - the erasure ledger is written to a writable folder beside the archives (web mounts the
 #     archive folder read-only), so account erasures work and the ledger is backed up with them;
 #   - WCR_DEMO_SIGN_IN reaches web, so the demo accounts can sign in while the demo data is loaded.

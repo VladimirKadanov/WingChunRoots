@@ -20,6 +20,17 @@
 		reverse_proxy web:3000
 	}
 
+	# Stripe's test-mode events (src/server/billing/webhook.ts) cannot send the shared password. The
+	# route checks the Stripe-Signature of every body itself (400 without a valid one, live events
+	# refused, 256 KB at most), so only POST to this one path skips the password.
+	@billing_webhook {
+		method POST
+		path /api/billing/webhook
+	}
+	handle @billing_webhook {
+		reverse_proxy web:3000
+	}
+
 	handle {
 		import /etc/caddy/auth.caddy
 		reverse_proxy web:3000 {

@@ -11,7 +11,7 @@
 
 | Услуга | Роля |
 |---|---|
-| `caddy` | HTTPS (Let's Encrypt) и паролата пред всичко освен `/healthz`; `noindex` на всеки отговор; единствената услуга, отворена навън (портове 80 и 443) |
+| `caddy` | HTTPS (Let's Encrypt) и паролата пред всичко освен `/healthz` и `POST /api/billing/webhook` (подписаните събития на Stripe, вижте „Плащания със Stripe в тестов режим“); `noindex` на всеки отговор; единствената услуга, отворена навън (портове 80 и 443) |
 | `web`, `worker`, `migrate` | приложението от образа `ghcr.io/vladimirkadanov/wingchunroots:sha-<commit>`; сървърът никога не build-ва |
 | `postgres` | PostgreSQL 18 + PostGIS 3.6, томът `wingchunroots_postgres-data` |
 | `seaweedfs` | снимките, логата, плакатите и доказателствата, томът `wingchunroots_seaweedfs-data` |
@@ -125,6 +125,29 @@ deploy/staging/staging.sh install-cron   # всяка нощ в 02:30 (UTC), л�
 ```bash
 BACKUP_AGE_IDENTITY=~/wcr-age-key.txt scripts/restore-drill.sh backups/<име>.dump.age
 ```
+
+## Плащания със Stripe в тестов режим
+
+По подразбиране staging ползва тестовия доставчик на приложението (без акаунт и без ключове). За да опитате истинската страница за плащане на Stripe в тестов режим (sandbox):
+
+1. В таблото на Stripe, в sandbox: **Developers → Webhooks → Add destination** (екранът „Create an event destination“):
+   - **Event destination scope:** Your account;
+   - **Payload style:** Snapshot;
+   - **API version:** версията по подразбиране на акаунта (приложението не праща своя версия, така че отговорите на API и събитията са в една и съща версия);
+   - **Events:** `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.resumed`, `invoice.paid`, `invoice.payment_failed`;
+   - **Destination type:** Webhook endpoint;
+   - **Endpoint URL:** `https://<STAGING_HOST>/api/billing/webhook`.
+2. В `.env` на сървъра (`nano ~/wingchunroots/.env` като `deploy`), никога в чат или в git:
+   - `BILLING_PROVIDER=stripe`;
+   - `STRIPE_SECRET_KEY=sk_test_…` (**Developers → API keys → Secret key**);
+   - `STRIPE_WEBHOOK_SECRET=whsec_…` (**Signing secret** на създадения endpoint).
+
+   Публичният ключ (`pk_test_…`) не трябва: приложението праща купувача към страницата на Stripe, без Stripe.js в браузъра.
+3. `deploy/staging/staging.sh deploy`: Compose пресъздава `web` и `worker` с новите стойности.
+
+Caddy пуска без паролата на сайта само `POST /api/billing/webhook`: Stripe не може да прати паролата, а маршрутът сам проверява подписа `Stripe-Signature` на всяко събитие (400 без валиден подпис) и отказва събития с `livemode: true`. `staging.sh deploy` рестартира Caddy, когато `Caddyfile` се е променил.
+
+Плаща се с тестовите карти на Stripe, например `4242 4242 4242 4242`, произволна бъдеща дата и произволен CVC. Тестовият часовник в `/admin/billing/<id>` работи само с тестовия доставчик. Смяната на месечен към годишен план на федерация в края на периода не се поддържа със Stripe (`docs/plan/questions/M23.md`, въпрос 2). За връщане към тестовия доставчик махнете `BILLING_PROVIDER=stripe` и пуснете `deploy` пак.
 
 ## Ежедневни команди
 
