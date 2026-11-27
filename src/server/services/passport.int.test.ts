@@ -54,6 +54,7 @@ import {
   withdrawEntry,
 } from './passport';
 import { member, meta, newLineage, principalOf, staff } from './relationships.test-support';
+import { settleNaming } from './naming.test-support';
 
 vi.mock('next/cache', () => ({
   cacheTag: () => undefined,
@@ -276,6 +277,10 @@ describe('privacy (In scope 8)', () => {
     const visible = await member('visible-examiner');
     const a = await addExam(teacher.principal, { personId: student.personId, awardedRank: 'Demo level A', date: '2020', examinerPersonId: hidden.personId }, meta);
     const b = await addExam(teacher.principal, { personId: student.personId, awardedRank: 'Demo level B', date: '2021', examinerPersonId: visible.personId }, meta);
+    // Nobody is named an examiner before they agree (review 2026-11-13, ADR 0088).
+    const before = (await passportGet(null, { slug: student.slug })).timeline.flatMap((y) => y.items);
+    expect(before.find((e) => e.id === b.id)?.examiner).toBeNull();
+    expect(await settleNaming({ kind: 'exam_examiner' })).toBe(2);
     const view = await passportGet(null, { slug: student.slug });
     const entries = view.timeline.flatMap((y) => y.items);
     expect(entries.find((e) => e.id === a.id)?.examiner).toBeNull();

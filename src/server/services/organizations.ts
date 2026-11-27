@@ -92,7 +92,7 @@ import { idempotencyKey, keyReused } from './relationships';
 import { caseReplayOf, isCaseKeyConflict, lockAccountCases, recordCaseEvent, tellStaff } from './review-core';
 import { notify, notifyEach } from './notify';
 import { accountOfPerson, separateMembership } from './organization-separation-core';
-import { inviteAdmin, nameMember, pendingAdminInvites, pendingMembers, WAITING_LABELS, withdrawAdminInvite, withdrawMemberRequest } from './naming';
+import { askerOf, inviteAdmin, nameMember, pendingAdminInvites, pendingMembers, WAITING_LABELS, withdrawAdminInvite, withdrawMemberRequest } from './naming';
 
 // --- Words ---------------------------------------------------------------------------------------
 
@@ -1057,7 +1057,7 @@ export async function addOrganizationMember(principal: Principal | null, raw: z.
     if (existing && !membershipHasEnded(existing, today)) throw new ServiceError('CONFLICT', 'This person is a member of the organization already.');
     // Review 2026-11-13 (ADR 0088): someone else's person is listed only once they (or, without an
     // account, the archive team) agree; the request waits in naming_request until then.
-    const outcome = await nameMember(tx, { userId: p.user.id, role: p.user.role, ownPersonId: await ownPerson(tx, p.user.id) }, { organizationId: org.id, personId, role: input.role, startsOn: input.startsOn }, meta);
+    const outcome = await nameMember(tx, await askerOf(tx, p), { organizationId: org.id, personId, role: input.role, startsOn: input.startsOn }, meta);
     if (outcome !== 'attached') return { membershipId: null, personId, outcome };
     const now = new Date();
     const membershipId = existing?.id ?? uuidv7();
@@ -1082,12 +1082,6 @@ export async function addOrganizationMember(principal: Principal | null, raw: z.
   });
   if (out.outcome === 'added') invalidatePublic([ORGANIZATIONS_TAG], 'procedure');
   return { membershipId: out.membershipId, outcome: out.outcome };
-}
-
-/** The account's own person, or null. */
-async function ownPerson(db: Executor, userId: string): Promise<string | null> {
-  const { rows } = await db.execute<{ id: string }>(sql`SELECT id FROM person WHERE claimed_by_user_id = ${userId}::uuid AND deleted_at IS NULL LIMIT 1`);
-  return rows[0]?.id ?? null;
 }
 
 type MembershipDays = { startsOn: string | null; endsOn: string | null };

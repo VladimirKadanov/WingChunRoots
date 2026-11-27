@@ -38,6 +38,7 @@ import {
 import { grantOrganizationPlan } from './organization-grants';
 import { carryOutDeletionFromCommandLine, requestAccountDeletion } from './privacy';
 import { createUser, member, meta, newLineage, principalOf, staff } from './relationships.test-support';
+import { settleNaming } from './naming.test-support';
 
 vi.mock('next/cache', () => ({
   cacheTag: () => undefined,
@@ -341,6 +342,9 @@ describe('privacy of the public answers', () => {
     const visible = await member('events-visible');
     const hidden = await member('events-hidden');
     const created = await createEvent(sifu.principal, { ...seminar(at('12-01'), at('12-01', '12:00')), instructorIds: [visible.personId, hidden.personId] }, meta);
+    // Listed once they accept (review 2026-11-13, ADR 0088).
+    expect((await eventGet(null, { slug: created.slug })).instructors).toEqual([]);
+    expect(await settleNaming({ kind: 'event_instructor' })).toBe(2);
     expect((await eventGet(null, { slug: created.slug })).instructors.map((i) => i.slug).sort()).toEqual([hidden.slug, visible.slug].sort());
     await getDb().update(person).set({ visibility: 'involved_only' }).where(eq(person.id, hidden.personId));
     const page = await eventGet(null, { slug: created.slug });
@@ -371,6 +375,7 @@ describe('notices (DEFAULT M17, question 3)', () => {
     await relate(sifu.personId, pending.personId, 'pending_teacher');
     await relate(teacher.personId, arbitration.personId, 'in_arbitration');
     const created = await createEvent(sifu.principal, { ...seminar(at('03-12'), at('03-12', '12:00')), instructorIds: [teacher.personId] }, meta);
+    await settleNaming({ kind: 'event_instructor' });
     // The job was queued with the change, ids only.
     const jobs = await getDb().execute<{ data: unknown }>(sql`SELECT data FROM pgboss.job WHERE name = 'events.notify' AND data->>'eventId' = ${created.id}`);
     expect(jobs.rows.map((j) => j.data)).toEqual([{ eventId: created.id, change: 'published' }]);

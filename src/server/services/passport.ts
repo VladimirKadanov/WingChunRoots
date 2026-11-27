@@ -84,6 +84,7 @@ import type { RequestMeta } from './context';
 import type { UpgradeOffer } from './dashboard';
 import { ServiceError } from './errors';
 import { featuredIncluded } from './featured-profile';
+import { askerOf, type Asker, type EntryKind, nameExaminer, nameIssuer } from './naming';
 import { notify } from './notify';
 import { PHOTO_HASH_LENGTH, photoUrl } from './photo-refs';
 import {
@@ -657,6 +658,8 @@ interface OwnRow extends EntrySource {
   teacher_person_id: string | null;
   /** A student's attendance claim waiting for the organizer (ADR 0046); only in the student's own passport. */
   waiting: boolean;
+  /** An organization or examiner the entry names has not agreed yet (review 2026-11-13, ADR 0088). */
+  naming_waiting: boolean;
 }
 
 /**
@@ -673,7 +676,7 @@ async function ownEntries(db: Executor, personId: string, organizationIds: reado
            NULL AS examiner_slug, NULL AS examiner_name, NULL AS examiner_lang, tp.slug AS teacher_slug, ${name('tp')} AS teacher_name, ${lang('tp')} AS teacher_lang,
            NULL AS event_slug, NULL AS event_kind, NULL AS certificate_sha256, NULL::int AS certificate_width, NULL::int AS certificate_height, r.created_at,
            r.visibility, r.created_by_user_id, r.correction_note, r.correction_at, (r.teacher_person_id IS NULL) AS writer_organization, r.organization_id, r.teacher_person_id,
-           false AS waiting
+           false AS waiting, EXISTS (SELECT 1 FROM naming_request nr WHERE nr.rank_id = r.id) AS naming_waiting
       FROM passport_rank r LEFT JOIN v_public_organization o ON o.id = r.organization_id LEFT JOIN person tp ON tp.id = r.teacher_person_id AND tp.deleted_at IS NULL
      WHERE r.person_id = ${personId}::uuid AND r.status = 'active'
     UNION ALL
@@ -681,7 +684,7 @@ async function ownEntries(db: Executor, personId: string, organizationIds: reado
            ep.slug, ep.display_name, ${lang('ep')}, tp.slug, ${name('tp')}, ${lang('tp')},
            NULL, NULL, NULL, NULL::int, NULL::int, x.created_at,
            x.visibility, x.created_by_user_id, x.correction_note, x.correction_at, (x.teacher_person_id IS NULL), x.organization_id, x.teacher_person_id,
-           false
+           false, EXISTS (SELECT 1 FROM naming_request nr WHERE nr.exam_id = x.id)
       FROM passport_exam x LEFT JOIN v_public_organization o ON o.id = x.organization_id LEFT JOIN v_public_person ep ON ep.id = x.examiner_person_id
            LEFT JOIN person tp ON tp.id = x.teacher_person_id AND tp.deleted_at IS NULL
      WHERE x.person_id = ${personId}::uuid AND x.status = 'active'
@@ -690,7 +693,7 @@ async function ownEntries(db: Executor, personId: string, organizationIds: reado
            NULL, NULL, NULL, tp.slug, ${name('tp')}, ${lang('tp')},
            NULL, NULL, NULL, NULL::int, NULL::int, k.created_at,
            k.visibility, k.created_by_user_id, k.correction_note, k.correction_at, (k.teacher_person_id IS NULL), k.organization_id, k.teacher_person_id,
-           false
+           false, EXISTS (SELECT 1 FROM naming_request nr WHERE nr.skill_id = k.id)
       FROM passport_skill k LEFT JOIN v_public_organization o ON o.id = k.organization_id LEFT JOIN person tp ON tp.id = k.teacher_person_id AND tp.deleted_at IS NULL
      WHERE k.person_id = ${personId}::uuid AND k.status = 'active'
     UNION ALL
@@ -698,7 +701,7 @@ async function ownEntries(db: Executor, personId: string, organizationIds: reado
            NULL, NULL, NULL, NULL, NULL, NULL,
            NULL, NULL, c.sha256, c.width, c.height, c.created_at,
            c.visibility, c.created_by_user_id, NULL, NULL, false, NULL, NULL::uuid,
-           false
+           false, false
       FROM passport_certificate c
      WHERE c.person_id = ${personId}::uuid AND c.status = 'active'
     UNION ALL
@@ -706,7 +709,7 @@ async function ownEntries(db: Executor, personId: string, organizationIds: reado
            NULL, NULL, NULL, tp.slug, ${name('tp')}, ${lang('tp')},
            e.slug, e.kind, NULL, NULL::int, NULL::int, a.created_at,
            a.visibility, a.created_by_user_id, NULL, NULL, false, NULL, a.teacher_person_id,
-           (a.status = 'pending')
+           (a.status = 'pending'), false
       FROM event_attendance a JOIN event e ON e.id = a.event_id AND e.status <> 'removed' LEFT JOIN person tp ON tp.id = a.teacher_person_id AND tp.deleted_at IS NULL
      WHERE a.person_id = ${personId}::uuid AND ${includeClaims ? sql`a.status IN ('active', 'pending')` : sql`a.status = 'active'`}`);
   const rows = result.rows as OwnRow[];
@@ -728,6 +731,8 @@ export interface OwnPassportEntry extends PassportEntryDto {
   correction: { note: string; at: string } | null;
   /** An attendance the student claimed, waiting for the organizer to confirm it (ADR 0046): shown nowhere else. */
   waitingForOrganizer: boolean;
+  /** The organization or examiner it names has not agreed yet: shown without them until then (ADR 0088). */
+  waitingForNaming: boolean;
 }
 
 function ownEntryOf(r: OwnRow, level: PassportLevel, profilePublic: boolean, currentRankId: string | null): OwnPassportEntry {
@@ -741,6 +746,7 @@ function ownEntryOf(r: OwnRow, level: PassportLevel, profilePublic: boolean, cur
     byOrganization: r.writer_organization,
     correction: r.correction_note && r.correction_at ? { note: r.correction_note, at: iso(r.correction_at) } : null,
     waitingForOrganizer: r.waiting === true,
+    waitingForNaming: r.naming_waiting === true,
   };
 }
 
@@ -1065,6 +1071,28 @@ async function cleanExaminer(db: Executor, examinerPersonId: string | null | und
   return row.id;
 }
 
+/**
+ * Review 2026-11-13 (ADR 0088): the organization and the examiner a new entry names. The entry is
+ * written without them; each is stored at once when it needs nobody's agreement (the writer's own
+ * person, an organization the writer administers), otherwise a request waits for its answer.
+ */
+async function nameOnNewEntry(
+  tx: Transaction,
+  asker: Asker,
+  entry: { kind: EntryKind; id: string },
+  organizationId: string | null,
+  examinerPersonId: string | null,
+  meta: RequestMeta,
+): Promise<void> {
+  const org = await nameIssuer(tx, asker, entry, organizationId, null, meta);
+  const examiner = entry.kind === 'exam' ? await nameExaminer(tx, asker, entry.id, examinerPersonId, null, meta) : null;
+  if (org === null && examiner === null) return;
+  const table = sql.identifier(TABLES[entry.kind]);
+  const sets = [sql`organization_id = ${org}`];
+  if (entry.kind === 'exam') sets.push(sql`examiner_person_id = ${examiner}`);
+  await tx.execute(sql`UPDATE ${table} SET ${sql.join(sets, sql`, `)} WHERE id = ${entry.id}::uuid`);
+}
+
 export interface WrittenEntry {
   kind: PassportKind;
   id: string;
@@ -1087,13 +1115,14 @@ export async function addRank(principal: Principal | null, raw: z.input<typeof a
       .values({
         personId: input.personId,
         rank,
-        organizationId: writer.organizationId,
+        organizationId: null,
         on: date.on,
         precision: date.precision,
         teacherPersonId: writer.teacherPersonId,
         createdByUserId: p.user.id,
       })
       .returning({ id: passportRank.id });
+    await nameOnNewEntry(tx, await askerOf(tx, p), { kind: 'rank', id: row!.id }, writer.organizationId, null, meta);
     await writeAudit(tx, { action: 'passport.add', ...audited(meta, p), subjectType: 'passport_rank', subjectId: row!.id, after: { personId: input.personId, precision: date.precision, organization: writer.organizationId !== null } });
     await tellStudent(tx, input.personId, p.user.id, 'rank', row!.id, rank);
     return { kind: 'rank' as const, id: row!.id };
@@ -1116,12 +1145,13 @@ export async function addExam(principal: Principal | null, raw: z.input<typeof a
         awardedRank,
         on: date.on,
         precision: date.precision,
-        examinerPersonId: examiner,
-        organizationId: writer.organizationId,
+        examinerPersonId: null,
+        organizationId: null,
         teacherPersonId: writer.teacherPersonId,
         createdByUserId: p.user.id,
       })
       .returning({ id: passportExam.id });
+    await nameOnNewEntry(tx, await askerOf(tx, p), { kind: 'exam', id: row!.id }, writer.organizationId, examiner, meta);
     await writeAudit(tx, {
       action: 'passport.add',
       ...audited(meta, p),
@@ -1151,10 +1181,11 @@ export async function addSkill(principal: Principal | null, raw: z.input<typeof 
         on: date.on,
         precision: date.precision,
         teacherPersonId: writer.teacherPersonId,
-        organizationId: writer.organizationId,
+        organizationId: null,
         createdByUserId: p.user.id,
       })
       .returning({ id: passportSkill.id });
+    await nameOnNewEntry(tx, await askerOf(tx, p), { kind: 'skill', id: row!.id }, writer.organizationId, null, meta);
     await writeAudit(tx, { action: 'passport.add', ...audited(meta, p), subjectType: 'passport_skill', subjectId: row!.id, after: { personId: input.personId, progress: input.progress } });
     await tellStudent(tx, input.personId, p.user.id, 'skill', row!.id, name);
     return { kind: 'skill' as const, id: row!.id };
@@ -1182,6 +1213,7 @@ export async function recordGrading(
   const people = [...new Set(input.personIds)];
   return getDb().transaction(async (tx) => {
     const entries: WrittenEntry[] = [];
+    const asker = await askerOf(tx, p);
     for (const personId of people) {
       const writer = await writerFor(tx, p.user.id, personId, input.organizationId ?? null);
       const examiner = await cleanExaminer(tx, input.examinerPersonId, personId);
@@ -1192,12 +1224,13 @@ export async function recordGrading(
           awardedRank,
           on: date.on,
           precision: date.precision,
-          examinerPersonId: examiner,
-          organizationId: writer.organizationId,
+          examinerPersonId: null,
+          organizationId: null,
           teacherPersonId: writer.teacherPersonId,
           createdByUserId: p.user.id,
         })
         .returning({ id: passportExam.id });
+      await nameOnNewEntry(tx, asker, { kind: 'exam', id: exam!.id }, writer.organizationId, examiner, meta);
       await writeAudit(tx, {
         action: 'passport.add',
         ...audited(meta, p),
@@ -1209,8 +1242,9 @@ export async function recordGrading(
       if (input.alsoRank) {
         const [rank] = await tx
           .insert(passportRank)
-          .values({ personId, rank: awardedRank, organizationId: writer.organizationId, on: date.on, precision: date.precision, teacherPersonId: writer.teacherPersonId, createdByUserId: p.user.id })
+          .values({ personId, rank: awardedRank, organizationId: null, on: date.on, precision: date.precision, teacherPersonId: writer.teacherPersonId, createdByUserId: p.user.id })
           .returning({ id: passportRank.id });
+        await nameOnNewEntry(tx, asker, { kind: 'rank', id: rank!.id }, writer.organizationId, null, meta);
         await writeAudit(tx, { action: 'passport.add', ...audited(meta, p), subjectType: 'passport_rank', subjectId: rank!.id, after: { personId, precision: date.precision, organization: writer.organizationId !== null, grading: true } });
         entries.push({ kind: 'rank', id: rank!.id });
       }
@@ -1292,7 +1326,7 @@ export async function updateEntry(principal: Principal | null, raw: z.input<type
       }
       // An organization's admin who is not the teacher keeps the entry their organization's.
       if (!entry.teacher_person_id && input.organizationId !== entry.organization_id) throw new ServiceError('FORBIDDEN', 'An entry of an organization stays that organization’s.');
-      changes.organization_id = input.organizationId ?? null;
+      changes.organization_id = await nameIssuer(tx, await askerOf(tx, p), { kind: input.kind, id: entry.id }, input.organizationId ?? null, entry.organization_id, meta);
       changed.push('organization');
     }
     if (input.kind === 'rank' && input.rank !== undefined) {
@@ -1305,7 +1339,9 @@ export async function updateEntry(principal: Principal | null, raw: z.input<type
         changed.push('awardedRank');
       }
       if (input.examinerPersonId !== undefined) {
-        changes.examiner_person_id = await cleanExaminer(tx, input.examinerPersonId, entry.person_id);
+        const examiner = await cleanExaminer(tx, input.examinerPersonId, entry.person_id);
+        const [was] = await tx.select({ examiner: passportExam.examinerPersonId }).from(passportExam).where(eq(passportExam.id, entry.id));
+        changes.examiner_person_id = await nameExaminer(tx, await askerOf(tx, p), entry.id, examiner, was?.examiner ?? null, meta);
         changed.push('examiner');
       }
     }

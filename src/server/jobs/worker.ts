@@ -13,7 +13,7 @@ import { describeError, MailBusyError, MailInputError } from '../mail/mailer';
 import { SealError } from '../mail/seal';
 import type { Mailer } from '../mail/types';
 import { rebuildAllKeys } from '../search/store';
-import { expireOrganizationImports, purgeExpiredEmailAddresses, purgeExpiredSessions, purgeOldNotifications, purgeOldTrialData, purgeUnconfirmedAccounts } from '../services/retention';
+import { expireOrganizationImports, purgeExpiredEmailAddresses, purgeExpiredNamingInvites, purgeExpiredSessions, purgeOldNotifications, purgeOldTrialData, purgeUnconfirmedAccounts } from '../services/retention';
 import { closeStaleTrialInquiries, nullOldIpHmacs, purgeEndedClaimData, purgeThirdPartyRecords, redactOldRevisions } from '../services/retention-records';
 import { logger } from '../log';
 import { TemplateDataError } from '../templates/email';
@@ -169,6 +169,11 @@ export function retentionPurgeHandler(db: Database, log: (line: string) => void)
       await step('organization imports', async () => {
         const imports = await expireOrganizationImports(db);
         return `ended ${imports.imports} expired organization import preview(s)`;
+      });
+      // Review 2026-11-13 (ADR 0088): administrator invitations past their 14 days.
+      await step('administrator invitations', async () => {
+        const n = await purgeExpiredNamingInvites(db);
+        return `deleted ${n} expired administrator invitation(s)`;
       });
       // Review 2026-11: third-party records, ended claims, revisions, ip_hmac and unanswered trial requests.
       await step('third-party records', async () => {

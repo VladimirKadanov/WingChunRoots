@@ -119,6 +119,12 @@ export interface Asker {
   ownPersonId: string | null;
 }
 
+/** The asker of a principal: its account, role and own person. */
+export async function askerOf(db: Executor, principal: Principal): Promise<Asker> {
+  const { rows } = await db.execute<{ id: string }>(sql`SELECT id FROM person WHERE claimed_by_user_id = ${principal.user.id}::uuid AND deleted_at IS NULL LIMIT 1`);
+  return { userId: principal.user.id, role: principal.user.role, ownPersonId: rows[0]?.id ?? null };
+}
+
 // --- the writers' side ---------------------------------------------------------------------------
 
 /**
@@ -236,7 +242,11 @@ export async function nameExaminer(
   meta: RequestMeta,
 ): Promise<string | null> {
   if (personId === current) return current;
-  await tx.delete(namingRequest).where(and(eq(namingRequest.kind, 'exam_examiner'), eq(namingRequest.examId, examId)));
+  const where = and(eq(namingRequest.kind, 'exam_examiner'), eq(namingRequest.examId, examId));
+  // The same person asked again: the request that waits stays as it is (no second notice).
+  const [waiting] = await tx.select({ personId: namingRequest.personId }).from(namingRequest).where(where);
+  if (waiting && personId && waiting.personId === personId) return current;
+  await tx.delete(namingRequest).where(where);
   if (!personId) return null;
   const target = await personTarget(tx, personId);
   if (!target) return null;
@@ -268,7 +278,10 @@ export async function nameIssuer(
 ): Promise<string | null> {
   if (organizationId === current) return current;
   const column = namingRequest[ENTRY_COLUMN[entry.kind]];
-  await tx.delete(namingRequest).where(and(eq(namingRequest.kind, 'entry_issuer'), eq(column, entry.id)));
+  const where = and(eq(namingRequest.kind, 'entry_issuer'), eq(column, entry.id));
+  const [waiting] = await tx.select({ organizationId: namingRequest.organizationId }).from(namingRequest).where(where);
+  if (waiting && organizationId && waiting.organizationId === organizationId) return current;
+  await tx.delete(namingRequest).where(where);
   if (!organizationId) return null;
   if (await administers(tx, asker.userId, organizationId)) return organizationId;
   const id = uuidv7();
@@ -277,23 +290,6 @@ export async function nameIssuer(
   const name = await organizationName(tx, organizationId);
   for (const admin of await organizationAdmins(tx, organizationId)) await tell(tx, admin, id, 'entry_issuer', name);
   return null;
-}
-
-/** What waits on a passport entry, for the people who see it: the examiner's or the issuer's answer. */
-export async function pendingOnEntries(db: Executor, entries: readonly { kind: EntryKind; id: string }[]): Promise<Map<string, { examiner: boolean; issuer: boolean }>> {
-  const out = new Map<string, { examiner: boolean; issuer: boolean }>();
-  if (entries.length === 0) return out;
-  const ids = entries.map((e) => e.id);
-  const { rows } = await db.execute<{ kind: NamingKind; entry_id: string }>(sql`
-    SELECT r.kind, coalesce(r.rank_id, r.exam_id, r.skill_id) AS entry_id FROM naming_request r
-     WHERE r.kind IN ('exam_examiner', 'entry_issuer') AND coalesce(r.rank_id, r.exam_id, r.skill_id) = ANY (${`{${ids.join(',')}}`}::uuid[])`);
-  for (const r of rows) {
-    const now = out.get(r.entry_id) ?? { examiner: false, issuer: false };
-    if (r.kind === 'exam_examiner') now.examiner = true;
-    else now.issuer = true;
-    out.set(r.entry_id, now);
-  }
-  return out;
 }
 
 /**
@@ -370,22 +366,25 @@ async function apply(tx: Transaction, row: RequestRow, decidedBy: string): Promi
         .onConflictDoNothing();
       return [EVENTS_TAG, personTag(row.personId!)];
     }
-    case 'exam_examiner':
-      await tx.execute(sql`UPDATE passport_exam SET examiner_person_id = ${row.personId}::uuid, updated_at = now() WHERE id = ${row.examId}::uuid AND person_id <> ${row.personId}::uuid`);
-      return [personTag(row.personId!)];
+    case 'exam_examiner': {
+      // The student's passport shows the examiner: both people's cached pages change.
+      const { rows } = await tx.execute<{ person_id: string }>(sql`
+        UPDATE passport_exam SET examiner_person_id = ${row.personId}::uuid, updated_at = now()
+         WHERE id = ${row.examId}::uuid AND person_id <> ${row.personId}::uuid RETURNING person_id`);
+      return [personTag(row.personId!), ...rows.map((r) => personTag(r.person_id))];
+    }
     case 'entry_issuer': {
       const table = row.rankId ? 'passport_rank' : row.examId ? 'passport_exam' : 'passport_skill';
       const entryId = row.rankId ?? row.examId ?? row.skillId;
-      await tx.execute(sql`UPDATE ${sql.identifier(table)} SET organization_id = ${row.organizationId}::uuid, updated_at = now() WHERE id = ${entryId}::uuid`);
-      return [ORGANIZATIONS_TAG];
+      const { rows } = await tx.execute<{ person_id: string }>(sql`
+        UPDATE ${sql.identifier(table)} SET organization_id = ${row.organizationId}::uuid, updated_at = now() WHERE id = ${entryId}::uuid RETURNING person_id`);
+      return [ORGANIZATIONS_TAG, ...rows.map((r) => personTag(r.person_id))];
     }
     case 'organization_admin': {
-      const { rows } = await tx.execute<{ id: string }>(sql`SELECT u.id FROM auth_user u WHERE lower(u.email) = ${row.email}`);
-      const account = rows[0];
-      if (!account) return [];
+      // Answered only by the account the invitation names (mineWhere): that account becomes the admin.
       await tx
         .insert(organizationAdmin)
-        .values({ organizationId: row.organizationId!, userId: account.id, role: (row.role ?? 'admin') as 'admin', grantedByUserId: row.askedByUserId ?? decidedBy })
+        .values({ organizationId: row.organizationId!, userId: decidedBy, role: (row.role ?? 'admin') as 'admin', grantedByUserId: row.askedByUserId ?? decidedBy })
         .onConflictDoNothing();
       return [ORGANIZATIONS_TAG];
     }

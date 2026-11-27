@@ -350,7 +350,10 @@ import {
   requestOrganizationSchool,
   requestSchoolInput,
   updateOrganization,
+  withdrawNamingInput,
+  withdrawOrganizationRequest,
 } from '../services/organizations';
+import { answerNaming, answerNamingInput, namingMine, namingQueue, reviewNaming, reviewNamingInput } from '../services/naming';
 import {
   adminOrganization,
   adminOrganizationInput,
@@ -1573,6 +1576,24 @@ export const router = {
       .input(endTrialInput)
       .handler(({ context, input }) => endFederationTrial(context.principal, input, context.meta)),
   },
+  // Review 2026-11-13 (ADR 0088): nobody is attached to someone else's content without agreeing.
+  // The named account answers its own requests; the archive team decides for people without one.
+  naming: {
+    mine: signedIn
+      .route({ method: 'GET', path: '/naming/mine', summary: 'Requests to list the signed-in account (its person, the organizations it administers, its address) as a member, instructor, examiner, issuer or admin' })
+      .handler(({ context }) => namingMine(context.principal)),
+    answer: signedIn
+      .route({ method: 'POST', path: '/naming/answer', summary: 'Accept (the attachment is made) or decline a request naming the signed-in account (audited)' })
+      .input(answerNamingInput)
+      .handler(({ context, input }) => answerNaming(context.principal, input, context.meta)),
+    queue: staffWithSecondFactor
+      .route({ method: 'GET', path: '/admin/naming', summary: 'Requests naming people without an account, for the archive team (archivist or admin with a verified second factor)' })
+      .handler(({ context }) => namingQueue(context.principal)),
+    review: staffWithSecondFactor
+      .route({ method: 'POST', path: '/admin/naming/review', summary: 'Approve (the attachment is made) or decline a request naming a person without an account, with an optional reason (audited)' })
+      .input(reviewNamingInput)
+      .handler(({ context, input }) => reviewNaming(context.principal, input, context.meta)),
+  },
   // M15: organizations (docs/adr/0018-organizations.md). The public reads give public DTOs only;
   // an organization's admin reaches only the organizations they administer (404 for any other).
   organizations: {
@@ -1622,6 +1643,10 @@ export const router = {
       .route({ method: 'POST', path: '/organizations/members/end', summary: 'End a membership today; it stays as history (needs approval and the Federation plan)' })
       .input(endMemberInput)
       .handler(({ context, input }) => endOrganizationMember(context.principal, input, context.meta)),
+    withdrawRequest: signedIn
+      .route({ method: 'POST', path: '/organizations/requests/withdraw', summary: "Take back a member request that waits, or (an owner) an administrator invitation (review 2026-11-13)" })
+      .input(withdrawNamingInput)
+      .handler(({ context, input }) => withdrawOrganizationRequest(context.principal, input, context.meta)),
     requestSchool: signedIn
       .route({ method: 'POST', path: '/organizations/schools/request', summary: "Ask a public school to link to the organization; the school's account accepts or refuses (needs approval and the Federation plan)" })
       .input(requestSchoolInput)

@@ -184,6 +184,8 @@ export const USER_REFERENCES: readonly UserReference[] = [
   // ADR 0067: a reviewer's question to a teacher about a claim: the teacher's asks go, the reviewer's stay without them.
   { table: 'claim_confirmation', column: 'teacher_user_id', action: 'delete', why: 'questions to the account as a teacher, and its answers' },
   { table: 'claim_confirmation', column: 'asked_by_user_id', action: 'clear', why: 'questions the account asked as a reviewer' },
+  // Review 2026-11-13 (ADR 0088): the requests the account made to name someone wait no longer.
+  { table: 'naming_request', column: 'asked_by_user_id', action: 'delete', why: 'requests the account made to name a person, an organization or an admin' },
   { table: 'evidence_file', column: 'uploaded_by_user_id', action: 'clear', why: 'files the account uploaded: names and hashes cleared, unused ones deleted first' },
   { table: 'evidence_link', column: 'created_by_user_id', action: 'clear', why: 'links the account made: their notes are cleared first' },
   { table: 'invitation', column: 'invited_by_user_id', action: 'clear', why: 'invitations the account sent are revoked first' },
@@ -842,6 +844,8 @@ async function eraseInTransaction(tx: Transaction, request: ErasureRequest, file
   // The short-lived values of the account (reset tokens, the second-factor challenge, trusted devices) hold
   // its id as their value, the way the auth_user_end_sessions trigger finds them; the identifier is hashed.
   await tx.execute(sql`DELETE FROM auth_verification WHERE value = ${userId}`);
+  // ADR 0088: an administrator invitation names an address; the account's own address goes with it.
+  await tx.execute(sql`DELETE FROM naming_request WHERE kind = 'organization_admin' AND email = ${email}`);
 
   // 4. The deletion request is closed; the audit row; then every reference of the catalogue.
   if (deletionCaseId) {

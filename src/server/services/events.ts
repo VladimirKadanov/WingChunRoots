@@ -106,6 +106,7 @@ import {
 } from './photos';
 import { openPilotRequest, planSummary } from './plans';
 import { withLimitNotice } from './limit-notices';
+import { askerOf, nameInstructors, pendingInstructors, WAITING_LABELS } from './naming';
 import { notify } from './notify';
 
 // --- Limits and words ----------------------------------------------------------------------------
@@ -720,11 +721,6 @@ async function checkOrganizerFields(db: Executor, f: CleanFields, organizer: { u
   if (Object.keys(fields).length > 0) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
 }
 
-async function writeInstructors(tx: Transaction, eventId: string, ids: readonly string[], now: Date): Promise<void> {
-  await tx.delete(eventInstructor).where(eq(eventInstructor.eventId, eventId));
-  if (ids.length > 0) await tx.insert(eventInstructor).values(ids.map((personId, position) => ({ eventId, personId, position, createdAt: now, updatedAt: now })));
-}
-
 function changed(): void {
   invalidatePublic([EVENTS_TAG], 'procedure');
 }
@@ -837,7 +833,7 @@ async function publishEvent(principal: Principal | null, raw: z.input<typeof eve
       createdAt: now,
       updatedAt: now,
     });
-    await writeInstructors(tx, id, f.instructorIds, now);
+    await nameInstructors(tx, await askerOf(tx, p), id, f.title, f.instructorIds, meta);
     await writeAudit(tx, {
       action: 'event.create',
       actorUserId: p.user.id,
@@ -922,7 +918,7 @@ async function changeEvent(principal: Principal | null, raw: z.input<typeof even
         updatedAt: now,
       })
       .where(eq(event.id, row.id));
-    await writeInstructors(tx, row.id, f.instructorIds, now);
+    await nameInstructors(tx, await askerOf(tx, p), row.id, f.title, f.instructorIds, meta);
     await writeAudit(tx, {
       action: 'event.update',
       actorUserId: p.user.id,
@@ -1383,7 +1379,7 @@ export interface EventEditor {
   /** Schools the event may name: the account's own listings, and each organization's accepted links. */
   schools: { id: string; name: string; organizationId: string | null }[];
   /** People of the archive the form offers: you, your confirmed students and teachers, your schools' instructors, your organizations' members. */
-  instructorOptions: { id: string; label: string; self: boolean }[];
+  instructorOptions: { id: string; label: string; self: boolean; waiting: string | null }[];
   timezones: string[];
   /** The zone a new event starts with: the organizer's city's, or UTC. */
   defaultTimezone: string;
@@ -1438,6 +1434,7 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
   if (!parsed.success) throw notFound();
   const db = getDb();
   let current: EventEditor['event'] = null;
+  let waiting: Awaited<ReturnType<typeof pendingInstructors>> = [];
   if (parsed.data.id) {
     const seen = await ownEvent(db, p.user.id, parsed.data.id);
     const [r] = await db
@@ -1469,7 +1466,10 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
       .from(event)
       .leftJoin(organization, eq(organization.id, event.organizationId))
       .where(eq(event.id, seen.id));
-    const instructors = await db.select({ id: eventInstructor.personId }).from(eventInstructor).where(eq(eventInstructor.eventId, seen.id)).orderBy(asc(eventInstructor.position));
+    const listedInstructors = await db.select({ id: eventInstructor.personId, position: eventInstructor.position }).from(eventInstructor).where(eq(eventInstructor.eventId, seen.id));
+    // Review 2026-11-13 (ADR 0088): the instructors who have not answered yet stay in the form, marked.
+    waiting = await pendingInstructors(db, seen.id);
+    const instructors = [...listedInstructors, ...waiting.map((w) => ({ id: w.personId, position: w.position }))].sort((a, b) => a.position - b.position);
     current = {
       ...r!,
       timezone: canonicalTimeZone(r!.timezone),
@@ -1516,6 +1516,7 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
           WHERE ${orgIds.length > 0 ? sql`m.organization_id = ANY (${SQL_IDS(orgIds)})` : sql`false`}
             AND (m.ends_on IS NULL OR m.ends_on > current_date)
        UNION SELECT ei.person_id FROM event_instructor ei WHERE ei.event_id = ${current?.id ?? null}::uuid
+       UNION SELECT nr.person_id FROM naming_request nr WHERE nr.kind = 'event_instructor' AND nr.event_id = ${current?.id ?? null}::uuid
      )
        AND p.id IS DISTINCT FROM ${own?.id ?? null}::uuid
      ORDER BY p.display_name, p.id
@@ -1527,8 +1528,11 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
     ? (await db.execute<{ value: string | null }>(sql`SELECT (SELECT pn.value FROM person_name pn WHERE pn.person_id = ${own.id}::uuid AND pn.is_primary LIMIT 1) AS value`)).rows[0]?.value
     : null;
   const instructorOptions = [
-    ...(own ? [{ id: own.id, label: `${ownName ?? 'You'} (you)`, self: true }] : []),
-    ...people.rows.map((r) => ({ id: r.id, label: r.display_name, self: false })),
+    ...(own ? [{ id: own.id, label: `${ownName ?? 'You'} (you)`, self: true, waiting: null }] : []),
+    ...people.rows.map((r) => {
+      const w = waiting.find((x) => x.personId === r.id);
+      return { id: r.id, label: r.display_name, self: false, waiting: w ? WAITING_LABELS[w.status] : null };
+    }),
   ];
   return {
     event: current,

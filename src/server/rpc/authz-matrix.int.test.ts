@@ -661,6 +661,37 @@ const noInput = () => ({ input: undefined });
 const ROWS: Row[] = [
   // account
   { path: 'account.menu', make: noInput, expect: own() },
+  // Review 2026-11-13 (ADR 0088): naming requests. The named account answers its own; the
+  // archive team (archivist or admin with a verified second factor) decides for people without one.
+  { path: 'naming.mine', make: noInput, expect: own() },
+  {
+    path: 'naming.answer',
+    make: async () => {
+      const o = await organizationOf({ federation: true });
+      const named = await actor('naming-named');
+      await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: named.slug!, role: 'member' }, meta);
+      const [r] = (await getDb().execute<{ id: string }>(sql`SELECT id::text FROM naming_request WHERE organization_id = ${o.organizationId}::uuid`)).rows;
+      return { owner: named, party: o.owner, input: { id: r!.id, accept: true } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  { path: 'naming.queue', make: noInput, expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  {
+    path: 'naming.review',
+    make: async () => {
+      const o = await organizationOf({ federation: true });
+      // A record without an account: the request goes to review.
+      const personId = uuidv7();
+      const slug = `demo-naming-record-${randomBytes(4).toString('hex')}`;
+      await getDb().insert(person).values({ id: personId, slug, kind: 'living', lifeStatus: 'living', stewardship: 'unclaimed', visibility: 'public' });
+      await getDb().insert(personName).values({ personId, value: 'Demo Naming Record', script: 'Latn', lang: 'en', isPrimary: true });
+      await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: slug, role: 'member' }, meta);
+      const [r] = (await getDb().execute<{ id: string }>(sql`SELECT id::text FROM naming_request WHERE organization_id = ${o.organizationId}::uuid AND status = 'in_review'`)).rows;
+      return { input: { id: r!.id, approve: false, reason: 'ADR 0088 authorization matrix (fictional)' } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+
   { path: 'account.me', make: noInput, expect: own() },
   { path: 'account.landing', make: () => ({ input: { next: '/dashboard' } }), expect: own() },
   { path: 'account.twoFactor', make: noInput, expect: own() },
@@ -1889,6 +1920,17 @@ const ROWS: Row[] = [
     make: async () => {
       const o = await organizationOf({ active: true });
       return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, email: (await actor('org-new-admin', { noPerson: true })).email } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    // Review 2026-11-13 (ADR 0088): an owner or admin takes back a member request that waits.
+    path: 'organizations.withdrawRequest',
+    make: async () => {
+      const o = await organizationOf({ federation: true });
+      await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: (await actor('org-asked')).slug!, role: 'member' }, meta);
+      const [r] = (await getDb().execute<{ id: string }>(sql`SELECT id::text FROM naming_request WHERE organization_id = ${o.organizationId}::uuid`)).rows;
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, requestId: r!.id } };
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
