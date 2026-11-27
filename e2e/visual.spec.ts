@@ -79,6 +79,10 @@ for (const size of SCREEN_SIZES) {
             // Below 1024 px the menu is one button (ADR 0053): its summary, else a link of the sidebar.
             await expect(page.getByTestId('dashboard-nav').locator('a, summary').filter({ visible: true }).first()).toBeVisible();
           }
+          // A form's city field is a select of the large cities until the type-ahead's module has
+          // loaded after hydration (src/components/account/lazy-city-field.tsx); a screenshot taken
+          // before the swap shows the select (CI on PR #111, dashboard-school-new, two runs in three).
+          await expect(page.locator('select[name="placeId"]').filter({ visible: true })).toHaveCount(0);
           // The review queue: its Waiting cells must be on the page and visible (not in a hidden node of
           // streamed content) before fixVisualDates writes the fixed text, or the screenshot shows the
           // real, daily changing one (it did in about one capture in four, CI on PR #74).
