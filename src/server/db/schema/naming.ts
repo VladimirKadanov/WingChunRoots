@@ -72,14 +72,15 @@ export const namingRequest = pgTable(
     check('naming_request_status_check', inList(t.status.name, NAMING_STATUSES)),
     check(
       'naming_request_shape',
-      sql`CASE ${t.kind}
+      // coalesce: a NULL position or role makes a branch NULL, which a CHECK would let through.
+      sql`coalesce(CASE ${t.kind}
         WHEN 'organization_member' THEN ${t.personId} IS NOT NULL AND ${t.organizationId} IS NOT NULL AND ${t.role} IN (${sql.raw(ORGANIZATION_ROLES.map((r) => `'${r}'`).join(', '))})
         WHEN 'event_instructor' THEN ${t.personId} IS NOT NULL AND ${t.eventId} IS NOT NULL AND ${t.position} BETWEEN 0 AND 4
         WHEN 'exam_examiner' THEN ${t.personId} IS NOT NULL AND ${t.examId} IS NOT NULL
         WHEN 'entry_issuer' THEN ${t.organizationId} IS NOT NULL AND num_nonnulls(${t.rankId}, ${t.examId}, ${t.skillId}) = 1 AND ${t.status} = 'pending'
         WHEN 'organization_admin' THEN ${t.organizationId} IS NOT NULL AND ${t.email} IS NOT NULL AND ${t.expiresAt} IS NOT NULL AND ${t.status} = 'pending'
           AND ${t.role} IN (${sql.raw(ORGANIZATION_ADMIN_ROLES.map((r) => `'${r}'`).join(', '))})
-      END`,
+      END, false)`,
     ),
     check('naming_request_email_lower', sql`${t.email} IS NULL OR ${t.email} = lower(${t.email})`),
     uniqueIndex('naming_request_member_key').on(t.organizationId, t.personId).where(sql`${t.kind} = 'organization_member'`),

@@ -386,6 +386,7 @@ export const BG_ARCHIVE: AdminDict = {
   'Administrator of an organization': 'Администратор на организация',
   'Approved. The record is listed now.': 'Одобрено. Записът вече е посочен.',
   'Declined. Nothing was listed.': 'Отказано. Нищо не е посочено.',
+  'This request no longer applied (what it named has closed or changed), so nothing was listed.': 'Тази заявка вече не важеше (посоченото е затворено или променено), затова нищо не е посочено.',
   'Someone asked to list a record without an account as a member, an instructor or an examiner. Nobody can answer for that person, so the archive team decides: approve only what the archive supports.':
     'Някой поиска запис без профил да бъде посочен като член, инструктор или изпитващ. Никой не може да отговори вместо този човек, затова решава екипът на архива: одобрявайте само това, което архивът потвърждава.',
   'Waiting for a decision': 'Чака решение',

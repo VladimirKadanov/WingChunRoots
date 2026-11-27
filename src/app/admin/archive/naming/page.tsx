@@ -71,7 +71,14 @@ export default async function NamingRequestsPage({ searchParams }: { searchParam
   const data = await pageRead(serverClient(await headers(), guard.principal).naming.queue());
   if (!data) return <LoadError words={loadErrorWords(t)} {...archiveLoadError(t)} retryHref="/admin/archive/naming" />;
   const initials = await Promise.all(data.requests.map((r) => readFormResult(reviewNamingForm(r.id), query.outcome)));
-  const decided = query.decided === 'approved' ? t('Approved. The record is listed now.') : query.decided === 'declined' ? t('Declined. Nothing was listed.') : null;
+  const decided =
+    query.decided === 'approved'
+      ? t('Approved. The record is listed now.')
+      : query.decided === 'declined'
+        ? t('Declined. Nothing was listed.')
+        : query.decided === 'lapsed'
+          ? t('This request no longer applied (what it named has closed or changed), so nothing was listed.')
+          : null;
   return (
     <Column>
       <div className="max-w-[46rem]">

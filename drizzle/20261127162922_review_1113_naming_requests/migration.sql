@@ -18,14 +18,14 @@ CREATE TABLE "naming_request" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "naming_request_kind_check" CHECK ("kind" IN ('organization_member', 'event_instructor', 'exam_examiner', 'entry_issuer', 'organization_admin')),
 	CONSTRAINT "naming_request_status_check" CHECK ("status" IN ('pending', 'in_review')),
-	CONSTRAINT "naming_request_shape" CHECK (CASE "kind"
+	CONSTRAINT "naming_request_shape" CHECK (coalesce(CASE "kind"
         WHEN 'organization_member' THEN "person_id" IS NOT NULL AND "organization_id" IS NOT NULL AND "role" IN ('leader', 'admin', 'member')
         WHEN 'event_instructor' THEN "person_id" IS NOT NULL AND "event_id" IS NOT NULL AND "position" BETWEEN 0 AND 4
         WHEN 'exam_examiner' THEN "person_id" IS NOT NULL AND "exam_id" IS NOT NULL
         WHEN 'entry_issuer' THEN "organization_id" IS NOT NULL AND num_nonnulls("rank_id", "exam_id", "skill_id") = 1 AND "status" = 'pending'
         WHEN 'organization_admin' THEN "organization_id" IS NOT NULL AND "email" IS NOT NULL AND "expires_at" IS NOT NULL AND "status" = 'pending'
           AND "role" IN ('owner', 'admin')
-      END),
+      END, false)),
 	CONSTRAINT "naming_request_email_lower" CHECK ("email" IS NULL OR "email" = lower("email"))
 );
 --> statement-breakpoint

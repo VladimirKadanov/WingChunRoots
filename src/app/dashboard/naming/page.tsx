@@ -29,6 +29,7 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 const OUTCOMES: Record<string, string> = {
   accepted: 'Accepted. You are listed now.',
   declined: 'Declined. Nothing was listed, and the request is gone.',
+  lapsed: 'This request no longer applies (what it named has closed or changed), so nothing was listed. It is gone.',
 };
 
 export default async function NamingPage({ searchParams }: { searchParams: Search }) {

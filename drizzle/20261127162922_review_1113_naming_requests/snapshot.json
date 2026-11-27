@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "dd7470a9-1f87-4ce4-80f6-664358712ee4",
+  "id": "bd10572e-e8d5-467a-9f77-02ec2e905833",
   "prevIds": [
     "8f4988fc-a7cb-427a-b6d8-116cdf06d3a5"
   ],
@@ -24351,7 +24351,7 @@
       "table": "naming_request"
     },
     {
-      "value": "CASE \"kind\"\n        WHEN 'organization_member' THEN \"person_id\" IS NOT NULL AND \"organization_id\" IS NOT NULL AND \"role\" IN ('leader', 'admin', 'member')\n        WHEN 'event_instructor' THEN \"person_id\" IS NOT NULL AND \"event_id\" IS NOT NULL AND \"position\" BETWEEN 0 AND 4\n        WHEN 'exam_examiner' THEN \"person_id\" IS NOT NULL AND \"exam_id\" IS NOT NULL\n        WHEN 'entry_issuer' THEN \"organization_id\" IS NOT NULL AND num_nonnulls(\"rank_id\", \"exam_id\", \"skill_id\") = 1 AND \"status\" = 'pending'\n        WHEN 'organization_admin' THEN \"organization_id\" IS NOT NULL AND \"email\" IS NOT NULL AND \"expires_at\" IS NOT NULL AND \"status\" = 'pending'\n          AND \"role\" IN ('owner', 'admin')\n      END",
+      "value": "coalesce(CASE \"kind\"\n        WHEN 'organization_member' THEN \"person_id\" IS NOT NULL AND \"organization_id\" IS NOT NULL AND \"role\" IN ('leader', 'admin', 'member')\n        WHEN 'event_instructor' THEN \"person_id\" IS NOT NULL AND \"event_id\" IS NOT NULL AND \"position\" BETWEEN 0 AND 4\n        WHEN 'exam_examiner' THEN \"person_id\" IS NOT NULL AND \"exam_id\" IS NOT NULL\n        WHEN 'entry_issuer' THEN \"organization_id\" IS NOT NULL AND num_nonnulls(\"rank_id\", \"exam_id\", \"skill_id\") = 1 AND \"status\" = 'pending'\n        WHEN 'organization_admin' THEN \"organization_id\" IS NOT NULL AND \"email\" IS NOT NULL AND \"expires_at\" IS NOT NULL AND \"status\" = 'pending'\n          AND \"role\" IN ('owner', 'admin')\n      END, false)",
       "name": "naming_request_shape",
       "entityType": "checks",
       "schema": "public",

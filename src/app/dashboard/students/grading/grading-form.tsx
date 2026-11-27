@@ -70,7 +70,7 @@ export function GradingForm({
         maxLength={10}
         hint="A year (2019), a month (2019-05) or a day (2019-05-12), as precise as you know it; or leave it empty."
       />
-      <SelectField form={form} name="examinerPersonId" label="Examiner" state={state} optional autoComplete="off" defaultValue={state.values?.examinerPersonId ?? ''} hint="You or your teachers.">
+      <SelectField form={form} name="examinerPersonId" label="Examiner" state={state} optional autoComplete="off" defaultValue={state.values?.examinerPersonId ?? ''} hint="You or your teachers. Anyone but you is named once they accept.">
         <option value="">Not recorded</option>
         {examiners.map((e) => (
           <option key={e.value} value={e.value}>

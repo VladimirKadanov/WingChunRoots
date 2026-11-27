@@ -21,13 +21,17 @@ const PAGE = '/dashboard/naming';
 export async function answerNamingAction(_previous: FormState, form: FormData): Promise<FormState> {
   const id = textValue(form, 'id', 40);
   const answer = textValue(form, 'answer', 10);
+  let status: 'accepted' | 'declined' | 'lapsed';
   try {
-    await serverClient(await headers(), await getRequestPrincipal()).naming.answer({ id, accept: answer === 'accept' ? true : answer === 'decline' ? false : (answer as unknown as boolean) });
+    ({ status } = await serverClient(await headers(), await getRequestPrincipal()).naming.answer({
+      id,
+      accept: answer === 'accept' ? true : answer === 'decline' ? false : (answer as unknown as boolean),
+    }));
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(`/sign-in?next=${encodeURIComponent(PAGE)}`);
     const state = formStateFromFailure(error);
     return formResult({ form: namingForm(id), page: PAGE, anchor: outcomeTarget(namingForm(id), state, true) }, state);
   }
-  redirect(`${PAGE}?answered=${answer === 'accept' ? 'accepted' : 'declined'}#requests`);
+  redirect(`${PAGE}?answered=${status}#requests`);
 }

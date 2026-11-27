@@ -25,17 +25,18 @@ export async function reviewNamingAction(_previous: FormState, form: FormData): 
   const id = textValue(form, 'id', 40);
   const decision = textValue(form, 'decision', 10);
   const reason = textValue(form, 'reason', 500);
+  let status: 'approved' | 'declined' | 'lapsed';
   try {
-    await serverClient(await headers(), await getRequestPrincipal()).naming.review({
+    ({ status } = await serverClient(await headers(), await getRequestPrincipal()).naming.review({
       id,
       approve: decision === 'approve' ? true : decision === 'decline' ? false : (decision as unknown as boolean),
       ...(reason ? { reason } : {}),
-    });
+    }));
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(`/sign-in?next=${encodeURIComponent(PAGE)}`);
     const state = translateFormState(await getAdminT(), formStateFromFailure(error, { id, reason }));
     return formResult({ form: reviewNamingForm(id), page: PAGE, anchor: outcomeTarget(reviewNamingForm(id), state, true) }, state);
   }
-  redirect(`${PAGE}?decided=${decision === 'approve' ? 'approved' : 'declined'}#requests`);
+  redirect(`${PAGE}?decided=${status}#requests`);
 }

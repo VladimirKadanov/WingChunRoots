@@ -249,8 +249,24 @@ test('@M15 an administrator gives Federation, the owner lists a public member, a
   await expect(ask.getByLabel('School’s public page')).toHaveValue('demo-school-sofia');
   await add.getByRole('button', { name: 'Add member' }).click();
   await expect(visible(page.getByTestId('organization-done'))).toBeVisible();
-  await expect(page.getByTestId('organization-member')).toHaveCount(1);
+  // Review 2026-11-13 (ADR 0088): the person is asked first and listed once they accept.
+  await expect(page.getByTestId('organization-member')).toHaveCount(0);
+  await expect(page.getByTestId('organization-member-request')).toHaveCount(1);
   await axeInBothThemes(page, 'organization dashboard (Federation)');
+  const named = await signedIn(browser, 'demo-root-a');
+  try {
+    await named.page.goto('/dashboard/naming');
+    const request = named.page.getByTestId('naming-request').filter({ hasText: name });
+    await expect(request).toHaveCount(1);
+    await axeInBothThemes(named.page, 'requests to name you');
+    await request.getByTestId('naming-accept').click();
+    await expect(visible(named.page.getByTestId('naming-outcome'))).toBeVisible();
+  } finally {
+    await named.context.close();
+  }
+  await page.reload();
+  await expect(page.getByTestId('organization-member')).toHaveCount(1);
+  await expect(page.getByTestId('organization-member-request')).toHaveCount(0);
 
   const relationshipsBefore = await getDb().execute<{ n: string }>(sql`SELECT count(*)::text AS n FROM teaching_relationship`);
   const again = await signedIn(browser, 'admin');

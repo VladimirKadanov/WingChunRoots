@@ -34,6 +34,7 @@ describe('retentionPurgeHandler', () => {
       'retention.purge: deleted 0 closed trial lesson request(s), 0 old school counter(s)',
       // M24: organization import previews past their 24 hours.
       'retention.purge: ended 0 expired organization import preview(s)',
+      'retention.purge: deleted 0 expired administrator invitation(s)',
       // Review 2026-11: third-party records, ended claims, revisions, ip_hmac and unanswered trial requests.
       'retention.purge: deleted 0 and removed 0 third-party record(s), withdrew 0 request(s) waiting for them',
       'retention.purge: set the retention of 0 evidence file(s), deleted 0 (0 not deleted), removed the text of 0 review note(s)',

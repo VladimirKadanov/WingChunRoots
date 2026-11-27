@@ -951,7 +951,7 @@ export async function addOrganizationAdmin(principal: Principal | null, raw: z.i
     if (role !== 'owner') throw new ServiceError('FORBIDDEN', 'Only an owner of the organization adds admins.');
     const { rows } = await tx.execute<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM audit_log
-       WHERE action = 'naming.request' AND actor_user_id = ${p.user.id}::uuid AND after->>'kind' = 'organization_admin' AND created_at > now() - interval '1 day'`);
+       WHERE action = 'organization.admin_add' AND subject_type = 'organization' AND subject_id = ${org.id} AND created_at > now() - interval '1 day'`);
     if ((rows[0]?.n ?? 0) >= ADMIN_INVITES_PER_DAY) throw new ServiceError('TOO_MANY_REQUESTS', `You can send at most ${ADMIN_INVITES_PER_DAY} invitations a day. Try again tomorrow.`);
     await inviteAdmin(tx, { userId: p.user.id, role: p.user.role, ownPersonId: null }, org.id, input.email, 'admin', meta);
     await writeAudit(tx, {
@@ -979,12 +979,12 @@ export async function withdrawOrganizationRequest(principal: Principal | null, r
     const withdrawn = (await withdrawMemberRequest(tx, org.id, input.requestId)) || (role === 'owner' && (await withdrawAdminInvite(tx, org.id, input.requestId)));
     if (!withdrawn) throw new ServiceError('NOT_FOUND', 'This request is not there any more.');
     await writeAudit(tx, {
-      action: 'naming.answer',
+      action: 'naming.withdraw',
       actorUserId: p.user.id,
       actorRole: p.user.role,
       subjectType: 'naming_request',
       subjectId: input.requestId,
-      after: { withdrawn: true, organizationId: org.id },
+      after: { organizationId: org.id },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });

@@ -55,6 +55,17 @@ export const WAITING_LABELS: Record<'pending' | 'in_review', string> = {
 
 // --- who answers ---------------------------------------------------------------------------------
 
+/**
+ * The account that answers for the person a request names, now (a person who later claims their
+ * record answers themselves; one whose account went goes to the archive team): the stored status
+ * is what it was when asked, this is what decides.
+ */
+const PERSON_ACCOUNT = sql`(SELECT p.claimed_by_user_id FROM person p WHERE p.id = r.person_id AND p.stewardship = 'self' AND p.deleted_at IS NULL)`;
+/** Whether the request waits for the archive team now: it names a person without an account. */
+const IN_REVIEW = sql`(r.kind IN ('organization_member', 'event_instructor', 'exam_examiner') AND ${PERSON_ACCOUNT} IS NULL)`;
+/** The status as the views show it. */
+export const EFFECTIVE_STATUS = sql`CASE WHEN ${IN_REVIEW} THEN 'in_review' ELSE 'pending' END`;
+
 interface PersonTarget {
   id: string;
   /** The account that answers for the person, or null (no account: the archive team decides). */
@@ -147,7 +158,7 @@ export async function nameMember(
     .where(and(eq(namingRequest.kind, 'organization_member'), eq(namingRequest.organizationId, input.organizationId), eq(namingRequest.personId, input.personId)))
     .for('update');
   if (existing) {
-    await tx.update(namingRequest).set({ role: input.role, startsOn: input.startsOn, updatedAt: new Date() }).where(eq(namingRequest.id, existing.id));
+    await tx.update(namingRequest).set({ status, role: input.role, startsOn: input.startsOn, updatedAt: new Date() }).where(eq(namingRequest.id, existing.id));
     return status;
   }
   const id = uuidv7();
@@ -160,7 +171,8 @@ export async function nameMember(
 /** The pending and in-review member requests of an organization, for its admins' list. */
 export async function pendingMembers(db: Executor, organizationId: string): Promise<{ requestId: string; personId: string; slug: string; name: string; role: string; status: 'pending' | 'in_review' }[]> {
   const { rows } = await db.execute<{ id: string; person_id: string; slug: string; name: string | null; role: string; status: 'pending' | 'in_review' }>(sql`
-    SELECT r.id, r.person_id, p.slug, (SELECT n.value FROM person_name n WHERE n.person_id = r.person_id AND n.is_primary LIMIT 1) AS name, r.role, r.status
+    SELECT r.id, r.person_id, p.slug, (SELECT n.value FROM person_name n WHERE n.person_id = r.person_id AND n.is_primary LIMIT 1) AS name, r.role,
+           ${EFFECTIVE_STATUS} AS status
       FROM naming_request r JOIN person p ON p.id = r.person_id
      WHERE r.kind = 'organization_member' AND r.organization_id = ${organizationId}::uuid
      ORDER BY r.created_at`);
@@ -222,11 +234,10 @@ export async function nameInstructors(tx: Transaction, asker: Asker, eventId: st
 
 /** The instructors of an event that wait for an answer, for the organizer's form. */
 export async function pendingInstructors(db: Executor, eventId: string): Promise<{ personId: string; position: number; status: 'pending' | 'in_review' }[]> {
-  const rows = await db
-    .select({ personId: namingRequest.personId, position: namingRequest.position, status: namingRequest.status })
-    .from(namingRequest)
-    .where(and(eq(namingRequest.kind, 'event_instructor'), eq(namingRequest.eventId, eventId)));
-  return rows.map((r) => ({ personId: r.personId!, position: r.position ?? 0, status: r.status }));
+  const { rows } = await db.execute<{ person_id: string; position: number | null; status: 'pending' | 'in_review' }>(sql`
+    SELECT r.person_id, r.position, ${EFFECTIVE_STATUS} AS status FROM naming_request r
+     WHERE r.kind = 'event_instructor' AND r.event_id = ${eventId}::uuid`);
+  return rows.map((r) => ({ personId: r.person_id, position: r.position ?? 0, status: r.status }));
 }
 
 /**
@@ -241,12 +252,13 @@ export async function nameExaminer(
   current: string | null,
   meta: RequestMeta,
 ): Promise<string | null> {
-  if (personId === current) return current;
   const where = and(eq(namingRequest.kind, 'exam_examiner'), eq(namingRequest.examId, examId));
-  // The same person asked again: the request that waits stays as it is (no second notice).
+  // The same person asked again: the request that waits stays as it is (no second notice). Anyone
+  // else (or none) takes the place of the request that waits.
   const [waiting] = await tx.select({ personId: namingRequest.personId }).from(namingRequest).where(where);
   if (waiting && personId && waiting.personId === personId) return current;
-  await tx.delete(namingRequest).where(where);
+  if (waiting) await tx.delete(namingRequest).where(where);
+  if (personId === current) return current;
   if (!personId) return null;
   const target = await personTarget(tx, personId);
   if (!target) return null;
@@ -276,12 +288,12 @@ export async function nameIssuer(
   current: string | null,
   meta: RequestMeta,
 ): Promise<string | null> {
-  if (organizationId === current) return current;
   const column = namingRequest[ENTRY_COLUMN[entry.kind]];
   const where = and(eq(namingRequest.kind, 'entry_issuer'), eq(column, entry.id));
   const [waiting] = await tx.select({ organizationId: namingRequest.organizationId }).from(namingRequest).where(where);
   if (waiting && organizationId && waiting.organizationId === organizationId) return current;
-  await tx.delete(namingRequest).where(where);
+  if (waiting) await tx.delete(namingRequest).where(where);
+  if (organizationId === current) return current;
   if (!organizationId) return null;
   if (await administers(tx, asker.userId, organizationId)) return organizationId;
   const id = uuidv7();
@@ -339,13 +351,19 @@ export async function withdrawAdminInvite(tx: Transaction, organizationId: strin
 
 type RequestRow = typeof namingRequest.$inferSelect;
 
-/** Makes the attachment a request asked for; returns the cache tags it touches. */
-async function apply(tx: Transaction, row: RequestRow, decidedBy: string): Promise<string[]> {
+/**
+ * Makes the attachment a request asked for; returns the cache tags it touches, or null when the
+ * request no longer applies (what it named is gone or closed, the organization is no longer
+ * approved, the asker no longer owns it, the event is full): nothing is attached then.
+ */
+async function apply(tx: Transaction, row: RequestRow, decidedBy: string): Promise<string[] | null> {
   const now = new Date();
+  const activeOrganization = async () =>
+    (await tx.execute(sql`SELECT 1 AS one FROM organization WHERE id = ${row.organizationId}::uuid AND status = 'active' AND deleted_at IS NULL`)).rows.length > 0;
+  const livePerson = async () => (await tx.execute(sql`SELECT 1 AS one FROM person WHERE id = ${row.personId}::uuid AND deleted_at IS NULL`)).rows.length > 0;
   switch (row.kind) {
     case 'organization_member': {
-      const [org] = (await tx.execute<{ id: string }>(sql`SELECT id FROM organization WHERE id = ${row.organizationId}::uuid AND deleted_at IS NULL`)).rows;
-      if (!org) return [];
+      if (!(await activeOrganization()) || !(await livePerson())) return null;
       const [existing] = await tx
         .select({ id: organizationMembership.id })
         .from(organizationMembership)
@@ -359,7 +377,8 @@ async function apply(tx: Transaction, row: RequestRow, decidedBy: string): Promi
     case 'event_instructor': {
       const { rows } = await tx.execute<{ n: number }>(sql`
         SELECT count(*)::int AS n FROM event_instructor WHERE event_id = ${row.eventId}::uuid`);
-      if ((rows[0]?.n ?? 0) >= 5) return [];
+      const live = (await tx.execute(sql`SELECT 1 AS one FROM event WHERE id = ${row.eventId}::uuid AND status <> 'removed'`)).rows.length > 0;
+      if (!live || !(await livePerson()) || (rows[0]?.n ?? 0) >= 5) return null;
       await tx
         .insert(eventInstructor)
         .values({ eventId: row.eventId!, personId: row.personId!, position: row.position ?? 0, createdAt: now, updatedAt: now })
@@ -368,20 +387,32 @@ async function apply(tx: Transaction, row: RequestRow, decidedBy: string): Promi
     }
     case 'exam_examiner': {
       // The student's passport shows the examiner: both people's cached pages change.
+      if (!(await livePerson())) return null;
       const { rows } = await tx.execute<{ person_id: string }>(sql`
         UPDATE passport_exam SET examiner_person_id = ${row.personId}::uuid, updated_at = now()
-         WHERE id = ${row.examId}::uuid AND person_id <> ${row.personId}::uuid RETURNING person_id`);
+         WHERE id = ${row.examId}::uuid AND status = 'active' AND person_id <> ${row.personId}::uuid RETURNING person_id`);
+      if (rows.length === 0) return null;
       return [personTag(row.personId!), ...rows.map((r) => personTag(r.person_id))];
     }
     case 'entry_issuer': {
       const table = row.rankId ? 'passport_rank' : row.examId ? 'passport_exam' : 'passport_skill';
       const entryId = row.rankId ?? row.examId ?? row.skillId;
+      if (!(await activeOrganization())) return null;
       const { rows } = await tx.execute<{ person_id: string }>(sql`
-        UPDATE ${sql.identifier(table)} SET organization_id = ${row.organizationId}::uuid, updated_at = now() WHERE id = ${entryId}::uuid RETURNING person_id`);
+        UPDATE ${sql.identifier(table)} SET organization_id = ${row.organizationId}::uuid, updated_at = now()
+         WHERE id = ${entryId}::uuid AND status = 'active' RETURNING person_id`);
+      if (rows.length === 0) return null;
       return [ORGANIZATIONS_TAG, ...rows.map((r) => personTag(r.person_id))];
     }
     case 'organization_admin': {
-      // Answered only by the account the invitation names (mineWhere): that account becomes the admin.
+      // Answered only by the account the invitation names (mineWhere): that account becomes the
+      // admin, while the organization is approved and whoever invited it still owns it.
+      const owner = row.askedByUserId
+        ? (await tx.execute(sql`
+            SELECT 1 AS one FROM organization_admin a WHERE a.organization_id = ${row.organizationId}::uuid AND a.user_id = ${row.askedByUserId}::uuid
+               AND a.role = 'owner' AND a.revoked_at IS NULL`)).rows.length > 0
+        : false;
+      if (!owner || !(await activeOrganization())) return null;
       await tx
         .insert(organizationAdmin)
         .values({ organizationId: row.organizationId!, userId: decidedBy, role: (row.role ?? 'admin') as 'admin', grantedByUserId: row.askedByUserId ?? decidedBy })
@@ -408,7 +439,7 @@ export interface NamingRequestView {
 }
 
 const VIEW_COLUMNS = sql`
-  r.id, r.kind, r.status, r.created_at, pe.slug AS person_slug,
+  r.id, r.kind, ${EFFECTIVE_STATUS} AS status, r.created_at, pe.slug AS person_slug,
   coalesce((SELECT n.value FROM person_name n WHERE n.person_id = r.person_id AND n.is_primary LIMIT 1),
            (SELECT o.name FROM organization o WHERE o.id = r.organization_id AND r.kind = 'entry_issuer')) AS named,
   CASE r.kind
@@ -436,11 +467,10 @@ function toView(r: ViewRow): NamingRequestView {
   };
 }
 
-/** The requests `userId` may answer (status pending only). */
+/** The requests `userId` may answer. */
 function mineWhere(userId: string) {
-  return sql`r.status = 'pending' AND (
-      (r.kind IN ('organization_member', 'event_instructor', 'exam_examiner')
-        AND EXISTS (SELECT 1 FROM person p WHERE p.id = r.person_id AND p.stewardship = 'self' AND p.claimed_by_user_id = ${userId}::uuid AND p.deleted_at IS NULL))
+  return sql`(
+      (r.kind IN ('organization_member', 'event_instructor', 'exam_examiner') AND ${PERSON_ACCOUNT} = ${userId}::uuid)
    OR (r.kind = 'entry_issuer'
         AND EXISTS (SELECT 1 FROM organization_admin a WHERE a.organization_id = r.organization_id AND a.user_id = ${userId}::uuid AND a.revoked_at IS NULL))
    OR (r.kind = 'organization_admin' AND r.expires_at > now()
@@ -472,7 +502,7 @@ export const reviewNamingInput = z.object({
 const notFound = () => new ServiceError('NOT_FOUND', 'This request is not there any more.');
 
 /** naming.answer: the named account accepts (the attachment is made) or declines (nothing is). */
-export async function answerNaming(principal: Principal | null, raw: z.input<typeof answerNamingInput>, meta: RequestMeta): Promise<{ status: 'accepted' | 'declined' }> {
+export async function answerNaming(principal: Principal | null, raw: z.input<typeof answerNamingInput>, meta: RequestMeta): Promise<{ status: 'accepted' | 'declined' | 'lapsed' }> {
   const p = requireUser(principal);
   const parsed = answerNamingInput.safeParse(raw);
   if (!parsed.success) throw notFound();
@@ -489,14 +519,14 @@ export async function answerNaming(principal: Principal | null, raw: z.input<typ
       actorRole: p.user.role,
       subjectType: 'naming_request',
       subjectId: input.id,
-      after: { kind: row!.kind, accepted: input.accept },
+      after: { kind: row!.kind, accepted: input.accept, ...(touched === null ? { lapsed: true } : {}) },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
     return touched;
   });
-  if (tags.length > 0) invalidatePublic(tags, 'procedure');
-  return { status: input.accept ? 'accepted' : 'declined' };
+  if (tags && tags.length > 0) invalidatePublic(tags, 'procedure');
+  return { status: tags === null ? 'lapsed' : input.accept ? 'accepted' : 'declined' };
 }
 
 /** naming.queue: the requests about people without an account, for archivists and administrators. */
@@ -507,19 +537,20 @@ export async function namingQueue(principal: Principal | null): Promise<{ reques
            (SELECT n.value FROM person p JOIN person_name n ON n.person_id = p.id AND n.is_primary
              WHERE p.claimed_by_user_id = r.asked_by_user_id AND p.deleted_at IS NULL LIMIT 1) AS asked_by
       FROM naming_request r LEFT JOIN person pe ON pe.id = r.person_id
-     WHERE r.status = 'in_review' ORDER BY r.created_at, r.id LIMIT 200`);
+     WHERE ${IN_REVIEW} ORDER BY r.created_at, r.id LIMIT 200`);
   return { requests: rows.map((r) => ({ ...toView(r), askedBy: r.asked_by })) };
 }
 
 /** naming.review: an archivist or administrator approves (applied) or declines a request in review. */
-export async function reviewNaming(principal: Principal | null, raw: z.input<typeof reviewNamingInput>, meta: RequestMeta): Promise<{ status: 'approved' | 'declined' }> {
+export async function reviewNaming(principal: Principal | null, raw: z.input<typeof reviewNamingInput>, meta: RequestMeta): Promise<{ status: 'approved' | 'declined' | 'lapsed' }> {
   const p = requireStaff2FA(principal, ['archivist', 'admin']);
   const parsed = reviewNamingInput.safeParse(raw);
   if (!parsed.success) throw notFound();
   const input = parsed.data;
   const tags = await getDb().transaction(async (tx) => {
-    const [row] = await tx.select().from(namingRequest).where(and(eq(namingRequest.id, input.id), eq(namingRequest.status, 'in_review'))).for('update');
-    if (!row) throw notFound();
+    const { rows: found } = await tx.execute<{ id: string }>(sql`SELECT r.id FROM naming_request r WHERE r.id = ${input.id}::uuid AND ${IN_REVIEW} FOR UPDATE`);
+    if (!found[0]) throw notFound();
+    const [row] = (await tx.select().from(namingRequest).where(eq(namingRequest.id, input.id))) as [RequestRow];
     const touched = input.approve ? await apply(tx, row, p.user.id) : [];
     await tx.delete(namingRequest).where(eq(namingRequest.id, input.id));
     await writeAudit(tx, {
@@ -528,13 +559,13 @@ export async function reviewNaming(principal: Principal | null, raw: z.input<typ
       actorRole: p.user.role,
       subjectType: 'naming_request',
       subjectId: input.id,
-      after: { kind: row.kind, approved: input.approve },
+      after: { kind: row.kind, approved: input.approve, ...(touched === null ? { lapsed: true } : {}) },
       reason: input.reason || null,
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
     return touched;
   });
-  if (tags.length > 0) invalidatePublic(tags, 'procedure');
-  return { status: input.approve ? 'approved' : 'declined' };
+  if (tags && tags.length > 0) invalidatePublic(tags, 'procedure');
+  return { status: tags === null ? 'lapsed' : input.approve ? 'approved' : 'declined' };
 }

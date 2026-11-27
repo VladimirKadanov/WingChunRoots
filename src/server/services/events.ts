@@ -1534,14 +1534,16 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
       return { id: r.id, label: r.display_name, self: false, waiting: w ? WAITING_LABELS[w.status] : null };
     }),
   ];
+  const known = await databaseZones(db);
   return {
     event: current,
     places,
     kinds: EVENT_KINDS.map((key) => ({ key, label: EVENT_KIND_LABELS[key] })),
     schools: [...ownSchools.map((s) => ({ ...s, organizationId: null })), ...orgSchools],
     instructorOptions,
-    timezones: zones(ownZone ? canonicalTimeZone(ownZone) : null, await databaseZones(db)),
-    defaultTimezone: ownZone ? canonicalTimeZone(ownZone) : 'UTC',
+    timezones: zones(ownZone ? canonicalTimeZone(ownZone) : null, known),
+    // A zone the database does not know is not offered, so the form does not start with it either.
+    defaultTimezone: ownZone && known.has(canonicalTimeZone(ownZone)) ? canonicalTimeZone(ownZone) : 'UTC',
   };
 }
 

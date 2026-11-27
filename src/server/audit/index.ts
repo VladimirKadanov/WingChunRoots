@@ -220,6 +220,7 @@ export type AuditAction =
   // decision for a person without an account. Kinds and outcomes only; the reason is staff's own.
   | 'naming.request'
   | 'naming.answer'
+  | 'naming.withdraw'
   | 'naming.review';
 
 export interface AuditEntry {

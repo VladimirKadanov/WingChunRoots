@@ -16,7 +16,7 @@ import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { answerNaming, namingMine, namingQueue, reviewNaming } from './naming';
 import { grantOrganizationPlan } from './organization-grants';
 import { addOrganizationAdmin, addOrganizationMember, applyOrganization, manageOrganization, withdrawOrganizationRequest } from './organizations';
-import { addRank } from './passport';
+import { addRank, updateEntry } from './passport';
 import { createUser, key, member, meta, newLineage, principalOf, staff } from './relationships.test-support';
 import { purgeExpiredNamingInvites } from './retention';
 
@@ -190,3 +190,48 @@ describe('a teacher names an organization on a passport entry (review 2026-11-13
     expect(after!.organizationId).toBe(org.organizationId);
   });
 });
+
+describe('requests that no longer fit (review 2026-11-13, code review)', () => {
+  it('clearing the organization on an entry takes back the request that waits', async () => {
+    const org = await federation();
+    const teacher = await member('naming-clear-teacher', { sifu: true });
+    const student = await member('naming-clear-student');
+    await getDb().insert(teachingRelationship).values({ teacherPersonId: teacher.personId, studentPersonId: student.personId, lineageId: await newLineage('naming-clear'), status: 'verified', visibility: 'public' });
+    const entry = await addRank(teacher.principal, { personId: student.personId, rank: 'Demo cleared level', date: '2021', organizationId: org.organizationId }, meta);
+    expect((await namingMine(org.owner)).requests).toHaveLength(1);
+    await updateEntry(teacher.principal, { kind: 'rank', id: entry.id, organizationId: null }, meta);
+    expect((await namingMine(org.owner)).requests).toEqual([]);
+  });
+
+  it('an accepted request whose organization is no longer approved attaches nothing and says so', async () => {
+    const org = await federation();
+    const named = await member('naming-lapsed');
+    await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: named.slug, role: 'member' }, meta);
+    await getDb().execute(sql`UPDATE organization SET status = 'suspended' WHERE id = ${org.organizationId}::uuid`);
+    const [request] = (await namingMine(named.principal)).requests;
+    expect(await answerNaming(named.principal, { id: request!.id, accept: true }, meta)).toEqual({ status: 'lapsed' });
+    expect(await memberships(org.organizationId, named.personId)).toEqual([]);
+  });
+
+  it('a person whose account goes is decided by the archive team; one who claims a record answers themselves', async () => {
+    const org = await federation();
+    const named = await member('naming-unclaimed');
+    await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: named.slug, role: 'member' }, meta);
+    await getDb().update(person).set({ stewardship: 'unclaimed', claimedByUserId: null }).where(eq(person.id, named.personId));
+    const archivist = await staff('naming-archivist-2', 'archivist');
+    expect((await namingMine(named.principal)).requests).toEqual([]);
+    const queued = (await namingQueue(archivist.principal)).requests.filter((r) => r.personSlug === named.slug);
+    expect(queued).toMatchObject([{ status: 'in_review' }]);
+    expect((await manageOrganization(org.owner, { organizationId: org.organizationId })).pendingMembers[0]!.waiting).toBe('Waiting for the archive team (no account)');
+
+    // A record without an account named by a request, then claimed: its account answers, staff no longer can.
+    const r = await record('naming-later-claimed');
+    await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: r.slug, role: 'member' }, meta);
+    const id = (await namingQueue(archivist.principal)).requests.find((q) => q.personSlug === r.slug)!.id;
+    const claimant = await createUser('naming-claimant');
+    await getDb().update(person).set({ stewardship: 'self', claimedByUserId: claimant.id }).where(eq(person.id, r.personId));
+    await expect(reviewNaming(archivist.principal, { id, approve: true }, meta)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect((await namingMine(principalOf(claimant))).requests.map((x) => x.id)).toEqual([id]);
+  });
+});
+
