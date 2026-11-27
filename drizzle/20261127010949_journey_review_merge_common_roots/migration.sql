@@ -56,7 +56,7 @@ SELECT
          AND c."status" = 'resolved' AND c."resolution" = 'approved'))
     AS "approved_by_unverified_instructor",
   -- Journey review 2026-11-26 (P1-3): how sure the archive is of a link it entered, and its
-  -- public source line. The staff-only source_note never appears here.
+  -- public source line. The staff-only source note never appears here.
   r."certainty",
   r."public_source",
   -- Journey review 2026-11-26 (P1-4): the lineage the home page draws (at most one).

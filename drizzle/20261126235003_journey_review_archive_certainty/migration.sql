@@ -4,7 +4,7 @@
 -- - person.era_text: the era of a historical record ("d. 1901", "active 1850s to 1880s"); public.
 -- - v_public_edge.certainty and public_source, v_public_person.era_text, appended at the end
 --   (CREATE OR REPLACE VIEW keeps the existing columns and their order; the filters are unchanged,
---   DEFAULT D03). source_note stays staff-only.
+--   DEFAULT D03). The staff-only source note stays out.
 -- SQL compatible with PostgreSQL 16+ (plan §3.2).
 ALTER TABLE "teaching_relationship" ADD COLUMN "certainty" text;--> statement-breakpoint
 ALTER TABLE "teaching_relationship" ADD COLUMN "public_source" text;--> statement-breakpoint
@@ -98,7 +98,7 @@ SELECT
          AND c."status" = 'resolved' AND c."resolution" = 'approved'))
     AS "approved_by_unverified_instructor",
   -- Journey review 2026-11-26 (P1-3): how sure the archive is of a link it entered, and its
-  -- public source line. The staff-only source_note never appears here.
+  -- public source line. The staff-only source note never appears here.
   r."certainty",
   r."public_source"
 FROM "teaching_relationship" r
