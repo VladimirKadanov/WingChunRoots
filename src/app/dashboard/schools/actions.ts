@@ -50,6 +50,7 @@ function readFields(form: FormData) {
     ['websiteUrl', 600],
     ['contactEmail', 508],
     ['contactPhone', 80],
+    ['addressLine', 400],
     ['description', 4000],
     ['idempotencyKey', 64],
   ] as const) {
@@ -75,6 +76,7 @@ function readFields(form: FormData) {
       websiteUrl: values.websiteUrl ?? null,
       contactEmail: values.contactEmail ?? null,
       contactPhone: values.contactPhone ?? null,
+      addressLine: values.addressLine ?? null,
       description: values.description ?? null,
       formsTaught: formsTaught as never[],
       instructorIds,

@@ -219,6 +219,27 @@ describe('listing a school', () => {
     expect(kept).toEqual({ deletedAt: null });
   });
 
+  it('the address line is public only with the exact pin, and a city-only school keeps none (P2-7, ADR 0083)', async () => {
+    const pro = await asSifu('p27-address', 'pro_sifu');
+    const base = await fields();
+    const address = '1 Demo Street, second floor';
+    const created = await createSchool(pro.principal, { ...base, locationPrivacy: 'exact', addressLine: address, idempotencyKey: key() }, meta);
+    const [kept] = await getDb().select({ addressLine: school.addressLine }).from(school).where(eq(school.id, created.id));
+    expect(kept!.addressLine).toBe(address);
+    await getDb().update(school).set({ status: 'active' }).where(eq(school.id, created.id));
+    expect((await schoolGet(null, { slug: created.slug })).addressLine).toBe(address);
+    // Switched to city only: the line is dropped, never kept for a later switch back.
+    await updateSchool(pro.principal, { ...base, id: created.id, locationPrivacy: 'city_only', addressLine: address }, meta);
+    await getDb().update(school).set({ status: 'active' }).where(eq(school.id, created.id));
+    const [after] = await getDb().select({ addressLine: school.addressLine }).from(school).where(eq(school.id, created.id));
+    expect(after!.addressLine).toBeNull();
+    expect((await schoolGet(null, { slug: created.slug })).addressLine).toBeNull();
+    // And the view never shows a line a city-only school holds.
+    await getDb().update(school).set({ addressLine: address }).where(eq(school.id, created.id));
+    const view = await getDb().execute<{ address_line: string | null }>(sql`SELECT address_line FROM v_public_school WHERE id = ${created.id}::uuid`);
+    expect(view.rows[0]?.address_line ?? null).toBeNull();
+  });
+
   it('a reviewer cannot decide their own listing, and a returned listing is a draft with the reason', async () => {
     const pro = await asSifu('m11-own', 'pro_sifu');
     await getDb().update(authUser).set({ role: 'moderator', twoFactorEnabled: true }).where(eq(authUser.id, pro.account.id));

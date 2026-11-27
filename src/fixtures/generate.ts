@@ -926,6 +926,8 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
       // M11: a reserved, never-delivered address (example.test) and the first forms of the system.
       contactEmail: `${spec.slug}@example.test`,
       contactPhone: null,
+      // Journey review P2-7 (ADR 0083): one exact school with a fictional address line.
+      addressLine: spec.slug === 'demo-school-sofia' ? '1 Demo Street, hall on the second floor' : null,
       formsTaught: ['siu_nim_tao', 'chum_kiu'],
       lastActivityAt: at,
       // M20: the activity check leaves the platform's records alone (no listing account to ask).
@@ -1290,6 +1292,7 @@ function demoSchoolActivity(seed: number, r: DemoSchoolActivityRefs): Pick<Fixtu
       websiteUrl: null,
       contactEmail: `${spec.slug}@example.test`,
       contactPhone: null,
+      addressLine: null,
       formsTaught: ['siu_nim_tao', 'chum_kiu', 'biu_jee'],
       lastActivityAt: spec.last,
       activityStage: spec.hidden ? 'hidden' : 'awaiting_confirmation',

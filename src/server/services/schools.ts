@@ -226,6 +226,8 @@ export const schoolFieldsInput = z
       error: 'Use digits, spaces and + ( ) - only.',
     }),
     description: optionalText(2000, 'Use at most 2000 characters.'),
+    /** Journey review P2-7 (ADR 0083): street, building, floor; kept only with the exact pin. */
+    addressLine: optionalText(200, 'Use at most 200 characters.'),
     formsTaught: z.array(z.enum(SCHOOL_FORMS, { error: 'Choose forms from the list.' })).max(SCHOOL_FORMS.length).default([]),
     /** Other instructors: people you confirmed as your students. You are the head instructor. */
     instructorIds: z.array(z.uuid({ error: 'Choose instructors from the list.' })).max(20, { error: 'List at most 20 instructors.' }).default([]),
@@ -233,6 +235,14 @@ export const schoolFieldsInput = z
   .superRefine((input, ctx) => {
     if (input.locationPrivacy === 'exact' && !input.point) ctx.addIssue({ code: 'custom', path: ['point'], message: 'Drop the pin on the map, or give its latitude and longitude.' });
   });
+
+/**
+ * Journey review P2-7 (ADR 0083): the address line a school keeps. A city-only school keeps none,
+ * so a private club's street is never stored where a later switch to the exact pin would publish it.
+ */
+function addressOf(input: { locationPrivacy: (typeof LOCATION_PRIVACIES)[number]; addressLine: string | null }): string | null {
+  return input.locationPrivacy === 'exact' ? input.addressLine : null;
+}
 
 export const schoolCreateInput = schoolFieldsInput.and(z.object({ idempotencyKey }));
 export const schoolUpdateInput = schoolFieldsInput.and(z.object({ id: z.uuid({ error: NO_SCHOOL }) }));
@@ -582,6 +592,7 @@ interface PageRow extends Record<string, unknown> {
   website_url: string | null;
   contact_email: string | null;
   contact_phone: string | null;
+  address_line: string | null;
   forms_taught: string[];
   last_activity_at: Date | string;
 }
@@ -591,7 +602,7 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
   cacheLife('minutes');
   const db = getDb();
   const result = await db.execute<PageRow>(sql`
-    SELECT ${PIN_COLUMNS}, v.description, v.website_url, v.contact_email, v.contact_phone, v.forms_taught, v.last_activity_at
+    SELECT ${PIN_COLUMNS}, v.description, v.website_url, v.contact_email, v.contact_phone, v.address_line, v.forms_taught, v.last_activity_at
       FROM v_public_school v WHERE v.slug = ${slug}`);
   const row = result.rows[0];
   if (!row) {
@@ -653,6 +664,7 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
     websiteUrl: row.website_url,
     contactEmail: row.contact_email,
     contactPhone: row.contact_phone,
+    addressLine: row.address_line,
     forms: row.forms_taught.filter((f): f is keyof typeof SCHOOL_FORM_LABELS => f in SCHOOL_FORM_LABELS).map((key) => ({ key, label: SCHOOL_FORM_LABELS[key] })),
     lastActivityOn: last.toISOString().slice(0, 10),
     instructors: instructors.map((i) => {
@@ -747,6 +759,7 @@ export interface SchoolEditorView {
     websiteUrl: string | null;
     contactEmail: string | null;
     contactPhone: string | null;
+    addressLine: string | null;
     description: string | null;
     formsTaught: (typeof SCHOOL_FORMS)[number][];
     instructorIds: string[];
@@ -921,6 +934,7 @@ interface OwnedRow {
   websiteUrl: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
+  addressLine: string | null;
   description: string | null;
   formsTaught: (typeof SCHOOL_FORMS)[number][];
   lastActivityAt: Date;
@@ -941,6 +955,7 @@ async function ownedSchool(db: Executor, userId: string, id: string, lock = fals
       websiteUrl: school.websiteUrl,
       contactEmail: school.contactEmail,
       contactPhone: school.contactPhone,
+      addressLine: school.addressLine,
       description: school.description,
       formsTaught: school.formsTaught,
       lastActivityAt: school.lastActivityAt,
@@ -1042,6 +1057,7 @@ export async function schoolEditor(principal: Principal | null, raw: z.input<typ
       websiteUrl: row.websiteUrl,
       contactEmail: row.contactEmail,
       contactPhone: row.contactPhone,
+      addressLine: row.addressLine,
       description: row.description,
       formsTaught: row.formsTaught,
       instructorIds: instructors.map((i) => i.id).filter((id) => id !== ownId),
@@ -1163,6 +1179,7 @@ export async function createSchool(principal: Principal | null, raw: z.input<typ
           websiteUrl: input.websiteUrl,
           contactEmail: input.contactEmail,
           contactPhone: input.contactPhone,
+          addressLine: addressOf(input),
           description: input.description,
           formsTaught: input.formsTaught,
           createdByUserId: p.user.id,
@@ -1235,6 +1252,7 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
     if (row.websiteUrl !== input.websiteUrl) changed.push('websiteUrl');
     if (row.contactEmail !== input.contactEmail || row.contactPhone !== input.contactPhone) changed.push('contact');
     if (row.description !== input.description) changed.push('description');
+    if (row.addressLine !== addressOf(input)) changed.push('addressLine');
     if ([...row.formsTaught].sort().join() !== [...input.formsTaught].sort().join()) changed.push('formsTaught');
     if ([...was.instructors].sort().join() !== [ownId, ...instructorIds].sort().join()) changed.push('instructors');
     if (changed.length === 0) return { saved: { id: row.id, slug: row.slug, status: row.status, replayed: false }, publicChange: false };
@@ -1248,6 +1266,7 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
         websiteUrl: input.websiteUrl,
         contactEmail: input.contactEmail,
         contactPhone: input.contactPhone,
+        addressLine: addressOf(input),
         description: input.description,
         formsTaught: input.formsTaught,
         lastActivityAt: now,

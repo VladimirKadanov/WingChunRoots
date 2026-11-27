@@ -69,7 +69,12 @@ function jsonLd(school: SchoolPageDto): Record<string, unknown> {
     name: school.name,
     url: `${appUrl()}/schools/${school.slug}`,
     ...(school.description ? { description: school.description } : {}),
-    address: { '@type': 'PostalAddress', addressLocality: school.city, addressCountry: school.countryCode },
+    address: {
+      '@type': 'PostalAddress',
+      ...(school.addressLine ? { streetAddress: school.addressLine } : {}),
+      addressLocality: school.city,
+      addressCountry: school.countryCode,
+    },
     ...(school.precision === 'exact' ? { geo: { '@type': 'GeoCoordinates', latitude: school.point.lat, longitude: school.point.lng } } : {}),
     ...(school.websiteUrl ? { sameAs: [school.websiteUrl] } : {}),
     ...(school.contactEmail ? { email: school.contactEmail } : {}),
@@ -175,6 +180,12 @@ export default async function SchoolPage({ params }: Props) {
         <p className="text-fg-muted">
           {school.city}, {school.countryCode}
         </p>
+        {/* Journey review P2-7 (ADR 0083): the owner's address line, only with the exact pin. */}
+        {school.addressLine ? (
+          <address className="text-ui not-italic [overflow-wrap:anywhere]" data-testid="school-address">
+            {school.addressLine}
+          </address>
+        ) : null}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <LocationTag precision={school.precision} />
           <Link href={mapHref} className="link inline-flex min-h-11 items-center text-sm" data-testid="school-map-link">

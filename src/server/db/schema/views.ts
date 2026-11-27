@@ -106,6 +106,8 @@ export const vPublicSchool = pgView('v_public_school', {
   contactEmail: text('contact_email'),
   contactPhone: text('contact_phone'),
   formsTaught: text('forms_taught').array().notNull(),
+  // Journey review P2-7 (ADR 0083): the address line, only of a school with the exact pin.
+  addressLine: text('address_line'),
 }).existing();
 
 /**

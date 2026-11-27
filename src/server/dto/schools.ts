@@ -114,6 +114,8 @@ export const schoolPageSchema = z.object({
   websiteUrl: z.string().nullable(),
   contactEmail: z.string().nullable(),
   contactPhone: z.string().nullable(),
+  /** Journey review P2-7 (ADR 0083): street, building, floor; only with the exact pin (v_public_school). */
+  addressLine: z.string().nullable(),
   forms: z.array(schoolFormSchema),
   /** When the listing was last edited or confirmed (DEFAULT D17), as YYYY-MM-DD. */
   lastActivityOn: z.string(),

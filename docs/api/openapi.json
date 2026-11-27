@@ -14082,6 +14082,12 @@
                         "null"
                       ]
                     },
+                    "addressLine": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "forms": {
                       "type": "array",
                       "items": {
@@ -14538,6 +14544,7 @@
                     "websiteUrl",
                     "contactEmail",
                     "contactPhone",
+                    "addressLine",
                     "forms",
                     "lastActivityOn",
                     "instructors",
@@ -14838,6 +14845,17 @@
                       }
                     ]
                   },
+                  "addressLine": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 400
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "formsTaught": {
                     "default": [],
                     "maxItems": 6,
@@ -14999,6 +15017,17 @@
                       {
                         "type": "string",
                         "maxLength": 4000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "addressLine": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 400
                       },
                       {
                         "type": "null"
