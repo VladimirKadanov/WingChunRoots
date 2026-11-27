@@ -313,6 +313,11 @@ export interface MyBilling {
   earlier: SubscriptionView[];
   /** The paid plans this account may start a checkout for now (none while it has a live subscription). */
   offers: BillingOffer[];
+  /**
+   * Journey review P3-5: a paid plan given by the WingChunRoots team (a grant, not a subscription),
+   * said as such; that plan is then not offered for sale.
+   */
+  grantNote: string | null;
   /** `?checkout=<id>`: that checkout of this account and where it stands. */
   checkout: { id: string; planName: string; status: 'open' | 'completed' | 'expired' } | null;
 }
@@ -348,6 +353,12 @@ export async function myBilling(principal: Principal | null, raw: unknown = {}, 
       .where(and(eq(billingCheckout.id, parsed.data.checkout), eq(billingCheckout.createdByUserId, p.user.id)));
     if (row) checkout = { id: row.id, planName: PLANS[row.planCode].name, status: checkoutStatus(row, now) };
   }
+  // Only a test or complimentary grant is "given by the team"; a paid plan's own grant is the subscription's.
+  const [grant] =
+    !live && effective.grantId !== null && effective.plan !== effective.floor
+      ? await db.select({ source: entitlementGrant.source }).from(entitlementGrant).where(eq(entitlementGrant.id, effective.grantId))
+      : [];
+  const given = grant !== undefined && grant.source !== 'stripe';
   return {
     provider: billingProvider().name,
     testModeLabel: TEST_MODE_LABEL,
@@ -355,7 +366,12 @@ export async function myBilling(principal: Principal | null, raw: unknown = {}, 
     plan: planSummary(effective.plan),
     subscription: current ? resumableBy(viewOf(current, invoices.get(current.id) ?? [], now), current, effective.accountType) : null,
     earlier: subs.filter((s) => s.id !== current?.id).slice(0, 10).map((s) => viewOf(s, invoices.get(s.id) ?? [], now)),
-    offers: live ? [] : offersFor(effective.accountType),
+    offers: live ? [] : offersFor(effective.accountType).filter((o) => !given || o.planCode !== effective.plan),
+    grantNote: given
+      ? effective.until
+        ? `${PLANS[effective.plan].name} is active until ${formatDay(effective.until)}, given by the WingChunRoots team, so there is nothing you need to buy.`
+        : `${PLANS[effective.plan].name} is active, given by the WingChunRoots team, so there is nothing you need to buy.`
+      : null,
     checkout,
   };
 }

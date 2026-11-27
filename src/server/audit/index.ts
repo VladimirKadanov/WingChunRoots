@@ -15,7 +15,14 @@ export type AuditAction =
   // pnpm account:reset-2fa (review 2026-11-13, docs/adr/0029-safety-net.md): the owner removed an
   // account's second factor on the machine. Shapes only: whether it was on, the role before and after.
   | 'auth.2fa.reset'
+  // Journey review P2-4 (ADR 0081): the account's e-mail address changed (confirmed from the new one).
+  | 'account.email_change'
   | 'person.create'
+  // Journey review P2-10 (ADR 0086): a duplicate record merged into the kept one (ids and counts only).
+  | 'person.merge'
+  // Journey review P3-10 (ADR 0087): an invited member accepts or declines teaching at a school.
+  | 'school.instructor_accept'
+  | 'school.instructor_decline'
   // M08: plans (plan §6.5, §6.6).
   | 'grant.create'
   | 'grant.revoke'
@@ -202,7 +209,10 @@ export type AuditAction =
   | 'relationship.edit'
   // Role replay 2026-11-25, P2-12: "My city is missing". The place's name and country, the
   // reporting account as the actor; at most five a day per account (services/places.ts).
-  | 'place.missing_report';
+  | 'place.missing_report'
+  // Journey review 2026-11-26, P2-2: "My lineage is not listed". The lineage's name as typed, the
+  // reporting account as the actor; at most five a day per account (services/lineage-missing.ts).
+  | 'lineage.missing_report';
 
 export interface AuditEntry {
   action: AuditAction;

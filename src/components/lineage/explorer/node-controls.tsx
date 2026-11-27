@@ -16,7 +16,7 @@ import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
 import type { LineageGraphDto } from '@/server/dto/public';
 
-import { isHistoricalRelation } from '../status';
+import { formerLinkIn } from '../status';
 import type { PersonNodeData } from './canvas';
 import { type ExpandDirection, type NodeActions, NodeActionsContext } from './graph-api';
 
@@ -55,8 +55,9 @@ export function countsInView(graph: LineageGraphDto, id: string, more: number, s
   const students = new Set<string>();
   const drawnTeachers = new Set<string>();
   const drawnStudents = new Set<string>();
+  const former = formerLinkIn(graph.nodes);
   for (const e of graph.edges) {
-    const drawn = showHistorical || !isHistoricalRelation(e.periods);
+    const drawn = showHistorical || !former(e);
     if (e.studentId === id) {
       teachers.add(e.teacherId);
       if (drawn) drawnTeachers.add(e.teacherId);

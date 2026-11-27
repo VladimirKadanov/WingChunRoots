@@ -11,6 +11,8 @@ export const exploreStartSchema = z.object({
       name: z.string(),
       /** Public people with a public relationship in this lineage. */
       people: z.number().int(),
+      /** Journey review P2-10 (ADR 0086): the shared teachers before the branches split, listed first. */
+      commonRoots: z.boolean(),
       root: z.object({ id: z.uuid(), slug: z.string(), displayName: z.string() }),
     }),
   ),

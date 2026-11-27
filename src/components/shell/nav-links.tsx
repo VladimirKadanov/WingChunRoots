@@ -1,4 +1,7 @@
 'use client';
+// No React Compiler memoisation here: a handful of links re-render cheaply, and its cache code
+// would grow the script every page loads (journey review P2-8, the bundle budget).
+'use no memo';
 
 // Navigation links of the shell: bottom tabs on phones, a side rail from 768 px. The current
 // tab is marked with aria-current, ink colour, weight and a small ink chop, never colour alone.
@@ -12,78 +15,73 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useSyncExternalStore } from 'react';
+import { type ReactNode, useSyncExternalStore } from 'react';
 import { CalendarIcon, LineageIcon, OrganizationsIcon, PinIcon, SchoolsIcon } from '@/components/icons';
 import { cx } from '@/lib/cx';
-import { NAV_ITEMS } from './nav';
+import { ME_ITEM, NAV_ITEMS, type NavItem } from './nav';
 
 // The house drawing serves Home; the school finder is a map pin (docs/adr/0039); Organizations is
-// a banner (docs/adr/0051).
+// a banner (docs/adr/0051). The Me tab's drawing and count come drawn from the server (TabSession).
 const ICONS = { home: SchoolsIcon, lineage: LineageIcon, schools: PinIcon, organizations: OrganizationsIcon, events: CalendarIcon } as const;
 
 const subscribeNever = () => () => {};
 
 export type NavVariant = 'tabs' | 'rail';
 
-/** The links; `pathname` null means no tab is current (the Suspense fallback). */
-export function NavList({ variant, pathname }: { variant: NavVariant; pathname: string | null }) {
+/** One destination. `icon`: a drawing the server rendered (the Me tab, with its unread count). */
+function NavItemLink({ item, variant, pathname, icon }: { item: NavItem; variant: NavVariant; pathname: string | null; icon?: ReactNode }) {
   // A destination that is not built yet renders the shared not-found page, which is prerendered
   // without its address. Its tab becomes current only after hydration, so the server HTML and
   // the first client render agree (useSyncExternalStore uses the server snapshot to hydrate).
   const hydrated = useSyncExternalStore(subscribeNever, () => true, () => false);
+  const current = pathname !== null && item.match(pathname) && (item.built || hydrated);
+  const Icon = item.icon === 'me' ? null : ICONS[item.icon];
+  const label = variant === 'tabs' ? (item.tabLabel ?? item.label) : item.label;
+  return (
+    <li className={cx(variant === 'tabs' && 'flex min-w-0 flex-1')}>
+      <Link
+        href={item.href}
+        prefetch={item.built ? null : false}
+        aria-current={current ? 'page' : undefined}
+        data-nav={item.icon}
+        // The classes live in globals.css (nav-tab, nav-rail): the shell's script stays small.
+        className={variant === 'tabs' ? 'group nav-tab' : 'group nav-rail'}
+      >
+        {Icon ? <Icon size={variant === 'tabs' ? 23 : 21} /> : icon}
+        {/* Large text (Android font scale) or a narrow phone: the queries are in em of the
+            label's own size, so they follow the text size. When the widest label ("SCHOOLS",
+            5.7 em with the caption tracking) no longer fits, the tracking tightens (5 em);
+            below that the label drops the capitals; and with five tabs (M17) on a 320 px phone
+            at 150 % text (a tab of about 3.6 em) it is set an eighth smaller. Only still larger
+            text breaks a word, and then inside its own tab instead of running into the next. */}
+        <span className={variant === 'tabs' ? 'nav-tab-label' : undefined}>{label}</span>
+        <span aria-hidden="true" className="nav-chop" />
+      </Link>
+    </li>
+  );
+}
+
+/** P2-8: signed in, the phone tabs swap Organizations for Me, whose drawing (with the unread count) the server renders. */
+export interface TabSession {
+  me: ReactNode;
+}
+
+/**
+ * The links; `pathname` null means no tab is current (the Suspense fallback). On the tabs,
+ * `session` signed in swaps Organizations for Me (the shell reads the session on the server).
+ */
+export function NavList({ variant, pathname, session }: { variant: NavVariant; pathname: string | null; session?: TabSession }) {
+  const items = variant === 'tabs' && session ? [...NAV_ITEMS.filter((item) => item.icon !== 'organizations'), ME_ITEM] : NAV_ITEMS;
   return (
     <ul className={cx(variant === 'tabs' ? 'flex flex-1' : 'flex flex-col gap-0.5')}>
-      {NAV_ITEMS.map((item) => {
-        const current = pathname !== null && item.match(pathname) && (item.built || hydrated);
-        const Icon = ICONS[item.icon];
-        return (
-          <li key={item.href} className={cx(variant === 'tabs' && 'flex min-w-0 flex-1')}>
-            <Link
-              href={item.href}
-              prefetch={item.built ? null : false}
-              aria-current={current ? 'page' : undefined}
-              className={cx(
-                'group relative flex items-center text-fg-subtle transition-colors duration-(--duration-fast) hover:text-fg aria-[current=page]:text-fg',
-                // An inset focus ring: the tab bar ends at the screen edge and would clip an outer one.
-                'focus-visible:-outline-offset-2',
-                variant === 'tabs'
-                  ? // Centred with the same room above the icon as below the chop, so the chop never
-                    // sits on the screen's bottom edge where there is no home-indicator inset.
-                    '@container/tab min-h-11 flex-1 flex-col justify-center gap-1 text-caption uppercase'
-                  : 'min-h-[46px] gap-3.5 rounded-sm px-3 text-ui font-medium hover:bg-surface-3 aria-[current=page]:bg-surface-3 aria-[current=page]:font-semibold',
-              )}
-            >
-              <Icon size={variant === 'tabs' ? 23 : 21} />
-              {/* Large text (Android font scale) or a narrow phone: the queries are in em of the
-                  label's own size, so they follow the text size. When the widest label ("SCHOOLS",
-                  5.7 em with the caption tracking) no longer fits, the tracking tightens (5 em);
-                  below that the label drops the capitals; and with five tabs (M17) on a 320 px phone
-                  at 150 % text (a tab of about 3.6 em) it is set an eighth smaller. Only still larger
-                  text breaks a word, and then inside its own tab instead of running into the next. */}
-              <span
-                className={cx(
-                  variant === 'tabs' &&
-                    'max-w-full text-center [overflow-wrap:anywhere] @max-[5.75em]/tab:tracking-[0.03em] @max-[5em]/tab:tracking-normal @max-[5em]/tab:normal-case @max-[3.8em]/tab:text-[0.875em]',
-                )}
-              >
-                {variant === 'tabs' ? (item.tabLabel ?? item.label) : item.label}
-              </span>
-              <span
-                aria-hidden="true"
-                className={cx(
-                  'size-1.5 scale-0 rotate-[-20deg] rounded-[1px] bg-fg transition-transform duration-(--duration-slow) ease-stamp group-aria-[current=page]:scale-100 group-aria-[current=page]:rotate-[4deg]',
-                  variant === 'tabs' ? 'block' : 'absolute top-1/2 right-3 -mt-[3px]',
-                )}
-              />
-            </Link>
-          </li>
-        );
-      })}
+      {items.map((item) => (
+        <NavItemLink key={item.href} item={item} variant={variant} pathname={pathname} icon={session?.me} />
+      ))}
     </ul>
   );
 }
 
 /** The links with the current page from the router. Render inside <Suspense> (see above). */
-export function NavLinks({ variant }: { variant: NavVariant }) {
-  return <NavList variant={variant} pathname={usePathname()} />;
+export function NavLinks({ variant, session }: { variant: NavVariant; session?: TabSession }) {
+  return <NavList variant={variant} pathname={usePathname()} session={session} />;
 }

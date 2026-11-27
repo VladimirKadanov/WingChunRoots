@@ -109,7 +109,7 @@ test('@M18 a category switched off in the settings stops its e-mail; the notice 
   await page.getByTestId('notification-emails-form').getByRole('button', { name: 'Save e-mail settings' }).click();
   await expect.poll(() => planEmailChoice(account.userId)).toBe(true);
   expect(await planNotice(account.userId)).toEqual({ notified: true, emailed: true });
-  await openMailbox().waitFor(account.email, { subject: /^Your pilot plan has an end date/, timeoutMs: 30_000 });
+  await openMailbox().waitFor(account.email, { subject: /^Your test plan has an end date/, timeoutMs: 30_000 });
 });
 
 test('@M18 an old link to the e-mail settings (/dashboard/settings#notifications-heading) still leads to them', async ({ page }) => {
@@ -133,7 +133,7 @@ test('@M18 an old link to the e-mail settings (/dashboard/settings#notifications
 test('@M18 the e-mail’s unsubscribe link switches its category off without signing in', async ({ page, browser }) => {
   const account = await freshAccount(page, { name: 'Demo Unsubscribing Pupil' });
   expect(await planNotice(account.userId)).toEqual({ notified: true, emailed: true });
-  const message = await openMailbox().waitFor(account.email, { subject: /^Your pilot plan has an end date/, timeoutMs: 30_000 });
+  const message = await openMailbox().waitFor(account.email, { subject: /^Your test plan has an end date/, timeoutMs: 30_000 });
   expect(message.headers['list-unsubscribe-post']).toBe('List-Unsubscribe=One-Click');
   const oneClick = /^<(.+)>$/.exec(message.headers['list-unsubscribe'] ?? '')?.[1];
   expect(oneClick, 'List-Unsubscribe names the one-click address').toMatch(/\/unsubscribe\/one-click\?token=/);

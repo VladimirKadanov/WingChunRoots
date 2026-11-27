@@ -13,11 +13,13 @@ import Link from 'next/link';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { QrCode } from '@/components/account/qr-code';
 import { ArrowRightIcon } from '@/components/icons';
+import { PublishProfileForm } from '@/components/relationships/forms';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { appUrl } from '@/server/auth/env';
 import { qrModules } from '@/server/auth/totp';
 import { guardRoute } from '@/server/auth/web';
 import { serverClient } from '@/server/rpc/server';
+import { showProfilePubliclyAction } from '../../teachers/actions';
 
 export const instant = false;
 
@@ -71,11 +73,9 @@ export default async function InviteStudentsPage() {
           </Note>
         ) : own.visibility !== 'public' ? (
           <Note testId="invite-needs-public">
-            <p>The link opens your public profile, and your profile is private. Choose “Show my profile publicly” first; the link works from then on.</p>
-            <Link href="/dashboard/profile" className={buttonVariants({ variant: 'secondary' })}>
-              Your profile
-              <ArrowRightIcon />
-            </Link>
+            <p>The link opens your public profile, and your profile is private. Show it publicly and the link works from then on.</p>
+            {/* Journey review 2026-11-26 (P2-3): the choice right here, not one page away. */}
+            <PublishProfileForm action={showProfilePubliclyAction} page="invite" />
           </Note>
         ) : null}
         {link && mine.accountType === 'sifu' && own?.visibility === 'public' ? (

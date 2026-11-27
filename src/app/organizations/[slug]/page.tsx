@@ -23,6 +23,7 @@ import { PersonAvatar } from '@/components/lineage/person-avatar';
 import { ErrorPanel } from '@/components/lineage/states';
 import { CityMap } from '@/components/organizations/city-map';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { cx } from '@/lib/cx';
 import { formatDay } from '@/lib/dates';
 import { organizationMotif } from '@/lib/ink-art';
 import { countryName } from '@/lib/regions';
@@ -96,7 +97,8 @@ export default async function OrganizationPage({ params }: Props) {
     { label: org.memberCount === 1 ? 'member' : 'members', value: org.memberCount },
     { label: org.cities.length === 1 ? 'city' : 'cities', value: org.cities.length },
     ...(events ? [{ label: events.total === 1 ? 'upcoming event' : 'upcoming events', value: events.total }] : []),
-  ];
+    // Journey review P3-12: a new organization shows no zero tiles, as the school page.
+  ].filter((stat) => stat.value > 0);
   return (
     <article className="pb-10 md:pb-14" data-testid="organization-page" data-slug={org.slug}>
       {/* ADR 0052: the organization's banner, or the drawn motif of its kind; decorative. */}
@@ -133,17 +135,19 @@ export default async function OrganizationPage({ params }: Props) {
               </a>
             </p>
           ) : null}
-          <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-border-subtle bg-border-subtle sm:grid-cols-4" data-testid="organization-stats">
-            {stats.map((stat) => (
-              <div key={stat.label} className="flex flex-col-reverse gap-0.5 bg-surface-1 px-4 py-3">
-                <dt className="text-sm text-fg-muted">{stat.label}</dt>
-                <dd className="font-display text-2xl">{stat.value.toLocaleString('en')}</dd>
-              </div>
-            ))}
-          </dl>
+          {stats.length > 0 ? (
+            <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-border-subtle bg-border-subtle sm:grid-cols-4" data-testid="organization-stats">
+              {stats.map((stat) => (
+                <div key={stat.label} className="flex flex-col-reverse gap-0.5 bg-surface-1 px-4 py-3">
+                  <dt className="text-sm text-fg-muted">{stat.label}</dt>
+                  <dd className="font-display text-2xl">{stat.value.toLocaleString('en')}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
         </header>
 
-        <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12">
+        <div className={cx('mt-10 grid gap-10 lg:gap-12', org.cities.length > 0 && 'lg:grid-cols-[minmax(0,1fr)_20rem]')}>
           <div className="grid min-w-0 content-start gap-10">
             {org.about ? (
               <section aria-labelledby="organization-about" data-testid="organization-about">
@@ -176,7 +180,7 @@ export default async function OrganizationPage({ params }: Props) {
                           {school.name}
                         </Link>
                         <p className="text-sm text-fg-muted">
-                          {school.city}, {school.countryCode}
+                          {school.city}, {countryName(school.countryCode) ?? school.countryCode}
                         </p>
                       </div>
                     </li>
@@ -233,17 +237,16 @@ export default async function OrganizationPage({ params }: Props) {
             ) : null}
           </div>
 
-          <aside aria-labelledby="organization-where" className="grid content-start gap-3">
-            <h2 id="organization-where" className="font-display text-xl">
-              Where its schools are
-            </h2>
-            {org.cities.length > 0 ? (
+          {/* P3-12: the map block only when a school is listed (the Schools section says so otherwise). */}
+          {org.cities.length > 0 ? (
+            <aside aria-labelledby="organization-where" className="grid content-start gap-3">
+              <h2 id="organization-where" className="font-display text-xl">
+                Where its schools are
+              </h2>
               <CityMap cities={org.cities} />
-            ) : (
-              <p className="text-sm text-fg-muted">No listed school yet.</p>
-            )}
-            <p className="text-sm text-fg-muted">Each city at its centre. A school&apos;s own page says where it trains.</p>
-          </aside>
+              <p className="text-sm text-fg-muted">Each city at its centre. A school&apos;s own page says where it trains.</p>
+            </aside>
+          ) : null}
         </div>
       </div>
     </article>

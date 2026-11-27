@@ -427,18 +427,19 @@ test('@M08 /plans labels planned features as not yet available and states that p
   await expect(page.getByTestId('plans-banner')).toHaveText(BANNER);
 
   // A comparison per audience (students, instructors); in each, every feature of the matrix in its
-  // group. From md up the planned features follow in the same table; below md they wait behind a
-  // closed disclosure with their own table (review round 1, design-3), opened here.
+  // group. The table shows what exists now; the planned features wait behind a closed disclosure
+  // with their own table at every width (journey review P3-13), opened here.
   let opened = 0;
   for (const id of ['students', 'instructors']) {
     const section = page.locator(`section#${id}`);
     const disclosure = section.getByTestId('planned-features');
-    if (await disclosure.isVisible()) {
-      await expect(disclosure).not.toHaveAttribute('open');
-      await expect(disclosure.locator('summary')).toContainText(PLANNED);
-      await disclosure.locator('summary').click();
-      opened += 1;
-    }
+    await expect(disclosure).toBeVisible();
+    await expect(disclosure).not.toHaveAttribute('open');
+    await expect(disclosure.locator('summary')).toContainText(PLANNED);
+    await disclosure.locator('summary').click();
+    opened += 1;
+    // The comparison table itself has no planned row.
+    await expect(section.locator('table').first().locator('tbody[data-group="planned"]')).toHaveCount(0);
     // ADR 0044: a hidden row (the videos, not offered for now) is on no /plans table.
     for (const f of FEATURES.filter((x) => x.hidden)) await expect(section.locator(`tr[data-feature="${f.key}"]`), f.key).toHaveCount(0);
     for (const f of FEATURES.filter((x) => !x.hidden)) {
@@ -762,13 +763,13 @@ test('@M08 notifications: marking one read updates the count at once, and markin
     }
     await route.continue();
   });
-  await page.getByRole('button', { name: 'Mark as read (Pilot plan added: Professional Sifu)' }).click();
+  await page.getByRole('button', { name: 'Mark as read (Test plan added: Professional Sifu)' }).click();
   await expect(count).toHaveText('1 unread', { timeout: 1_000 });
   await expect(headerLink).toHaveText('1 unread notification', { timeout: 1_000 });
   expect(posted, 'the Server Action is still held').toBe(1);
   // A polite announcement, and the focus moves on to the next unread item (a11y-webview-3).
   await expect(page.getByTestId('notifications-status')).toHaveText('Marked as read. 1 unread.');
-  await expect(page.getByRole('button', { name: 'Mark as read (Pilot plan ended: Professional Sifu)' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Mark as read (Test plan ended: Professional Sifu)' })).toBeFocused();
   // The optimistic count already reads "1 unread", so it cannot tell that the write landed: wait
   // for the Server Action's answer before reloading, or the reload can cancel it or beat it.
   const answered = page.waitForResponse(
@@ -810,7 +811,7 @@ test('@M08 notifications: a failed "Mark as read" says so, puts the item back an
   );
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  const button = page.getByRole('button', { name: 'Mark as read (Pilot plan added: Professional Sifu)' });
+  const button = page.getByRole('button', { name: 'Mark as read (Test plan added: Professional Sifu)' });
   await button.click();
   const status = page.getByTestId('notifications-status');
   await expect(status).toHaveText('Could not mark it as read. Check your connection and try again.');

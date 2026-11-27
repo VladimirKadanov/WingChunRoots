@@ -30,8 +30,8 @@ export async function sendSecurityNotice(userId: string, kind: SecurityKind): Pr
 /**
  * The account's e-mail address changed: the notice to the new address (the account's own now) and
  * the same notice to the old one, which no longer signs in. No address in either text or payload.
- * The app has no path that changes an address yet (Better Auth's change-email is off; DEFAULT M18,
- * question 5): whoever adds one calls this after the change.
+ * Called when a confirmation link of /change-email has changed it (src/server/auth/hooks.ts;
+ * journey review P2-4, ADR 0081).
  */
 export async function sendEmailChangedNotice(userId: string, previousAddress: string): Promise<void> {
   try {

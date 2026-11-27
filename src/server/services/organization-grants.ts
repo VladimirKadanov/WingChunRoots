@@ -102,8 +102,10 @@ export async function adminOrganizations(principal: Principal | null, raw: z.inp
       kind: organization.kind,
       countryCode: organization.countryCode,
       status: organization.status,
-      admins: sql<number>`(SELECT count(*)::int FROM organization_admin a WHERE a.organization_id = ${organization.id} AND a.revoked_at IS NULL)`,
-      caseId: sql<string | null>`(SELECT c.id::text FROM review_case c WHERE c.organization_id = ${organization.id} AND c.kind = 'organization_application'
+      // The outer row's id, written qualified: drizzle renders ${organization.id} as a bare "id",
+      // which inside the sub-query is the inner table's own id (journey review 2026-11-26, P2-6).
+      admins: sql<number>`(SELECT count(*)::int FROM organization_admin a WHERE a.organization_id = "organization"."id" AND a.revoked_at IS NULL)`,
+      caseId: sql<string | null>`(SELECT c.id::text FROM review_case c WHERE c.organization_id = "organization"."id" AND c.kind = 'organization_application'
                  AND c.status IN (${sql.join(OPEN_REVIEW_CASE_STATUSES.map((s) => sql`${s}`), sql`, `)}) LIMIT 1)`,
     })
     .from(organization)

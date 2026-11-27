@@ -359,7 +359,7 @@ test('@pilot a teacher with students in two active lineages sees and manages bot
   await profile.goto(`/people/${teacher.slug}`);
   for (const who of [inA, inB]) {
     await expect(list.locator(`li[data-person="${who.slug}"]`)).toContainText('Verified');
-    await expect(list.locator(`li[data-person="${who.slug}"]`)).toContainText('Historical');
+    await expect(list.locator(`li[data-person="${who.slug}"]`)).toContainText('Former');
   }
   const lineages = new Map([
     [inA.personId, await lineageIdOf('demo-lineage-a')],

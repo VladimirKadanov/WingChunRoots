@@ -11,10 +11,15 @@ export interface VerifyEmailData {
   expiresInHours: number;
   /** The recipient's names, when the account already has a profile. */
   recipientNames?: NameData[];
+  /** Journey review P2-4 (ADR 0081): the link confirms a new address of an existing account. */
+  newAddress?: boolean;
 }
 
 const NAME = 'verify-email';
-const preview = () => 'Confirm your e-mail address to finish creating your WingChunRoots account.';
+const preview = (newAddress = false) =>
+  newAddress
+    ? 'Confirm this address to make it the one you sign in to WingChunRoots with.'
+    : 'Confirm your e-mail address to finish creating your WingChunRoots account.';
 
 export const verifyEmail: EmailTemplate<VerifyEmailData> = {
   name: NAME,
@@ -24,11 +29,25 @@ export const verifyEmail: EmailTemplate<VerifyEmailData> = {
       url: parseActionUrl(NAME, 'url', object.url, '/verify-email'),
       expiresInHours: parseHours(NAME, 'expiresInHours', object.expiresInHours),
       ...parseOptionalNames(NAME, 'recipientNames', object.recipientNames),
+      ...(object.newAddress === true ? { newAddress: true } : {}),
     };
   },
-  subject: () => 'Confirm your e-mail address for WingChunRoots',
-  preview,
-  render({ url, expiresInHours, recipientNames = [] }) {
+  subject: ({ newAddress }) => (newAddress ? 'Confirm your new e-mail address for WingChunRoots' : 'Confirm your e-mail address for WingChunRoots'),
+  preview: ({ newAddress }) => preview(newAddress),
+  render({ url, expiresInHours, recipientNames = [], newAddress = false }) {
+    if (newAddress) {
+      return (
+        <AccountLinkEmail
+          preview={preview(true)}
+          recipientNames={recipientNames}
+          intro="Someone, hopefully you, asked to sign in to a WingChunRoots account with this e-mail address from now on. Confirm the address to make the change; until then the old address stays the one you sign in with."
+          action="Confirm new e-mail address"
+          url={url}
+          expiresInHours={expiresInHours}
+          notExpected="If you did not ask for this, ignore this e-mail: nothing changes unless the link is used."
+        />
+      );
+    }
     return (
       <AccountLinkEmail
         preview={preview()}

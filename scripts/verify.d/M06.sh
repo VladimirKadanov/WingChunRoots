@@ -149,10 +149,10 @@ refute "no opacity in the explorer's M06 files and CSS blocks (solid tones only,
   exit 0"
 
 # 6. The phone's bottom sheet (In scope 3, 5) -------------------------------------------------------------------
-check "panel.tsx: a non-modal Drawer with snap points 0.15, 0.5 and 0.92, Focus this lineage, Show ended training, the routes" bash -c '
+check "panel.tsx: a non-modal Drawer with snap points 0.15, 0.5 and 0.92, Focus this lineage, Show former students, the routes" bash -c '
   f=src/components/lineage/explorer/panel.tsx
   grep -q "<Drawer" "$f" && grep -qF "modal={false}" "$f" && grep -qF "[0.15, 0.5, 0.92]" "$f" && grep -q "Focus this lineage" "$f" &&
-  grep -q "Show ended training" "$f" && grep -qF "Route {k + 1} of" "$f"'
+  grep -q "Show former students" "$f" && grep -qF "Route {k + 1} of" "$f"'
 check "\"Open profile\" stays in explorer.tsx and is passed to the panel" bash -c '
   grep -q "Open profile" src/components/lineage/explorer/explorer.tsx && grep -q "openProfile" src/components/lineage/explorer/panel.tsx'
 check "the sheet keeps its scrolling to itself and clears the bottom safe area" bash -c '

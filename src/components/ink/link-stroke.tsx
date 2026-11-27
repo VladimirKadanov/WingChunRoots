@@ -1,3 +1,7 @@
+// No React Compiler memoisation: a small drawing from its props, and its cache code would grow
+// the explorer's script (journey review P1-3, the bundle budget).
+'use no memo';
+
 // A short sample of a link's stroke for legends and badges, in the state's colour. The states
 // have three renderings (ADR 0006): the ink geometry of src/design/ink.ts that the home page and
 // the lineage pages draw; the explorer's ink along its routes (canvasInk in canvas-ink.ts, drawn by
@@ -10,7 +14,7 @@ import { dotsD, inkShapes, type Cubic, type InkShape } from '@/design/ink';
 import { linkStyles, type VerificationState } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 
-export type LinkKind = VerificationState | 'cross_lineage' | 'historical';
+export type LinkKind = VerificationState | 'cross_lineage' | 'historical' | 'traditional' | 'contested';
 
 const SAMPLE: Cubic = [
   [3, 11],
@@ -114,6 +118,11 @@ export function InkShapeSvg({ shape }: { shape: InkShape }) {
 function shapeFor(kind: LinkKind): InkShape {
   if (kind === 'cross_lineage') return inkShapes(SAMPLE, 'verified', { w0: 4.8, w1: 1.3, n: 30, crossLineage: true });
   if (kind === 'historical') return inkShapes(SAMPLE, 'verified', { w0: 1.6, w1: 1, n: 30 });
+  // P1-3 (ADR 0077): an archive link's certainty as a hollow ribbon with its own dash (brushed, split).
+  if (kind === 'traditional' || kind === 'contested') {
+    const shape = inkShapes(SAMPLE, 'verified', { w0: 3.6, w1: 1.3, n: 30, crossLineage: true });
+    return shape.kind === 'hollow' ? { ...shape, dash: linkStyles[kind].dash } : shape;
+  }
   return inkShapes(SAMPLE, kind, { w0: 4.8, w1: 1.3, n: 30 });
 }
 
@@ -125,7 +134,7 @@ function shapeFor(kind: LinkKind): InkShape {
  */
 function canvasSample(kind: LinkKind): InkShape {
   const shape = shapeFor(kind);
-  return shape.kind === 'hollow' ? { ...shape, dash: linkStyles.cross_lineage.dash } : shape;
+  return shape.kind === 'hollow' ? { ...shape, dash: linkStyles[kind].dash ?? linkStyles.cross_lineage.dash } : shape;
 }
 
 export function LinkStroke({

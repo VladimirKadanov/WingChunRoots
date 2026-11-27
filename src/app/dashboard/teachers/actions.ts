@@ -185,7 +185,8 @@ export async function withdrawRequestAction(_previous: FormState, form: FormData
  */
 export async function showProfilePubliclyAction(_previous: FormState, form: FormData): Promise<FormState> {
   const choice = textValue(form, 'page', 20);
-  const page = choice === 'students' ? '/dashboard/students/requests' : choice === 'dashboard' ? '/dashboard' : TEACHERS;
+  // Journey review 2026-11-26 (P2-3): also from the invite page, which works only for a public profile.
+  const page = choice === 'students' ? '/dashboard/students/requests' : choice === 'dashboard' ? '/dashboard' : choice === 'invite' ? '/dashboard/students/invite' : TEACHERS;
   try {
     await serverClient(await headers(), await getRequestPrincipal()).profile.publish();
   } catch (error) {

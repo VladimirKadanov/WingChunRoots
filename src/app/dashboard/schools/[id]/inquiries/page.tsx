@@ -152,6 +152,15 @@ export default async function TrialInboxPage({ params, searchParams }: Props) {
                   <p className="mt-1 whitespace-pre-line [overflow-wrap:anywhere]">{q.reply}</p>
                 </div>
               ) : null}
+              {/* Journey review P3-1: after the trial, the way onto the record as your student. */}
+              {q.status === 'answered' && view.role === 'owner' ? (
+                <p className="text-sm" data-testid="trial-invite-link">
+                  Training with you now?{' '}
+                  <Link href="/dashboard/students/invite" className="link inline-flex min-h-11 items-center font-semibold">
+                    Send them your invite link
+                  </Link>
+                </p>
+              ) : null}
               {q.status === 'open' || q.status === 'answered' ? (
                 <InquiryActions schoolId={view.school.id} inquiryId={q.id} status={q.status} sender={q.senderName ?? 'the sender'} replyMax={view.limits.reply} initial={q.initial} />
               ) : null}

@@ -9,3 +9,5 @@ export const REJECT_FORM = 'reject-request';
 /** One row's forms. */
 export const approveForm = (relationshipId: string) => `approve-${relationshipId}`;
 export const rejectForm = (relationshipId: string) => `reject-${relationshipId}`;
+/** "Start answering as a Sifu" (journey review 2026-11-26, P1-1). */
+export const START_SIFU_FORM = 'start-sifu';

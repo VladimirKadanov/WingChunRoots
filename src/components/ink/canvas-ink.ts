@@ -27,5 +27,8 @@ export function canvasInk(kind: LinkKind, route: Route, lod: keyof typeof CANVAS
   const o = CANVAS_INK[lod];
   if (kind === 'cross_lineage') return inkAlong(route, 'verified', { w0: o.w0, w1: o.w1, crossLineage: { dash: linkStyles.cross_lineage.dash } });
   if (kind === 'historical') return inkAlong(route, 'verified', { w0: o.w0 * 0.36, w1: o.w1 * 0.7, reach: o.reach });
+  // P1-3 (ADR 0077): a traditional account (brushed) or a link disputed by historians (split): a
+  // hollow ribbon with the record kind's own dash.
+  if (kind === 'traditional' || kind === 'contested') return inkAlong(route, 'verified', { w0: o.w0 * 0.7, w1: o.w1, crossLineage: { dash: linkStyles[kind].dash } });
   return inkAlong(route, kind, o);
 }

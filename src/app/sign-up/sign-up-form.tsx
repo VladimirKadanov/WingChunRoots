@@ -76,7 +76,7 @@ export function SignUpForm({
               <strong className="font-semibold text-fg [overflow-wrap:anywhere]" translate="no">
                 {state.values?.email}
               </strong>
-              . Open its link within 24 hours to confirm the address, then sign in. If the address already has an account, the e-mail says
+              . Open its link within 24 hours and press the button to confirm and continue. If the address already has an account, the e-mail says
               how to get into it instead.
             </p>
             <p>

@@ -1,7 +1,8 @@
 'use client';
 
-// The living lineage of the home page: an ink spine of one fictional line, eight generations
-// from Foshan to Sofia, and the record's search (the search palette). Untraced, the line is a pencil draft: thin strokes in
+// The living lineage of the home page: an ink spine of one line of a real public lineage (journey
+// review 2026-11-26, P1-4; ADR 0078: lineage.home, each name a link to the profile), or of the
+// fictional demo line when the record has none yet, and the record's search (the search palette). Untraced, the line is a pencil draft: thin strokes in
 // the solid dimmed tone that keep each link's pattern, with ghost seals (plan §4.7). Tapping a
 // row (or "Trace this hall's line" further down) traces the line from the
 // founder to that person: the strokes ink in at full weight one generation at a time and each
@@ -9,12 +10,13 @@
 // tap (plan §5.8 (e)). The rows beyond the traced person stay in the draft and take the dimmed
 // text tones. "Back to <name>" returns to the previous person (Constellation's trail chip).
 //
-// On phones and tablets the line comes straight after the headline, so the first screen shows
-// the subject itself; the introduction and the search follow it. From 1280 px the line has a
+// On phones and tablets the search and "Find a school" come straight after the headline (P1-4:
+// what a visitor came to do first), and the line follows them. From 1280 px the line has a
 // column of its own, wide enough that each name and its original stay on one line (so the rows
 // keep the even height the server draws the spine for), beside the headline and the search.
 
 import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { ArrowRightIcon } from '@/components/icons';
 import { openSearch } from '@/components/shell/search-trigger';
 import { HomeSearch } from './home-search';
 import { InkShapeSvg } from '@/components/ink/link-stroke';
@@ -23,37 +25,43 @@ import { SEAL_DELAY, evenRows, inkStep, spineGeometry } from '@/components/ink/s
 import { TrailChip } from '@/components/ui/trail-chip';
 import { linkStyles } from '@/design/tokens';
 import { cx } from '@/lib/cx';
-import { DEMO_LINE, DEMO_LINE_LINKS } from './demo-lineage';
+import type { HeroLine } from './demo-lineage';
 import { Name, PersonName } from './names';
 import { ROW_TONES, TRACE_LINE_EVENT, type TraceLineDetail } from './trace-line';
 
 /** Row height at every width (min-h-16), so the spine drawn on the server matches the rows. */
 const ROW = 64;
 const NODE_OFFSET = 12;
-const STATES = DEMO_LINE_LINKS.map((link) => link.state);
-const EVEN = evenRows(DEMO_LINE.length, ROW, NODE_OFFSET);
 // Names of the demo record (src/server/db/seed), one per way of writing them.
 const TRY = ['Ho Shek Chuk', '何石竹', 'Демов', 'zoeng1 cing4 wing6'];
-const verifiedCount = DEMO_LINE_LINKS.filter((link) => link.state === 'verified').length;
-const reviewCount = DEMO_LINE_LINKS.length - verifiedCount;
+/** "3 verified, 1 under review": the links of a line by their state, in words. */
+function stateParts(states: readonly HeroLine['states'][number][]): string[] {
+  const verified = states.filter((s) => s === 'verified').length;
+  const review = states.filter((s) => s === 'under_review').length;
+  const disputed = states.filter((s) => s === 'arbitration').length;
+  const parts = [`${verified} verified`];
+  if (review) parts.push(`${review} under review`);
+  if (disputed) parts.push(`${disputed} disputed`);
+  return parts;
+}
 
-function traceSummary(focus: number): ReactNode {
-  const person = DEMO_LINE[focus]!;
+function traceSummary(line: HeroLine, focus: number): ReactNode {
+  const person = line.people[focus]!;
   if (focus === 0)
-    return (
+    return person.startYear !== null ? (
       <>
         <Name>{person.name}</Name> founded the line in {person.startYear}.
       </>
+    ) : (
+      <>
+        <Name>{person.name}</Name> is the line’s earliest recorded teacher.
+      </>
     );
-  const links = DEMO_LINE_LINKS.slice(0, focus);
-  const verified = links.filter((l) => l.state === 'verified').length;
-  const review = links.length - verified;
-  const parts = [`${verified} verified`];
-  if (review) parts.push(`${review} under review`);
+  const links = line.states.slice(0, focus);
   return (
     <>
-      Traced from <Name>{DEMO_LINE[0]!.name}</Name> to <Name>{person.name}</Name>: {links.length}{' '}
-      {links.length === 1 ? 'link' : 'links'}, {parts.join(', ')}.
+      Traced from <Name>{line.people[0]!.name}</Name> to <Name>{person.name}</Name>: {links.length}{' '}
+      {links.length === 1 ? 'link' : 'links'}, {stateParts(links).join(', ')}.
     </>
   );
 }
@@ -68,10 +76,15 @@ function measureRows(list: HTMLOListElement): { ys: number[]; height: number } {
   return { ys, height: list.offsetHeight };
 }
 
-export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactNode }) {
+const LOADING: HeroLine = { people: [], states: [], words: [], caption: '', demo: false };
+
+export function LivingLine({ heading, lede, line: given, actions }: { heading: ReactNode; lede: ReactNode; line: HeroLine | null; actions?: ReactNode }) {
+  // null: the line is still loading (HeroFallback); the headline and the search are already there.
+  const line = given ?? LOADING;
+  const people = line.people;
   const [trail, setTrail] = useState<number[]>([]);
   const [run, setRun] = useState(0);
-  const [rowsAt, setRowsAt] = useState(EVEN);
+  const [rowsAt, setRowsAt] = useState(() => evenRows(people.length, ROW, NODE_OFFSET));
   const rows = useRef<(HTMLButtonElement | null)[]>([]);
   const list = useRef<HTMLOListElement>(null);
   const figure = useRef<HTMLElement>(null);
@@ -80,7 +93,7 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
   const focus = trail.length ? trail[trail.length - 1]! : null;
   const previous = trail.length > 1 ? trail[trail.length - 2]! : null;
   const step = inkStep(focus ?? 0);
-  const geometry = spineGeometry(STATES, rowsAt.ys, rowsAt.height);
+  const geometry = people.length > 0 ? spineGeometry(line.states, rowsAt.ys, rowsAt.height) : null;
 
   const trace = (index: number, moveFocus = false) => {
     setTrail((t) => (t[t.length - 1] === index ? t : [...t, index].slice(-12)));
@@ -109,7 +122,7 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
 
   // "Trace this hall's line" elsewhere on the page.
   const onTraceRequest = useEffectEvent((event: Event) => {
-    const index = (event as CustomEvent<TraceLineDetail>).detail?.index ?? DEMO_LINE.length - 1;
+    const index = Math.min((event as CustomEvent<TraceLineDetail>).detail?.index ?? people.length - 1, people.length - 1);
     figure.current?.scrollIntoView({ block: 'start' });
     trace(index, true);
   });
@@ -119,7 +132,7 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
   }, []);
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-y-7 pb-9 [grid-template-areas:'head'_'line'_'search'] md:gap-y-9 md:pb-14 xl:grid-cols-[minmax(0,1fr)_28rem] xl:grid-rows-[auto_1fr] xl:gap-x-12 xl:gap-y-0 2xl:grid-cols-[minmax(0,1fr)_30rem] 2xl:gap-x-16 xl:[grid-template-areas:'head_line'_'search_line']">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-y-7 pb-9 [grid-template-areas:'head'_'search'_'line'] md:gap-y-9 md:pb-14 xl:grid-cols-[minmax(0,1fr)_28rem] xl:grid-rows-[auto_1fr] xl:gap-x-12 xl:gap-y-0 2xl:grid-cols-[minmax(0,1fr)_30rem] 2xl:gap-x-16 xl:[grid-template-areas:'head_line'_'search_line']">
       {/* A size container: the headline (text-hero) never outgrows this column (tokens.ts). */}
       <div className="@container [grid-area:head]">{heading}</div>
 
@@ -148,8 +161,10 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
             ))}
           </p>
         </search>
+        {actions}
       </div>
 
+      {geometry ? (
       <figure
         ref={figure}
         id="demo-line"
@@ -157,9 +172,11 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
         aria-labelledby={`${searchId}-cap`}
       >
         <figcaption id={`${searchId}-cap`} className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <span className="font-display text-lg">Foshan, 1868 → Sofia, 2019</span>
+          <span className="font-display text-lg" translate={line.demo ? undefined : 'no'}>
+            {line.caption}
+          </span>
           <span className="eyebrow">
-            {DEMO_LINE.length} people · {verifiedCount} links verified · {reviewCount} under review
+            {[`${people.length} people`, ...stateParts(line.states).map((part, i) => (i === 0 ? part.replace(' verified', ' links verified') : part))].join(' · ')}
           </span>
         </figcaption>
 
@@ -212,7 +229,7 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
             </g>
 
             {geometry.nodes.map((node) => {
-              const person = DEMO_LINE[node.index]!;
+              const person = people[node.index]!;
               const dimmed = focus !== null && node.index > focus;
               const color = dimmed ? 'var(--dim-stroke)' : 'var(--fg)';
               const ring =
@@ -244,28 +261,53 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
           </svg>
 
           <ol ref={list}>
-            {DEMO_LINE.map((person, i) => {
-              const link = i > 0 ? DEMO_LINE_LINKS[i - 1]! : null;
+            {people.map((person, i) => {
+              const word = i > 0 ? line.words[i - 1]! : null;
               const tone = focus !== null && i > focus ? ROW_TONES.dimmed : ROW_TONES.active;
               const current = focus === i;
               return (
-                <li key={person.slug} data-row>
+                <li
+                  key={person.key}
+                  data-row
+                  className={cx(
+                    // items-baseline: the year sits on the baseline of the name at every text size.
+                    'relative grid min-h-16 grid-cols-[4rem_2.75rem_minmax(0,1fr)] content-start items-baseline rounded-sm pb-2 text-left transition-colors duration-(--duration-fast) hover:bg-surface-1',
+                    // The traced person: an ink bar on the row's edge, a tint and a ring on the node.
+                    current && 'bg-surface-1 before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-full before:bg-fg',
+                  )}
+                >
+                  {/* The whole row traces the line (a button under the text); on a real line the
+                      name above it is a link to the profile (P1-4, ADR 0078), so the two never nest. */}
                   <button
                     ref={(el) => {
                       rows.current[i] = el;
                     }}
                     type="button"
                     aria-current={current ? 'true' : undefined}
+                    aria-label={`${person.name}${word ? `, ${word} link from ${people[i - 1]!.name}` : ', founder'}. Trace the line to here.`}
                     onClick={() => trace(i)}
-                    className={cx(
-                      // items-baseline: the year sits on the baseline of the name at every text size.
-                      'relative grid min-h-16 w-full grid-cols-[4rem_2.75rem_minmax(0,1fr)] content-start items-baseline rounded-sm pb-2 text-left transition-colors duration-(--duration-fast) hover:bg-surface-1',
-                      // The traced person: an ink bar on the row's edge, a tint and a ring on the node.
-                      current && 'bg-surface-1 before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-full before:bg-fg',
-                    )}
-                  >
-                    <span className={cx('pl-3 font-display text-base tabular', tone.year)}>{person.startYear}</span>
-                    <span className="col-start-3 flex min-w-0 flex-col pl-1">
+                    className="absolute inset-0 rounded-sm"
+                  />
+                  <span data-year="" className={cx('pointer-events-none relative pl-3 font-display text-base tabular', tone.year)}>
+                    {person.startYear ?? '–'}
+                  </span>
+                  <span className="pointer-events-none relative col-start-3 flex min-w-0 flex-col pl-1">
+                    {person.href ? (
+                      <a
+                        href={person.href}
+                        // The padding makes a 44 px target without moving the row (the negative margin takes it back).
+                        className="pointer-events-auto -my-[11px] self-start rounded-sm py-[11px] underline decoration-transparent underline-offset-4 hover:decoration-current"
+                        data-profile-link=""
+                      >
+                        <PersonName
+                          name={person.name}
+                          original={person.original}
+                          data-name
+                          className={cx('font-display text-md leading-[1.22] sm:text-lg sm:leading-[1.22]', tone.name)}
+                          originalClassName="max-sm:basis-full"
+                        />
+                      </a>
+                    ) : (
                       <PersonName
                         name={person.name}
                         original={person.original}
@@ -276,14 +318,9 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
                         className={cx('font-display text-md leading-[1.22] sm:text-lg sm:leading-[1.22]', tone.name)}
                         originalClassName="max-sm:basis-full"
                       />
-                      <span className="mt-1 text-caption text-fg-subtle uppercase">
-                        {person.city} · {person.role}
-                      </span>
-                      <span className="sr-only">
-                        {link ? `, ${linkStyles[link.state].label} link from ${DEMO_LINE[i - 1]!.name}` : ', founder'}. Trace the line to here.
-                      </span>
-                    </span>
-                  </button>
+                    )}
+                    <span className="mt-1 text-caption text-fg-subtle uppercase">{person.meta}</span>
+                  </span>
                 </li>
               );
             })}
@@ -294,11 +331,11 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
           <p aria-live="polite" className="min-w-0 flex-1 basis-56">
             {focus === null
               ? 'Year each began training. The line is in pencil until you trace it: tap a name to ink it from the founder.'
-              : traceSummary(focus)}
+              : traceSummary(line, focus)}
           </p>
           {previous !== null ? (
             <TrailChip
-              name={DEMO_LINE[previous]!.name}
+              name={people[previous]!.name}
               onClick={() => {
                 setTrail((t) => t.slice(0, -1));
                 setRun((r) => r + 1);
@@ -315,7 +352,25 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
             </button>
           ) : null}
         </div>
+        {line.explore ? (
+          <p className="mt-1">
+            <a href={line.explore.href} className="link inline-flex min-h-11 items-center gap-1.5 text-sm" data-testid="home-line-explore">
+              <span>
+                Explore <span translate="no">{line.explore.name}</span>
+              </span>
+              <ArrowRightIcon size={16} />
+            </a>
+          </p>
+        ) : null}
       </figure>
+      ) : (
+        <div
+          className="grid min-h-64 max-w-[40rem] content-start [grid-area:line] xl:row-span-2 xl:max-w-none xl:border-l xl:border-border-subtle xl:pt-1.5 xl:pl-8"
+          data-testid="home-line-loading"
+        >
+          <p className="text-sm text-fg-subtle">Loading a lineage from the record…</p>
+        </div>
+      )}
     </div>
   );
 }

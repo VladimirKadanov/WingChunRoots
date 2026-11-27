@@ -113,7 +113,7 @@ function Students({ data, name, href }: { data: StudentsPageDto; name: string; h
   const groups = [
     { key: 'own', title: 'Visible only to you and them', rows: studentRows(data.own), total: data.own.length },
     { key: 'active', title: 'Active', rows: studentRows(data.active), total: data.activeTotal },
-    { key: 'historical', title: 'Historical (training ended)', rows: studentRows(data.historical), total: data.historicalTotal },
+    { key: 'historical', title: 'Former (training ended)', rows: studentRows(data.historical), total: data.historicalTotal },
   ]
     .filter((g) => g.rows.length > 0)
     .map((g) => ({ ...g, rows: withNotes(g.rows, lineageName), lineage: sharedLineage(g.rows) }));

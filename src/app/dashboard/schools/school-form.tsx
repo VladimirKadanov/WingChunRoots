@@ -47,6 +47,7 @@ export interface SchoolFormProps {
     websiteUrl: string | null;
     contactEmail: string | null;
     contactPhone: string | null;
+    addressLine: string | null;
     description: string | null;
     formsTaught: string[];
     instructorIds: string[];
@@ -55,7 +56,7 @@ export interface SchoolFormProps {
   /** The city search the page answered ("Find a city or town"), to name its matches. */
   cityQuery: string | null;
   forms: { key: string; label: string }[];
-  instructorOptions: { id: string; label: string; self: boolean }[];
+  instructorOptions: { id: string; label: string; self: boolean; invite?: 'invited' | 'accepted' | null }[];
   styles: { light: string; dark: string };
   /** A new school's request key (one per form: a resent form saves once). */
   idempotencyKey: string | null;
@@ -67,6 +68,7 @@ const LABELS: Record<string, string> = {
   name: 'Name of the school',
   placeId: 'City or town',
   locationPrivacy: 'Location',
+  addressLine: 'Address',
   lat: 'Pin',
   websiteUrl: 'Website',
   contactEmail: 'E-mail',
@@ -74,6 +76,7 @@ const LABELS: Record<string, string> = {
   description: 'About the school',
   formsTaught: 'Forms taught',
   instructorIds: 'Instructors',
+  inviteSlug: 'Invite another instructor',
 };
 
 const radioClass = cx(
@@ -238,6 +241,21 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
         ))}
       </fieldset>
 
+      {/* Journey review P2-7 (ADR 0083): a public address line, only with the exact pin. */}
+      {privacy === 'exact' ? (
+        <TextField
+          form={form}
+          name="addressLine"
+          label={LABELS.addressLine}
+          state={state}
+          optional
+          autoComplete="street-address"
+          maxLength={200}
+          hint="Street, building and floor, as a visitor would write them. Shown on the school page next to Directions."
+          defaultValue={school?.addressLine ?? ''}
+        />
+      ) : null}
+
       <fieldset className="grid gap-3" data-field="">
         <legend className="mb-1 text-sm font-semibold">
           {LABELS.lat}
@@ -246,44 +264,9 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
         <p id={pointHintId} className="text-sm text-fg-muted">
           {privacy === 'city_only'
             ? 'A city-only school can keep its exact point for itself: nobody else sees it.'
-            : 'Where the school is, within 50 km of the city. Type the latitude and longitude, or drop the pin on a map.'}
+            : 'Where the school is, within 50 km of the city. Find the address on the map and tap it, or type the latitude and longitude.'}
         </p>
         <FieldError id={pointErrorId} error={error('lat')} />
-        <div className="grid grid-cols-2 gap-3">
-          <div className="grid gap-1.5">
-            <label htmlFor={latId} className="text-sm">
-              Latitude
-            </label>
-            <input
-              id={latId}
-              name="lat"
-              inputMode="decimal"
-              autoComplete="off"
-              value={lat}
-              onChange={(event) => setLat(event.currentTarget.value)}
-              placeholder="42.6977"
-              aria-invalid={error('lat') ? true : undefined}
-              aria-describedby={describedBy(pointHintId, error('lat') && pointErrorId)}
-              className={fieldClassName}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <label htmlFor={fieldId(form, 'lng')} className="text-sm">
-              Longitude
-            </label>
-            <input
-              id={fieldId(form, 'lng')}
-              name="lng"
-              inputMode="decimal"
-              autoComplete="off"
-              value={lng}
-              onChange={(event) => setLng(event.currentTarget.value)}
-              placeholder="23.3219"
-              aria-describedby={pointHintId}
-              className={fieldClassName}
-            />
-          </div>
-        </div>
         {/* The button is drawn by the server too (disabled until the form hydrates, hidden when
             scripting is off: the map needs JavaScript), so hydration moves nothing below it and a
             box ticked while the page hydrates stays under the tap (CI run 41323978929, WebKit). */}
@@ -332,11 +315,48 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
               data-testid="drop-pin"
             >
               <PinIcon />
-              Drop the pin on a map
+              Find the address on the map
             </button>
             {!city && !typedPoint ? <span className="ml-3 text-sm text-fg-muted">Choose the city first.</span> : null}
           </p>
         )}
+        {/* Journey review P2-7 (ADR 0083): the coordinates are the advanced way to place the pin. */}
+        <p className="pt-1 text-sm font-semibold">Or type the coordinates</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <label htmlFor={latId} className="text-sm">
+              Latitude
+            </label>
+            <input
+              id={latId}
+              name="lat"
+              inputMode="decimal"
+              autoComplete="off"
+              value={lat}
+              onChange={(event) => setLat(event.currentTarget.value)}
+              placeholder="42.6977"
+              aria-invalid={error('lat') ? true : undefined}
+              aria-describedby={describedBy(pointHintId, error('lat') && pointErrorId)}
+              className={fieldClassName}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <label htmlFor={fieldId(form, 'lng')} className="text-sm">
+              Longitude
+            </label>
+            <input
+              id={fieldId(form, 'lng')}
+              name="lng"
+              inputMode="decimal"
+              autoComplete="off"
+              value={lng}
+              onChange={(event) => setLng(event.currentTarget.value)}
+              placeholder="23.3219"
+              aria-describedby={pointHintId}
+              className={fieldClassName}
+            />
+          </div>
+        </div>
       </fieldset>
 
       <TextField form={form} name="websiteUrl" label={LABELS.websiteUrl} state={state} optional autoComplete="url" maxLength={300} placeholder="https://" defaultValue={school?.websiteUrl ?? ''} />
@@ -375,13 +395,39 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
 
       <fieldset className="grid gap-1" data-field="">
         <legend className="mb-1 text-sm font-semibold">{LABELS.instructorIds}</legend>
-        <p className="text-sm text-fg-muted">You are the head instructor. Others can be added from the students you confirmed.</p>
+        <p className="text-sm text-fg-muted">
+          You are the head instructor. Your confirmed students are listed at once; any other member with a public profile is invited and listed once they accept.
+        </p>
         <FieldError id={`${fieldId(form, 'instructorIds')}-error`} error={error('instructorIds')} />
         {others.length > 0 ? (
-          others.map((o) => <Check key={o.id} name="instructorIds" value={o.id} label={o.label} defaultChecked={saved('instructor', o.id, school?.instructorIds)} />)
+          others.map((o) => (
+            <Check
+              key={o.id}
+              name="instructorIds"
+              value={o.id}
+              label={o.invite === 'invited' ? `${o.label} (invited, waiting for them to accept)` : o.invite === 'accepted' ? `${o.label} (accepted)` : o.label}
+              defaultChecked={saved('instructor', o.id, school?.instructorIds)}
+            />
+          ))
         ) : (
           <p className="text-sm text-fg-muted">None of your confirmed students can be added yet.</p>
         )}
+        {/* Journey review P3-10 (ADR 0087): any member with a public profile, by the address of their profile. */}
+        <TextField
+          form={form}
+          name="inviteSlug"
+          label={LABELS.inviteSlug}
+          state={state}
+          optional
+          autoComplete="off"
+          spellCheck={false}
+          autoCapitalize="none"
+          translate="no"
+          maxLength={200}
+          hint="The address of their profile, or the part after /people/. They get a notification and accept or decline."
+          defaultValue=""
+          className="mt-3"
+        />
       </fieldset>
 
       <div>

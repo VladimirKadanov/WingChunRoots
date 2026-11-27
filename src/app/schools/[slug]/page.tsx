@@ -35,6 +35,7 @@ import { finderHref, SCHOOL_ZOOM } from '@/lib/school-finder';
 import { appUrl } from '@/server/auth/env';
 import type { SchoolPageDto } from '@/server/dto/schools';
 import { loadSchool, loadSchoolEvents, loadTrialOptions } from './data';
+import { countryName } from '@/lib/regions';
 
 export const instant = false;
 
@@ -51,7 +52,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (read.state === 'none') return { title: 'School not listed', robots: { index: false, follow: false } };
   if (read.state === 'failed') return { title: 'School not loaded', robots: { index: false, follow: false } };
   const { school } = read;
-  const description = `${school.name}: a Wing Chun school in ${school.city}, ${school.countryCode}.`;
+  const description = `${school.name}: a Wing Chun school in ${school.city}, ${countryName(school.countryCode) ?? school.countryCode}.`;
   return {
     metadataBase: new URL(appUrl()),
     title: school.name,
@@ -69,7 +70,12 @@ function jsonLd(school: SchoolPageDto): Record<string, unknown> {
     name: school.name,
     url: `${appUrl()}/schools/${school.slug}`,
     ...(school.description ? { description: school.description } : {}),
-    address: { '@type': 'PostalAddress', addressLocality: school.city, addressCountry: school.countryCode },
+    address: {
+      '@type': 'PostalAddress',
+      ...(school.streetAddress ? { streetAddress: school.streetAddress } : {}),
+      addressLocality: school.city,
+      addressCountry: school.countryCode,
+    },
     ...(school.precision === 'exact' ? { geo: { '@type': 'GeoCoordinates', latitude: school.point.lat, longitude: school.point.lng } } : {}),
     ...(school.websiteUrl ? { sameAs: [school.websiteUrl] } : {}),
     ...(school.contactEmail ? { email: school.contactEmail } : {}),
@@ -173,8 +179,14 @@ export default async function SchoolPage({ params }: Props) {
         <h1 className="min-w-0 font-display text-feature [overflow-wrap:anywhere] md:text-hero">{school.name}</h1>
         {/* The location tag below says how precise it is (phone review 2026-11: not twice). */}
         <p className="text-fg-muted">
-          {school.city}, {school.countryCode}
+          {school.city}, {countryName(school.countryCode) ?? school.countryCode}
         </p>
+        {/* Journey review P2-7 (ADR 0083): the owner's address line, only with the exact pin. */}
+        {school.streetAddress ? (
+          <address className="text-ui not-italic [overflow-wrap:anywhere]" data-testid="school-address">
+            {school.streetAddress}
+          </address>
+        ) : null}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <LocationTag precision={school.precision} />
           <Link href={mapHref} className="link inline-flex min-h-11 items-center text-sm" data-testid="school-map-link">

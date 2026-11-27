@@ -212,6 +212,7 @@ import {
   updateLineageInput,
 } from '../services/archive-editor';
 import { archiveLinks, archiveLinksInput, archiveOverview, archiveOverviewInput, archivePeople, archivePeopleInput, archivePerson, archivePersonInput, archiveTree, archiveTreeInput } from '../services/archive-grids';
+import { mergeArchiveRecord, mergeRecordInput } from '../services/archive-merge';
 import {
   addReviewNote,
   archiveGetInput,
@@ -258,6 +259,8 @@ import {
   schoolsSearch,
   schoolUpdateInput,
   schoolViewportInput,
+  answerInstructorInput,
+  answerInstructorInvitation,
   submitSchool,
   updateSchool,
 } from '../services/schools';
@@ -317,6 +320,7 @@ import { lineageCardSchema, lineageGraphSchema, lineagePathsSchema, personProfil
 import { organizationListSchema, organizationPageSchema } from '../dto/organizations';
 import { commitImport, discardImport, getImport, importIdInput, importListInput, importPreviewInput, listImports, previewImport } from '../services/organization-import';
 import { insightsInput, organizationAnalytics, organizationHeatmap } from '../services/organization-insights';
+import { organizationOverview } from '../services/organization-overview';
 import { claimsInput, leaveInput, leaveOrganization, myMemberships, organizationClaims, withdrawClaim, withdrawClaimInput } from '../services/organization-separation';
 import {
   addAdminInput,
@@ -358,6 +362,9 @@ import {
 } from '../services/organization-grants';
 import { exploreStartSchema } from '../dto/explore';
 import { exploreStart } from '../services/explore-start';
+import { homeLine } from '../services/home-line';
+import { reportMissingLineage, reportMissingLineageInput } from '../services/lineage-missing';
+import { homeLineSchema } from '../dto/home';
 import {
   ancestorsInput,
   egoInput,
@@ -621,6 +628,16 @@ export const router = {
       .route({ method: 'GET', path: '/lineage/start', summary: 'Public lineages with their public root: where the explorer starts' })
       .output(exploreStartSchema)
       .handler(({ context }) => exploreStart(context.meta)),
+    // Journey review 2026-11-26 (P1-4, ADR 0078): the home page's line of a real public lineage.
+    home: base
+      .route({ method: 'GET', path: '/lineage/home', summary: "The home page's line: the chosen public lineage, or today's in the rotation, from its root down" })
+      .output(homeLineSchema)
+      .handler(() => homeLine()),
+    // Journey review 2026-11-26 (P2-2): "My lineage is not listed" tells the archivists.
+    reportMissing: signedIn
+      .route({ method: 'POST', path: '/lineage/report-missing', summary: 'Tell the archivists a lineage is missing from the list (its name; at most five a day); audited' })
+      .input(reportMissingLineageInput)
+      .handler(({ context, input }) => reportMissingLineage(context.principal, input, context.meta)),
   },
   people: {
     get: base
@@ -1193,6 +1210,16 @@ export const router = {
       })
       .input(editLinkInput)
       .handler(({ context, input }) => editArchiveLink(context.principal, input, context.meta)),
+    // Journey review P2-10 (docs/adr/0086-archive-duplicates.md): one record entered twice becomes one.
+    mergeRecord: staffWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/archive-editor/records/merge',
+        summary:
+          'Merge a duplicate record kept by the archive into the kept one: its links, names and evidence move, a link both have ends, its address redirects to the kept record; members’ records are refused; audited',
+      })
+      .input(mergeRecordInput)
+      .handler(({ context, input }) => mergeArchiveRecord(context.principal, input, context.meta)),
     // Control panel 2026-11 (docs/adr/0035-control-panel.md): the editor's working views, for thousands of records.
     overview: staffWithSecondFactor
       .route({ method: 'GET', path: '/archive-editor/overview', summary: 'Every lineage with its people, generations, sourced share and last edit, searched and sorted, and the archive figures (an archivist or an administrator)' })
@@ -1294,6 +1321,15 @@ export const router = {
     mine: base
       .route({ method: 'GET', path: '/schools/mine', summary: 'The schools the signed-in account listed, with their status and whether the pin shows' })
       .handler(({ context }) => mySchools(context.principal)),
+    // Journey review P3-10 (docs/adr/0087-school-instructor-invite.md).
+    answerInstructor: base
+      .route({
+        method: 'POST',
+        path: '/schools/instructor-invitations/answer',
+        summary: 'Accept or decline a school’s invitation to be listed as one of its instructors (the invited member only); audited',
+      })
+      .input(answerInstructorInput)
+      .handler(({ context, input }) => answerInstructorInvitation(context.principal, input, context.meta)),
     edit: base
       .route({ method: 'GET', path: '/schools/mine/{id}', summary: "One of the account's own schools for the editor, with the review state, the upgrade offer and the cities (optionally those matching `city`)" })
       .input(schoolIdInput.extend({ city: schoolEditorInput.shape.city }))
@@ -1895,6 +1931,14 @@ export const router = {
     nav: base
       .route({ method: 'GET', path: '/dashboard/nav', summary: "The signed-in account's dashboard menu: account type, profile, administered organizations, unread and waiting counts" })
       .handler(({ context }) => dashboardNav(context.principal)),
+    // Journey review P2-5 (docs/adr/0082-organization-overview.md).
+    organizations: base
+      .route({
+        method: 'GET',
+        path: '/dashboard/organizations',
+        summary: 'The organizations the signed-in account administers at a glance: members, linked and waiting schools, the next event, the plan and what is left to do',
+      })
+      .handler(({ context }) => organizationOverview(context.principal)),
   },
   // M12: /admin/system (plan §3.1 "Наблюдение"): counts, queue names and times only.
   system: {

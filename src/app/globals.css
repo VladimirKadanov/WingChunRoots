@@ -326,6 +326,34 @@
 }
 
 /* Tabular numerals for years and generation counts (Arabic numerals, plan §5.3). */
+/* The shell's navigation links (src/components/shell/nav-links.tsx), here rather than in its
+   script: every page loads that script, and its chunk has to stay small. */
+@utility nav-tab {
+  /* Centred with the same room above the icon as below the chop, so the chop never sits on the
+     screen's bottom edge where there is no home-indicator inset. An inset focus ring: the tab bar
+     ends at the screen edge and would clip an outer one. */
+  @apply @container/tab relative flex min-h-11 flex-1 flex-col items-center justify-center gap-1 text-caption text-fg-subtle uppercase transition-colors duration-(--duration-fast) hover:text-fg focus-visible:-outline-offset-2 aria-[current=page]:text-fg;
+}
+@utility nav-rail {
+  @apply relative flex min-h-[46px] items-center gap-3.5 rounded-sm px-3 text-ui font-medium text-fg-subtle transition-colors duration-(--duration-fast) hover:bg-surface-3 hover:text-fg focus-visible:-outline-offset-2 aria-[current=page]:bg-surface-3 aria-[current=page]:font-semibold aria-[current=page]:text-fg;
+}
+@utility nav-tab-label {
+  @apply max-w-full text-center [overflow-wrap:anywhere] @max-[5.75em]/tab:tracking-[0.03em] @max-[5em]/tab:tracking-normal @max-[5em]/tab:normal-case @max-[3.8em]/tab:text-[0.875em];
+}
+@utility nav-chop {
+  @apply size-1.5 scale-0 rotate-[-20deg] rounded-[1px] bg-fg transition-transform duration-(--duration-slow) ease-stamp group-aria-[current=page]:scale-100 group-aria-[current=page]:rotate-[4deg];
+}
+/* The chop under a tab's label, or at the end of a rail row. */
+.nav-tab > .nav-chop {
+  display: block;
+}
+.nav-rail > .nav-chop {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  margin-top: -3px;
+}
+
 @utility tabular {
   font-variant-numeric: tabular-nums;
 }

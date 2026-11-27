@@ -108,8 +108,10 @@ export interface ArchivePersonRow {
   lineages: { slug: string; name: string }[];
   teachers: number;
   students: number;
-  /** Another record has the same primary name. */
+  /** Another record shares a spelling with this one. */
   duplicate: boolean;
+  /** Those records, when they are kept by the archive (a merge's possible targets), by address. */
+  duplicateOf: { slug: string; name: string }[];
 }
 
 export interface ArchivePeopleList {
@@ -150,6 +152,10 @@ export interface ArchiveLineageHead {
   description: string | null;
   root: ArchiveRecordRef | null;
   listed: boolean;
+  /** P1-4 (ADR 0078): the lineage the home page draws. */
+  featuredOnHome: boolean;
+  /** P2-10 (ADR 0086): the shared teachers before the branches split. */
+  commonRoots: boolean;
   /** Active links, the people on them, and those without a source or years. */
   links: number;
   people: number;
@@ -264,13 +270,13 @@ function depthCte(lineageIds: SQL): SQL {
     depth AS (SELECT lineage_id, person_id, min(depth) AS depth FROM walk GROUP BY lineage_id, person_id)`;
 }
 
-async function lineageBySlug(db: Executor, raw: string): Promise<{ id: string; slug: string; name: string; description: string | null; rootPersonId: string | null }> {
+async function lineageBySlug(db: Executor, raw: string): Promise<{ id: string; slug: string; name: string; description: string | null; rootPersonId: string | null; featuredOnHome: boolean; commonRoots: boolean }> {
   if (!SLUG.test(raw)) throw new ServiceError('NOT_FOUND', NO_LINEAGE);
-  const result = await db.execute<{ id: string; slug: string; name: string; description: string | null; root_person_id: string | null }>(sql`
-    SELECT id::text, slug, name, description, root_person_id::text FROM lineage WHERE slug = ${raw} AND deleted_at IS NULL`);
+  const result = await db.execute<{ id: string; slug: string; name: string; description: string | null; root_person_id: string | null; featured_on_home: boolean; common_roots: boolean }>(sql`
+    SELECT id::text, slug, name, description, root_person_id::text, featured_on_home, common_roots FROM lineage WHERE slug = ${raw} AND deleted_at IS NULL`);
   const row = result.rows[0];
   if (!row) throw new ServiceError('NOT_FOUND', NO_LINEAGE);
-  return { id: row.id, slug: row.slug, name: row.name, description: row.description, rootPersonId: row.root_person_id };
+  return { id: row.id, slug: row.slug, name: row.name, description: row.description, rootPersonId: row.root_person_id, featuredOnHome: row.featured_on_home, commonRoots: row.common_roots };
 }
 
 /** The workspace header of a lineage: its root, whether the explorer lists it, and its figures. */
@@ -293,6 +299,8 @@ async function lineageHead(db: Executor, line: Awaited<ReturnType<typeof lineage
     description: line.description,
     root: line.rootPersonId ? (refs.get(line.rootPersonId) ?? null) : null,
     listed: listed.has(line.id),
+    featuredOnHome: line.featuredOnHome,
+    commonRoots: line.commonRoots,
     links: f.links,
     people: f.people,
     needsWork: f.needs_work,
@@ -421,17 +429,20 @@ export async function archivePeople(principal: Principal | null, raw: ArchivePeo
     members: sql`AND p.stewardship = 'self'`,
     hidden: sql`AND (p.visibility <> 'public' OR p.taken_down_at IS NOT NULL)`,
     no_teacher: sql`AND NOT EXISTS (SELECT 1 FROM teaching_relationship a WHERE a.student_person_id = p.id AND a.status IN ('verified', 'in_arbitration'))`,
-    duplicates: sql`AND lower(unaccent(pn.value)) IN (SELECT k FROM dup)`,
+    duplicates: sql`AND p.id IN (SELECT person_id FROM dup)`,
   }[input.show];
   const q = input.q ? cleanName(input.q) : '';
   const search = q ? sql`AND p.id IN (${matchingPeople(q)})` : sql``;
   const offset = (input.page - 1) * ARCHIVE_GRID_PAGE_SIZE;
+  // Journey review P2-10 (ADR 0086): a possible duplicate shares any spelling with another record,
+  // in any script (Latin, Chinese, Cyrillic, Jyutping, pinyin), as written on at least one side.
   const dup = sql`dup AS (
-      SELECT lower(unaccent(n.value)) AS k FROM person_name n JOIN person o ON o.id = n.person_id AND o.deleted_at IS NULL
-       WHERE n.is_primary GROUP BY 1 HAVING count(*) > 1)`;
+      SELECT DISTINCT k.person_id FROM person_name_key k
+        JOIN person_name_key o ON o.key = k.key AND o.person_id <> k.person_id AND (k.source = 'name' OR o.source = 'name')
+        JOIN person op ON op.id = o.person_id AND op.deleted_at IS NULL)`;
   const result = await db.execute<{ id: string; total: number; duplicate: boolean }>(sql`
     WITH ${dup}
-    SELECT p.id::text, count(*) OVER ()::int AS total, lower(unaccent(pn.value)) IN (SELECT k FROM dup) AS duplicate
+    SELECT p.id::text, count(*) OVER ()::int AS total, p.id IN (SELECT person_id FROM dup) AS duplicate
       FROM person p
       JOIN person_name pn ON pn.person_id = p.id AND pn.is_primary
      WHERE p.deleted_at IS NULL ${search} ${show} ${lineageFilter}
@@ -441,7 +452,7 @@ export async function archivePeople(principal: Principal | null, raw: ArchivePeo
     WITH ${dup}
     SELECT count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM teaching_relationship a WHERE a.student_person_id = p.id AND a.status IN ('verified', 'in_arbitration'))
                               AND p.kind = 'historical')::int AS no_teacher,
-           count(*) FILTER (WHERE lower(unaccent(pn.value)) IN (SELECT k FROM dup))::int AS duplicates
+           count(*) FILTER (WHERE p.id IN (SELECT person_id FROM dup))::int AS duplicates
       FROM person p JOIN person_name pn ON pn.person_id = p.id AND pn.is_primary
      WHERE p.deleted_at IS NULL`);
   const pageIds = result.rows.map((r) => r.id);
@@ -459,13 +470,27 @@ export async function archivePeople(principal: Principal | null, raw: ArchivePeo
         FROM person p WHERE p.id IN (${ids(pageIds)})`);
     for (const r of rows.rows) facts.set(r.person_id, { teachers: r.teachers, students: r.students, lineages: r.lineages ?? [] });
   }
+  // The records each duplicate on the page shares a spelling with (the same match as dup above).
+  const pairs = new Map<string, { slug: string; name: string }[]>();
+  const dupIds = result.rows.filter((r) => r.duplicate).map((r) => r.id);
+  if (dupIds.length > 0) {
+    const rows = await db.execute<{ person_id: string; slug: string; name: string }>(sql`
+      SELECT DISTINCT k.person_id::text AS person_id, op.slug, opn.value AS name
+        FROM person_name_key k
+        JOIN person_name_key o ON o.key = k.key AND o.person_id <> k.person_id AND (k.source = 'name' OR o.source = 'name')
+        JOIN person op ON op.id = o.person_id AND op.deleted_at IS NULL AND op.stewardship <> 'self' AND op.claimed_by_user_id IS NULL
+        JOIN person_name opn ON opn.person_id = op.id AND opn.is_primary
+       WHERE k.person_id IN (${ids(dupIds)})
+       ORDER BY 1, opn.value, op.slug`);
+    for (const r of rows.rows) pairs.set(r.person_id, [...(pairs.get(r.person_id) ?? []), { slug: r.slug, name: r.name }]);
+  }
   const total = result.rows[0]?.total ?? 0;
   return {
     rows: result.rows
       .filter((r) => refs.has(r.id))
       .map((r) => {
         const f = facts.get(r.id) ?? { teachers: 0, students: 0, lineages: [] };
-        return { record: refs.get(r.id)!, lineages: f.lineages, teachers: f.teachers, students: f.students, duplicate: r.duplicate };
+        return { record: refs.get(r.id)!, lineages: f.lineages, teachers: f.teachers, students: f.students, duplicate: r.duplicate, duplicateOf: pairs.get(r.id) ?? [] };
       }),
     total,
     page: input.page,

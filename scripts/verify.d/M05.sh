@@ -132,7 +132,7 @@ check "edges follow plan §4.6: orthogonal ELK routes, the cross-lineage Bézier
   grep -q "path.type === '\''bezier'\''" src/components/lineage/explorer/canvas.tsx &&
   grep -q "<StrokePaths" src/components/lineage/explorer/canvas.tsx && grep -q "style.stroke === '\''double'\''" src/components/ink/link-stroke.tsx &&
   grep -q "Teacher in \${lineageName}" src/components/lineage/explorer/explorer.tsx &&
-  grep -q "const byDefault = (e: LineageEdgeDto) => showHistorical || !isHistoricalRelation(e.periods);" src/components/lineage/explorer/explorer.tsx &&
+  grep -q "const byDefault = (e: LineageEdgeDto) => showHistorical || !former(e);" src/components/lineage/explorer/explorer.tsx &&
   grep -q "hidden: !byDefault(edge)" src/components/lineage/explorer/explorer.tsx'
 refute "no edge or node is faded with opacity (plan §4.7: solid tones only)" grep -nE "opacity-[0-9]|opacity: 0\.|opacity=\"0\." src/components/lineage/explorer/canvas.tsx src/components/ink/link-stroke.tsx
 check "the legend is the shared one (icon, stroke sample, text) inside the explorer frame" bash -c '

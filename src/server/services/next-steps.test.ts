@@ -23,16 +23,33 @@ describe('nextSteps', () => {
   it('disappears once every step is done', () => {
     const looks = { profilePublic: true, hasPhoto: true };
     expect(nextSteps({ ...base, hasProfile: true, teacherLinks: 1, ...looks })).toEqual([]);
-    expect(nextSteps({ ...base, accountType: 'sifu', instructor: 'verified', hasProfile: true, schools: 2, ...looks })).toEqual([]);
+    expect(nextSteps({ ...base, accountType: 'sifu', instructor: 'verified', hasProfile: true, schools: 2, teacherLinks: 1, students: 1, ...looks })).toEqual([]);
     // Role replay 2026-11-25 (P2-2): a private profile, or one without a photo, keeps the card.
     expect(nextSteps({ ...base, hasProfile: true, teacherLinks: 1, hasPhoto: true }).filter((s) => !s.done).map((s) => s.key)).toEqual(['public']);
     expect(nextSteps({ ...base, hasProfile: true, teacherLinks: 1, profilePublic: true }).filter((s) => !s.done).map((s) => s.key)).toEqual(['photo']);
   });
 
-  it('gives a Sifu verification and a school instead of a teacher', () => {
+  it('gives a Sifu their teacher, a public profile, students, a school and verification, in that order (P2-3)', () => {
     const steps = nextSteps({ ...base, accountType: 'sifu', instructor: 'unverified', hasProfile: true });
-    expect(steps.map((s) => s.key)).toEqual(['profile', 'instructor', 'school', 'public', 'photo']);
+    expect(steps.map((s) => s.key)).toEqual(['profile', 'teacher', 'public', 'invite', 'school', 'instructor', 'photo']);
     expect(steps.find((s) => s.key === 'school')?.href).toBe('/dashboard/schools/new');
+    expect(steps.find((s) => s.key === 'invite')?.href).toBe('/dashboard/students/invite');
+    const done = nextSteps({ ...base, accountType: 'sifu', instructor: 'verified', hasProfile: true, teacherLinks: 1, students: 3, schools: 1, profilePublic: true, hasPhoto: true });
+    expect(done).toEqual([]);
+  });
+
+  it('keeps a beginner’s steps until a teacher is named (P2-1)', () => {
+    const steps = nextSteps({ ...base, hasProfile: true, beginner: true });
+    expect(steps.map((s) => [s.key, s.done])).toEqual([
+      ['profile', true],
+      ['find-school', false],
+      ['events', false],
+      ['teacher', false],
+    ]);
+    expect(steps.find((s) => s.key === 'teacher')?.label).toBe('Started training? Name your teacher');
+    expect(nextSteps({ ...base, hasProfile: true, beginner: true, trials: 1 }).find((s) => s.key === 'find-school')?.done).toBe(true);
+    // Once a teacher is named, the usual steps.
+    expect(nextSteps({ ...base, hasProfile: true, beginner: true, teacherLinks: 1 }).map((s) => s.key)).toEqual(['profile', 'teacher', 'public', 'photo']);
   });
 
   it('asks nothing of a staff account without a profile', () => {

@@ -259,7 +259,7 @@ async function AgendaView({ filters }: { filters: Filters }) {
       <Scope filters={filters} />
       <p className="mt-6 text-sm text-fg-muted" aria-live="polite" data-testid="event-count">
         {list.total === 1 ? '1 event' : `${list.total} events`}
-        {filtered ? ' match these filters' : filters.when === 'upcoming' ? ' coming up' : ' in the past'}.
+        {filtered ? (list.total === 1 ? ' matches these filters' : ' match these filters') : filters.when === 'upcoming' ? ' coming up' : ' in the past'}.
       </p>
       {list.items.length === 0 ? (
         <div className="mt-4 grid gap-3" data-testid="no-events">

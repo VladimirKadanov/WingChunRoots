@@ -15,12 +15,16 @@
 // - A session of an account with two-factor authentication that has not passed the second factor
 //   (only possible for sessions created outside the sign-in form) verifies it here; staff pages
 //   require it (requireStaff2FA).
+// - Journey review P2-4 (ADR 0081): "Change password" (/change-password, the current one first,
+//   other devices signed out when ticked), "Change e-mail address" (/change-email with the
+//   password, which the auth hook checks; the new address confirms the change) and "Sign out of
+//   other devices" (/revoke-other-sessions).
 
 import { redirect } from 'next/navigation';
 
 import { authMessage } from '@/components/account/messages';
-import { MAX_PASSWORD_LENGTH } from '@/lib/account-limits';
-import { keepValues, secretValue, textValue } from '@/lib/form-data';
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
+import { emailValue, keepValues, looksLikeEmail, secretValue, textValue, ticked } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
 import { safeNextPath } from '@/server/auth/guards';
 import { authAction, getRequestPrincipal } from '@/server/auth/web';
@@ -137,4 +141,81 @@ async function disableTwoFactor(form: FormData): Promise<FormState> {
   const result = await authAction('/two-factor/disable', { body: { password } });
   if (!result.ok) return passwordRefused(result.code);
   redirect(`${PAGE}?off=1`);
+}
+
+// Journey review P2-4 (ADR 0081): the password, the e-mail address and the other sessions.
+
+/** The new password's own message, or null when it fits the rules of sign-up. */
+function newPasswordProblem(password: string): string | null {
+  if (!password) return 'Enter the new password.';
+  if (password.length < MIN_PASSWORD_LENGTH) return authMessage('PASSWORD_TOO_SHORT');
+  if (password.length > MAX_PASSWORD_LENGTH) return authMessage('PASSWORD_TOO_LONG');
+  return null;
+}
+
+export async function changePasswordAction(_previous: FormState, form: FormData): Promise<FormState> {
+  return formResult({ form: 'change-password', page: PAGE }, await changePassword(form));
+}
+
+async function changePassword(form: FormData): Promise<FormState> {
+  const currentPassword = secretValue(form, 'password', MAX_PASSWORD_LENGTH + 1);
+  const newPassword = secretValue(form, 'newPassword', MAX_PASSWORD_LENGTH + 1);
+  const values = keepValues(form, [], ['signOutOthers']);
+  const fields: Record<string, string> = {};
+  if (!currentPassword) fields.password = 'Enter your current password.';
+  const problem = newPasswordProblem(newPassword);
+  if (problem) fields.newPassword = problem;
+  else if (newPassword === currentPassword) fields.newPassword = 'Choose a password other than the current one.';
+  if (Object.keys(fields).length > 0) return { status: 'error', message: 'Check the highlighted fields.', fields, values };
+  const result = await authAction('/change-password', {
+    body: { currentPassword, newPassword, revokeOtherSessions: ticked(form, 'signOutOthers') },
+  });
+  if (!result.ok) {
+    if (result.code === 'INVALID_PASSWORD') {
+      return { status: 'error', message: 'Check the highlighted field.', fields: { password: authMessage('INVALID_PASSWORD') }, values };
+    }
+    if (result.code === 'PASSWORD_TOO_SHORT' || result.code === 'PASSWORD_TOO_LONG') {
+      return { status: 'error', message: 'Check the highlighted field.', fields: { newPassword: authMessage(result.code) }, values };
+    }
+    return { status: 'error', message: authMessage(result.code), values };
+  }
+  redirect(`${PAGE}?passwordChanged=1`);
+}
+
+export async function changeEmailAction(_previous: FormState, form: FormData): Promise<FormState> {
+  return formResult({ form: 'change-email', page: PAGE }, await changeEmail(form));
+}
+
+async function changeEmail(form: FormData): Promise<FormState> {
+  const newEmail = emailValue(form);
+  const password = secretValue(form, 'password', MAX_PASSWORD_LENGTH + 1);
+  const values = keepValues(form, ['email']);
+  const fields: Record<string, string> = {};
+  if (!newEmail) fields.email = 'Enter the new e-mail address.';
+  else if (!looksLikeEmail(newEmail)) fields.email = authMessage('INVALID_EMAIL');
+  if (!password) fields.password = 'Enter your password to continue.';
+  if (Object.keys(fields).length > 0) return { status: 'error', message: 'Check the highlighted fields.', fields, values };
+  const principal = await getRequestPrincipal();
+  if (principal && principal.user.email.toLowerCase() === newEmail.toLowerCase()) {
+    return { status: 'error', message: 'Check the highlighted field.', fields: { email: 'This is the address you sign in with now.' }, values };
+  }
+  const result = await authAction('/change-email', { body: { newEmail, password } });
+  if (!result.ok) {
+    if (result.code === 'INVALID_PASSWORD') {
+      return { status: 'error', message: 'Check the highlighted field.', fields: { password: authMessage('INVALID_PASSWORD') }, values };
+    }
+    return { status: 'error', message: authMessage(result.code), values };
+  }
+  // The same answer whether or not the address belongs to another account (no enumeration).
+  return { status: 'done', values: { email: newEmail } };
+}
+
+export async function signOutOtherDevicesAction(): Promise<FormState> {
+  return formResult({ form: 'sign-out-others', page: PAGE }, await signOutOtherDevices());
+}
+
+async function signOutOtherDevices(): Promise<FormState> {
+  const result = await authAction('/revoke-other-sessions', { body: {} });
+  if (!result.ok) return { status: 'error', message: authMessage(result.code) };
+  redirect(`${PAGE}?othersSignedOut=1`);
 }

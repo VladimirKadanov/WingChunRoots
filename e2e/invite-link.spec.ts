@@ -98,7 +98,8 @@ test("@invite \"I'm new to Wing Chun\" ends onboarding on the school finder; the
   await signInAs(page, 'new');
   await page.goto('/onboarding');
   await visible(page.getByLabel(/^Name in Latin letters/)).fill(`Demo Beginner ${letters().replace(/^./, (c) => c.toUpperCase())}`);
-  await visible(page.getByLabel('I’m new to Wing Chun')).check();
+  // Journey review 2026-11-26 (P1-1): new to Wing Chun is neither tick.
+  await visible(page.getByRole('checkbox', { name: 'I train' })).uncheck();
   await visible(page.getByRole('button', { name: 'Save my profile' })).click();
   await page.waitForURL((u) => u.pathname === '/schools', { timeout: 15_000 });
 });

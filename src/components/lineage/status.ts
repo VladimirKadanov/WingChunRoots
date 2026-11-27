@@ -5,6 +5,9 @@
 import type { LinkKind } from '@/components/ink/link-stroke';
 import type { LineageEdgeDto, PeriodDto, RelationshipStatusDto } from '@/server/dto/public';
 
+/** How sure the archive is of a link it entered (P1-3); null or absent for a link a teacher confirmed. */
+export type Certainty = NonNullable<LineageEdgeDto['certainty']>;
+
 export interface RelationStatus {
   /** The seal and stroke of plan §4.6. */
   kind: LinkKind;
@@ -17,9 +20,14 @@ export interface RelationStatus {
  * (pending_teacher, awaiting_claim) is "Pending": only its two participants ever see it
  * (DEFAULT D03), drawn with the unconfirmed seal.
  */
-export function relationStatus(status: RelationshipStatusDto): RelationStatus {
+export function relationStatus(status: RelationshipStatusDto, certainty?: Certainty | null): RelationStatus {
   switch (status) {
     case 'verified':
+      // Journey review 2026-11-26 (P1-3, ADR 0077): a link the archive entered says how sure the
+      // record is; "Verified" stays for links confirmed by people or evidence.
+      if (certainty === 'documented') return { kind: 'verified', label: 'Documented' };
+      if (certainty === 'traditional') return { kind: 'traditional', label: 'Traditional account' };
+      if (certainty === 'disputed') return { kind: 'contested', label: 'Disputed by historians' };
       return { kind: 'verified', label: 'Verified' };
     case 'in_arbitration':
       // M10b (DEFAULT D19): in arbitration, shown to the public as "Disputed", in words and with the seal.
@@ -38,6 +46,22 @@ export function relationStatus(status: RelationshipStatusDto): RelationStatus {
 /** Every period has ended: none is ongoing and at least one has an end. */
 export function isHistoricalRelation(periods: readonly PeriodDto[]): boolean {
   return periods.length > 0 && periods.every((p) => !p.ongoing) && periods.some((p) => p.to !== null);
+}
+
+/**
+ * Ended training that the explorer folds away until "Show former students" (ADR 0075): only the
+ * former students of a living teacher. Training with a teacher who has died, or with a historical
+ * record, has always ended, so those links are drawn like any other: a historical lineage is made
+ * of them. `teacherLifeStatus` is the teacher's `lifeStatus` in the same answer.
+ */
+export function isFormerStudentLink(periods: readonly PeriodDto[], teacherLifeStatus: string | undefined): boolean {
+  return teacherLifeStatus === 'living' && isHistoricalRelation(periods);
+}
+
+/** isFormerStudentLink() over the edges of one answer. */
+export function formerLinkIn(nodes: readonly { id: string; lifeStatus: string }[]): (edge: { teacherId: string; periods: readonly PeriodDto[] }) => boolean {
+  const life = new Map(nodes.map((n) => [n.id, n.lifeStatus]));
+  return (edge) => isFormerStudentLink(edge.periods, life.get(edge.teacherId));
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -71,7 +95,7 @@ export function periodText(periods: readonly PeriodDto[]): string {
   return parts.length > 0 ? parts.join(', ') : 'Dates not recorded';
 }
 
-type EdgeLike = Pick<LineageEdgeDto, 'status' | 'periods'> & { kind?: LineageEdgeDto['kind'] };
+type EdgeLike = Pick<LineageEdgeDto, 'status' | 'periods'> & { kind?: LineageEdgeDto['kind']; certainty?: LineageEdgeDto['certainty'] };
 
 /**
  * The kinds a list of edges draws, for its legend: each edge's state, and the historical and
@@ -80,8 +104,10 @@ type EdgeLike = Pick<LineageEdgeDto, 'status' | 'periods'> & { kind?: LineageEdg
 export function kindsOf(edges: readonly EdgeLike[]): LinkKind[] {
   const kinds = new Set<LinkKind>();
   for (const e of edges) {
-    kinds.add(relationStatus(e.status).kind);
-    if (isHistoricalRelation(e.periods)) kinds.add('historical');
+    const state = relationStatus(e.status, e.certainty).kind;
+    kinds.add(state);
+    // An archive link of a traditional account or a dispute draws its own line, not the thin one.
+    if (isHistoricalRelation(e.periods) && state !== 'traditional' && state !== 'contested') kinds.add('historical');
     if (e.kind === 'crossLineage') kinds.add('cross_lineage');
   }
   return [...kinds];
@@ -93,16 +119,17 @@ export function kindsOf(edges: readonly EdgeLike[]): LinkKind[] {
  * draws them, for the key.
  */
 export function asStudentEdges(edges: readonly EdgeLike[]): EdgeLike[] {
-  return edges.map((e) => ({ status: e.status, periods: e.periods }));
+  return edges.map((e) => ({ status: e.status, periods: e.periods, certainty: e.certainty }));
 }
 
 /**
  * The one stroke a row draws for its relationship: a state that is not verified first (it is what
- * the reader must notice), then the cross-lineage curve (on a teacher's row only), then the thin
- * historical line, then verified ink.
+ * the reader must notice), then an archive link's certainty (a traditional account, a dispute among
+ * historians: P1-3), then the cross-lineage curve (on a teacher's row only), then the thin line of
+ * former training, then verified ink.
  */
 export function strokeOf(edge: EdgeLike): LinkKind {
-  const status = relationStatus(edge.status).kind;
+  const status = relationStatus(edge.status, edge.certainty).kind;
   if (status !== 'verified') return status;
   if (edge.kind === 'crossLineage') return 'cross_lineage';
   if (isHistoricalRelation(edge.periods)) return 'historical';
@@ -155,7 +182,7 @@ export function claimText(claimState: string): string {
 }
 
 /**
- * "129 active and 3 historical students": a part that would read "0 …" is left out (review
+ * "129 active and 3 former students": a part that would read "0 …" is left out (review
  * round 2), so a hub with no ended training reads "129 active students".
  */
 export function studentTotalsText(active: number, historical: number): string {
@@ -164,6 +191,6 @@ export function studentTotalsText(active: number, historical: number): string {
   const noun = total === 1 ? 'student' : 'students';
   const n = (x: number) => x.toLocaleString('en');
   if (historical === 0) return `${n(active)} active ${noun}`;
-  if (active === 0) return `${n(historical)} historical ${noun}`;
-  return `${n(active)} active and ${n(historical)} historical ${noun}`;
+  if (active === 0) return `${n(historical)} former ${noun}`;
+  return `${n(active)} active and ${n(historical)} former ${noun}`;
 }

@@ -15,7 +15,8 @@
 //                                  (known-devices.ts); the demo accounts cannot sign in on a public
 //                                  deployment (answered like a wrong password).
 //   password-gated endpoints       /two-factor/enable, /two-factor/disable,
-//                                  /two-factor/generate-backup-codes and /change-password reserve an
+//                                  /two-factor/generate-backup-codes, /change-password and
+//                                  /change-email reserve an
 //                                  attempt on the same key, so a stolen session cannot guess the
 //                                  password through them (/verify-password is not served; config.ts);
 //                                  enable and new backup codes are refused (403
@@ -31,6 +32,11 @@
 //                                  unless it confirms a pending setup: its codes would count on that
 //                                  lock, and a stolen session could lock the owner's sign-in.
 //   /two-factor/disable            refused for staff (a staff role needs 2FA).
+//   /change-email                  checks the `password` of the body itself (the endpoint takes
+//                                  none; journey review P2-4, ADR 0081): a wrong one keeps the attempt.
+//   /verify-email                  a link that changes the address is refused when it is older than
+//                                  the password, is not Better Auth's two-step kind, or names an
+//                                  address taken since (ADR 0081).
 //   Each reservation stays open in the request's scope (request-scope.ts) until the after hook
 //   settles it, and is given back when the request ends without the after hook.
 // hooks.after
@@ -38,7 +44,8 @@
 //                                  and a signed cookie with the address for this browser (ADR 0069).
 //   /verify-email                  the session of an address's first confirmation stays only in the
 //                                  browser whose cookie names that address, which becomes a known
-//                                  one; anywhere else it is deleted unseen (confirm-browser.ts).
+//                                  one; anywhere else it is deleted unseen (confirm-browser.ts). A
+//                                  changed address sends the notice to both addresses and is audited.
 //   /sign-in/email                 a wrong password keeps its reservation; a right one clears the key
 //                                  and makes this browser a known one; anything else gives it back.
 //                                  The right password of an unconfirmed account is answered and
@@ -75,12 +82,13 @@ import { getDb } from '../db';
 import { authAccount, authSession, authTwoFactor, authUser, emailDelivery } from '../db/schema';
 import { ConsentRequiredError, grantConsents, parseSignUpConsents } from '../services/consent';
 import { requestMeta } from '../services/context';
-import { type SecurityKind, sendSecurityNotice } from '../services/security-notices';
+import { type SecurityKind, sendEmailChangedNotice, sendSecurityNotice } from '../services/security-notices';
 import { keepConfirmationSessionInSignUpBrowser, markSignUpBrowser } from './confirm-browser';
 import { normalizeBackupCode } from './credentials';
 import { demoSignInAllowed } from './env';
 import { clientIp, ipHmac } from './ip';
 import { passwordAttemptKey, rememberDevice } from './known-devices';
+import { confirmationClaims } from './tokens';
 import { isStaffRole } from './principal';
 import { hold, requestScope, settle } from './request-scope';
 import { accountSuspended, SUSPENDED_MESSAGE } from './suspension';
@@ -93,7 +101,7 @@ const SECOND_FACTOR_PATHS = new Set([VERIFY_TOTP_PATH, VERIFY_BACKUP_CODE_PATH])
  * Endpoints of a signed-in session that check the account's password: src/server/rpc/api-parity.test.ts
  * keeps the list complete, hardening-lockout.int.test.ts tests what they count.
  */
-export const PASSWORD_GATED_PATHS = new Set(['/two-factor/enable', '/two-factor/disable', '/two-factor/generate-backup-codes', '/change-password']);
+export const PASSWORD_GATED_PATHS = new Set(['/two-factor/enable', '/two-factor/disable', '/two-factor/generate-backup-codes', '/change-password', '/change-email']);
 /** M18: the security notice of a password-gated change that succeeded. */
 const SECURITY_NOTICE_OF: Readonly<Record<string, SecurityKind>> = {
   '/change-password': 'security.password-changed',
@@ -311,6 +319,77 @@ async function refuseSuspendedSession(ctx: HookContext): Promise<void> {
   }
 }
 
+/**
+ * Journey review P2-4 (ADR 0081): /change-email takes no password, so the hook checks the body's
+ * `password` against the account's own. A wrong one keeps the attempt reserved above (it counts
+ * toward the same lock as every other password check) and is answered like /change-password's.
+ */
+async function checkChangeEmailPassword(ctx: HookContext, userId: string): Promise<void> {
+  const password = bodyOf(ctx).password;
+  const [row] = await getDb()
+    .select({ hash: authAccount.password })
+    .from(authAccount)
+    .where(and(eq(authAccount.userId, userId), eq(authAccount.providerId, 'credential')));
+  const right =
+    typeof password === 'string' &&
+    password.length > 0 &&
+    password.length <= MAX_PASSWORD_LENGTH &&
+    typeof row?.hash === 'string' &&
+    (await ctx.context.password.verify({ hash: row.hash, password }).catch(() => false));
+  if (right) return;
+  // Settled here: the attempt stays counted (the after hook does not run for a refusal here).
+  settle('password');
+  refuse('BAD_REQUEST', 'INVALID_PASSWORD', 'Invalid password');
+}
+
+/** A link of an address change older than this many seconds before the password's last change is stale. */
+const LINK_CLOCK_SKEW_S = 5;
+
+/**
+ * Journey review P2-4 (ADR 0081): a confirmation link that changes the address. Better Auth's
+ * beforeEmailVerification does not run for it, so the hook refuses here what the plain confirmation
+ * refuses there (a link from before the password changed), plus a link that is not the two-step
+ * kind this app sends (`change-email-verification`), and one whose new address has been taken
+ * since. The two addresses wait in the request scope for the after hook.
+ */
+async function checkEmailChangeLink(ctx: HookContext): Promise<void> {
+  const token = (ctx.query as { token?: unknown } | undefined)?.token;
+  if (typeof token !== 'string') return;
+  const claims = confirmationClaims(token) as { email?: unknown; updateTo?: unknown; requestType?: unknown; iat?: unknown } | null;
+  if (!claims || claims.updateTo === undefined) return;
+  const invalid = () => refuse('UNAUTHORIZED', 'INVALID_TOKEN', 'Invalid token');
+  if (typeof claims.updateTo !== 'string' || typeof claims.email !== 'string' || claims.requestType !== 'change-email-verification') invalid();
+  const from = (claims.email as string).toLowerCase();
+  const to = (claims.updateTo as string).toLowerCase();
+  const [row] = await getDb()
+    .select({ id: authUser.id, changedAt: authAccount.updatedAt })
+    .from(authUser)
+    .innerJoin(authAccount, and(eq(authAccount.userId, authUser.id), eq(authAccount.providerId, 'credential')))
+    .where(eq(authUser.email, from));
+  if (!row || typeof claims.iat !== 'number' || Math.floor(row.changedAt.getTime() / 1000) > claims.iat + LINK_CLOCK_SKEW_S) invalid();
+  const [taken] = await getDb().select({ id: authUser.id }).from(authUser).where(eq(authUser.email, to));
+  if (taken) invalid();
+  const scope = requestScope();
+  if (scope && row) scope.emailChange = { userId: row.id, from, to };
+}
+
+/** The address changed: the security notice to both addresses (M18) and the audit log. */
+async function afterEmailChange(ctx: HookContext, change: { userId: string; from: string }): Promise<void> {
+  await sendEmailChangedNotice(change.userId, change.from);
+  const meta = requestMeta(ctx.headers ?? ctx.request?.headers ?? new Headers());
+  // Shapes only: no address in the audit log.
+  await writeAudit(getDb(), {
+    action: 'account.email_change',
+    actorUserId: change.userId,
+    actorRole: null,
+    subjectType: 'user',
+    subjectId: change.userId,
+    after: { emailVerified: true },
+    requestId: meta.requestId,
+    ipHmac: meta.ipHmac,
+  });
+}
+
 export const beforeHook = createAuthMiddleware(async (ctx) => {
   await refuseSuspendedSession(ctx);
   if (ctx.path === '/sign-up/email') {
@@ -356,6 +435,12 @@ export const beforeHook = createAuthMiddleware(async (ctx) => {
       refuse('FORBIDDEN', 'SECOND_FACTOR_REQUIRED', 'Confirm this session with your authenticator app first.');
     }
     await reservePasswordAttempt(ctx, session.user.email);
+    if (ctx.path === '/change-email') await checkChangeEmailPassword(ctx, session.user.id);
+    return;
+  }
+
+  if (ctx.path === '/verify-email') {
+    await checkEmailChangeLink(ctx);
     return;
   }
 
@@ -419,11 +504,17 @@ export const afterHook = createAuthMiddleware(async (ctx) => {
   }
 
   if (ctx.path === '/verify-email') {
+    const change = requestScope()?.emailChange;
+    // A changed address confirmed in the browser where the member is signed in: Better Auth answers
+    // with that same session, which is the member's own and stays.
+    const ownSession = change ? await ctx.getSignedCookie(ctx.context.authCookies.sessionToken.name, ctx.context.secret) : null;
+    const keepsOwnSession = Boolean(ownSession) && ownSession === ctx.context.newSession?.session.token;
     // The session of the first confirmation stays only in the browser that signed up.
-    if (succeeded(returned) && (await keepConfirmationSessionInSignUpBrowser(ctx)) === 'kept') {
+    if (succeeded(returned) && !keepsOwnSession && (await keepConfirmationSessionInSignUpBrowser(ctx)) === 'kept') {
       const email = ctx.context.newSession?.user.email;
       if (email) await rememberDevice(ctx, email);
     }
+    if (change && succeeded(returned)) await afterEmailChange(ctx, change);
     return;
   }
 

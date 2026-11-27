@@ -32,7 +32,7 @@ export async function fold(details: Locator): Promise<void> {
 /** The Filters of a form (events, the school finder): `scope` is the page or the form. */
 export const openFilters = (scope: Page | Locator) => unfold(scope.getByTestId('filters').first());
 
-/** The explorer's Options (the steppers, the lineage picker, "Show ended training"). */
+/** The explorer's Options (the steppers, the lineage picker, "Show former students"). */
 export const openExplorerOptions = (page: Page) => unfold(page.getByTestId('explorer-options'));
 /** Folds the Options again: on a phone their panel lies over the top of the graph. */
 export const closeExplorerOptions = (page: Page) => fold(page.getByTestId('explorer-options'));

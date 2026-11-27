@@ -87,7 +87,21 @@ const paths: Record<Exclude<SealKind, 'check'>, ReactNode> = {
       <circle cx="18" cy="17.5" r="1.6" fill="var(--cross-lineage)" />
     </>
   ),
-  // Historical: a period between two ticks.
+  // Traditional account (P1-3): a scroll, its text told rather than written at the time.
+  scroll: (
+    <>
+      <path d="M5 4h12a2.5 2.5 0 0 1 0 5H7v9a2.5 2.5 0 0 1-5 0V6.5A2.5 2.5 0 0 1 5 4z" fill="var(--seal-ground, var(--bg))" stroke="var(--fg-muted)" strokeWidth={1.4} strokeLinejoin="round" />
+      <path d="M10 13h9M10 16.5h9M10 20h6" fill="none" stroke="var(--fg-muted)" strokeWidth={1.4} strokeLinecap="round" />
+    </>
+  ),
+  // Disputed by historians (P1-3): a circle split down the middle, its halves apart.
+  split: (
+    <>
+      <path d="M10.6 2.5a9.5 9.5 0 0 0 0 19z" fill="var(--seal-ground, var(--bg))" stroke="var(--arbitration)" strokeWidth={1.5} strokeLinejoin="round" />
+      <path d="M13.4 2.5a9.5 9.5 0 0 1 0 19z" fill="var(--arbitration)" stroke="var(--arbitration)" strokeWidth={1.5} strokeLinejoin="round" />
+    </>
+  ),
+  // Former training: a period between two ticks.
   period: (
     <>
       <path d="M3 3h18v18H3z" fill="var(--seal-ground, var(--bg))" stroke="var(--fg-muted)" strokeWidth={1.4} />

@@ -21,6 +21,9 @@ export type RelationEdge = Pick<LineageEdgeDto, 'id' | 'lineageId' | 'status' | 
   kind?: LineageEdgeDto['kind'];
   /** M10b (DEFAULT D04/D13): approved by a teacher not yet verified as an instructor. */
   approvedByUnverifiedInstructor?: boolean;
+  /** P1-3 (ADR 0077): an archive link's certainty and public source line. */
+  certainty?: LineageEdgeDto['certainty'];
+  publicSource?: LineageEdgeDto['publicSource'];
 };
 
 export interface RelationRow {
@@ -57,9 +60,10 @@ export function Sep({ inFlex = false }: { inFlex?: boolean }) {
  * Historical"; the cross-lineage mark only on a teacher's row (see the file comment).
  */
 export function RelationBadges({ edge, role }: { edge: RelationEdge; role: 'teacher' | 'student' }) {
-  const status = relationStatus(edge.status);
+  const status = relationStatus(edge.status, edge.certainty);
   const badges = [<StatusBadge key="status" state={status.kind} label={status.label} size="sm" />];
-  if (isHistoricalRelation(edge.periods)) badges.push(<StatusBadge key="historical" state="historical" label="Historical" size="sm" />);
+  // Journey review 2026-11-26 (P1-3): ended training is "Former"; "Historical" names only people.
+  if (isHistoricalRelation(edge.periods)) badges.push(<StatusBadge key="historical" state="historical" size="sm" />);
   if (role === 'teacher' && edge.kind === 'crossLineage') badges.push(<StatusBadge key="cross" state="cross_lineage" size="sm" />);
   return (
     <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -87,6 +91,18 @@ export function UnverifiedApprovalNote({ edge, className }: { edge: Pick<Relatio
 }
 
 /**
+ * Journey review 2026-11-26 (P1-3, ADR 0077): the archive's public source of a link it entered,
+ * "According to …", apart from the staff-only source note.
+ */
+export function PublicSourceNote({ edge, className }: { edge: Pick<RelationEdge, 'publicSource'>; className?: string }) {
+  return edge.publicSource ? (
+    <span data-public-source className={className}>
+      According to {edge.publicSource}
+    </span>
+  ) : null;
+}
+
+/**
  * The note on a relationship only its two participants can see (DEFAULT D03): a request until
  * it is confirmed, or a confirmed link that is not on the public record (for example because
  * the other person's record is private).
@@ -94,7 +110,7 @@ export function UnverifiedApprovalNote({ edge, className }: { edge: Pick<Relatio
 function privateNote(edges: readonly RelationEdge[]) {
   const own = edges.filter((e) => e.visibility === 'involved_only');
   if (own.length === 0) return null;
-  const request = own.some((e) => ['unconfirmed', 'under_review'].includes(relationStatus(e.status).kind));
+  const request = own.some((e) => ['unconfirmed', 'under_review'].includes(relationStatus(e.status, e.certainty).kind));
   return (
     <p className="text-sm text-fg-muted">
       {request
@@ -169,6 +185,12 @@ function EdgeLine({
         <>
           <Sep inFlex />
           <UnverifiedApprovalNote edge={edge} />
+        </>
+      ) : null}
+      {edge.publicSource ? (
+        <>
+          <Sep inFlex />
+          <PublicSourceNote edge={edge} />
         </>
       ) : null}
     </p>

@@ -25,6 +25,8 @@ export const AUTH_MESSAGES: Record<string, string> = {
   STAFF_NEEDS_TWO_FACTOR: 'A staff account keeps two-factor authentication on.',
   BANNED_USER: 'This account is suspended. Write to the WingChunRoots team if you think this is a mistake.',
   HTTP_429: 'Too many attempts from this connection. Wait a minute, then try again.',
+  // Journey review P2-4 (ADR 0081): the settings' password, e-mail and session forms.
+  UNAUTHORIZED: 'Your session has ended. Sign in again, then try once more.',
 };
 
 export const FALLBACK_MESSAGE = 'Something went wrong on our side. Try again in a moment.';

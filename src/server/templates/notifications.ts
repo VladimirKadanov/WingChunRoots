@@ -201,10 +201,10 @@ const planGranted: NotificationTemplate<PlanGranted> = {
     const later = startsAt !== null && createdAt !== undefined && Date.parse(startsAt) > createdAt.getTime();
     const from = later ? ` from ${formatDay(startsAt)}` : '';
     return {
-      title: `Pilot plan added: ${PLANS[planCode].name}`,
+      title: `Test plan added: ${PLANS[planCode].name}`,
       body: [
         {
-          text: `An administrator gave your account ${PLANS[planCode].name} for the pilot${from}${endsAt ? `, ${untilPlanEnd(endsAt)}` : ''}. No payment is involved.`,
+          text: `An administrator gave your account ${PLANS[planCode].name} as a test${from}${endsAt ? `, ${untilPlanEnd(endsAt)}` : ''}. No payment is involved.`,
         },
       ],
       action: SEE_YOUR_PLAN,
@@ -220,14 +220,14 @@ const planRevoked: NotificationTemplate<{ planCode: PlanCode }> = {
     return { planCode: grantablePlan('plan.revoked', payloadObject('plan.revoked', payload).planCode) };
   },
   render: ({ planCode }) => ({
-    title: `Pilot plan ended: ${PLANS[planCode].name}`,
+    title: `Test plan ended: ${PLANS[planCode].name}`,
     body: [
       {
         // A Student plan approves nobody, so only a Sifu plan speaks of approvals (DEFAULT D06/D08).
         text:
           PLANS[planCode].audience === 'sifu'
-            ? `An administrator ended your pilot plan ${PLANS[planCode].name}. Every confirmed link stays confirmed and public; only new approvals above your plan's limit wait.`
-            : `An administrator ended your pilot plan ${PLANS[planCode].name}. Your profile and every confirmed link stay as they are.`,
+            ? `An administrator ended your test plan ${PLANS[planCode].name}. Every confirmed link stays confirmed and public; only new approvals above your plan's limit wait.`
+            : `An administrator ended your test plan ${PLANS[planCode].name}. Your profile and every confirmed link stay as they are.`,
       },
     ],
     action: SEE_YOUR_PLAN,
@@ -310,6 +310,31 @@ const placeMissing: NotificationTemplate<{ name: string; countryCode: string }> 
     ],
   }),
   sample: { name: 'Demo Town', countryCode: 'FR' },
+};
+
+/**
+ * "lineage.missing": to every archivist and admin, when a member says their lineage is not in the
+ * list of the teacher form (journey review 2026-11-26, P2-2; docs/adr/0080-add-a-teacher.md). The
+ * payload holds the lineage's name as typed; nothing about who asked.
+ */
+const lineageMissing: NotificationTemplate<{ name: string }> = {
+  name: 'lineage.missing',
+  parse(payload) {
+    const data = payloadObject('lineage.missing', payload);
+    if (typeof data.name !== 'string' || data.name.length === 0 || data.name.length > 120) {
+      throw new NotificationDataError('lineage.missing', 'name must be a string of 1 to 120 characters');
+    }
+    return { name: data.name };
+  },
+  render: ({ name }) => ({
+    title: 'A lineage is missing',
+    body: [
+      {
+        text: `A member naming their teacher could not find the lineage “${name}” in the list. If the record holds it, add it in the archive editor (Lineages, Create a lineage); the member can then choose it.`,
+      },
+    ],
+  }),
+  sample: { name: 'Demo Lineage of the North' },
 };
 
 // --- Teacher requests (M09) ---------------------------------------------------------------------
@@ -1191,8 +1216,8 @@ const planExpiring: NotificationTemplate<PlanEndNotice> = {
           action: SEE_YOUR_BILLING,
         }
       : {
-          title: `Your pilot plan has an end date: ${PLANS[planCode].name}`,
-          body: [{ text: `Your pilot plan ${PLANS[planCode].name} runs ${untilPlanEnd(endsAt)}. After that your account has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
+          title: `Your test plan has an end date: ${PLANS[planCode].name}`,
+          body: [{ text: `Your test plan ${PLANS[planCode].name} runs ${untilPlanEnd(endsAt)}. After that your account has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
           action: SEE_YOUR_PLAN,
         },
   sample: { grantId: '0190a5c0-0000-7000-8000-0000000000f1', planCode: 'pro_sifu', endsAt: '2027-01-01T00:00:00.000Z', nextPlanCode: 'free_sifu' },
@@ -1210,8 +1235,8 @@ const planExpired: NotificationTemplate<PlanEndNotice> = {
           action: SEE_YOUR_BILLING,
         }
       : {
-          title: `Pilot plan ended: ${PLANS[planCode].name}`,
-          body: [{ text: `Your pilot plan ${PLANS[planCode].name} ran ${untilPlanEnd(endsAt)}. Your account now has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
+          title: `Test plan ended: ${PLANS[planCode].name}`,
+          body: [{ text: `Your test plan ${PLANS[planCode].name} ran ${untilPlanEnd(endsAt)}. Your account now has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
           action: SEE_YOUR_PLAN,
         },
   sample: { grantId: '0190a5c0-0000-7000-8000-0000000000f2', planCode: 'premium_student', endsAt: '2027-01-01T00:00:00.000Z', nextPlanCode: 'free_student' },
@@ -1694,6 +1719,22 @@ const schoolTrialDeclined: NotificationTemplate<TrialNotice & { reason: string |
   sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000d1', inquiryId: '0190a5c0-0000-7000-8000-0000000000d2', name: 'Demo Wing Chun Hall', reason: null },
 };
 
+/** "school.instructor-invited" (journey review P3-10, ADR 0087): a school's owner asks a member to teach there. */
+const schoolInstructorInvited: NotificationTemplate<{ schoolId: string; name: string }> = {
+  name: 'school.instructor-invited',
+  parse(payload) {
+    const data = payloadObject('school.instructor-invited', payload);
+    if (typeof data.name !== 'string' || data.name.trim() === '' || data.name.length > 200) throw new NotificationDataError('school.instructor-invited', 'name must be a short text');
+    return { schoolId: uuidOf('school.instructor-invited', 'schoolId', payload), name: data.name.trim() };
+  },
+  render: ({ name }) => ({
+    title: 'A school lists you as an instructor',
+    body: [{ text: `“${name}” asks you to be listed as one of its instructors. You are shown on its page only once you accept.` }],
+    action: { label: 'Accept or decline', href: '/dashboard/schools#instructor-invitations' },
+  }),
+  sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000d1', name: 'Demo Wing Chun Hall' },
+};
+
 // --- Billing (M22; docs/adr/0025-billing.md) ------------------------------------------------------
 // Test mode only: every text says so. The date and what happens, never a countdown (CLAUDE.md §11).
 
@@ -2131,6 +2172,7 @@ export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
   'account.deletion-requested': accountDeletionRequested,
   'place.missing': placeMissing,
+  'lineage.missing': lineageMissing,
   'pilot-access.requested': pilotAccessRequested,
   'pilot-access.closed': pilotAccessClosed,
   'plan.granted': planGranted,
@@ -2186,6 +2228,7 @@ export const NOTIFICATION_TEMPLATES = {
   'school.trial-requested': schoolTrialRequested,
   'school.trial-answered': schoolTrialAnswered,
   'school.trial-declined': schoolTrialDeclined,
+  'school.instructor-invited': schoolInstructorInvited,
   // M22.
   'billing.started': billingStarted,
   'billing.cancel-scheduled': billingCancelScheduled,

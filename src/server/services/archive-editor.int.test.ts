@@ -17,6 +17,7 @@ import {
   addArchiveLink,
   createArchiveLineage,
   createArchiveRecord,
+  editArchiveLink,
   endArchiveLink,
   getArchiveLineage,
   listArchiveLineages,
@@ -187,6 +188,21 @@ describe('lineages', () => {
     expect(audits.map((a) => a.action)).toEqual(['lineage.create', 'lineage.update']);
     expect(audits[1]).toMatchObject({ role: 'admin', reason: 'A fictional correction.', after: { changed: { name: true, description: true, root: true }, rootPersonId: second.id } });
   });
+
+  it('shows one lineage on the home page: choosing one takes the place of the other (P1-4)', async () => {
+    const one = { ...(await lineageOf('Demo Archive Lineage Home One')), name: 'Demo Archive Lineage Home One' };
+    const two = { ...(await lineageOf('Demo Archive Lineage Home Two')), name: 'Demo Archive Lineage Home Two' };
+    const home = (l: { id: string; name: string }, featuredOnHome: boolean) => updateArchiveLineage(archivist.principal, { lineageId: l.id, name: l.name, featuredOnHome, reason: 'A fictional choice.' }, meta);
+    expect(await home(one, true)).toMatchObject({ changed: true });
+    expect((await getArchiveLineage(archivist.principal, { slug: one.slug })).featuredOnHome).toBe(true);
+    expect(await home(two, true)).toMatchObject({ changed: true });
+    expect((await getArchiveLineage(archivist.principal, { slug: one.slug })).featuredOnHome).toBe(false);
+    expect((await getArchiveLineage(archivist.principal, { slug: two.slug })).featuredOnHome).toBe(true);
+    expect(await home(two, true)).toMatchObject({ changed: false });
+    // Leaving the box out changes nothing.
+    expect(await updateArchiveLineage(archivist.principal, { lineageId: two.id, name: two.name, reason: 'Nothing.' }, meta)).toMatchObject({ changed: false });
+    expect(await home(two, false)).toMatchObject({ changed: true });
+  });
 });
 
 describe('links', () => {
@@ -220,6 +236,29 @@ describe('links', () => {
     expect(view.links).toMatchObject([{ id: added.relationshipId, status: 'verified', shown: true, fromYear: 1850, toYear: 1862, source: 'A fictional chronicle, page 12.', endable: true }]);
     const listed = (await listArchiveLineages(archivist.principal)).lineages.find((x) => x.id === l.id);
     expect(listed).toMatchObject({ links: 1, listed: true, root: { id: teacher.id, shown: true } });
+  });
+
+  it('keeps how sure the record is, the public source line and the era; the public views show them and never the staff source (P1-3)', async () => {
+    const created = await createArchiveRecord(archivist.principal, { primaryName: 'Demo Era Teacher', lifeStatus: 'deceased', era: 'active 1850s to 1880s', reason: 'A fictional register.' }, meta);
+    const student = await record('Demo Era Student');
+    const l = await lineageOf('Demo Archive Lineage Certainty');
+    const added = await addArchiveLink(
+      archivist.principal,
+      { lineageId: l.id, teacherSlug: created.slug, studentSlug: student.slug, source: 'A fictional staff note.', certainty: 'traditional', publicSource: 'the fictional hall chronicle', idempotencyKey: key() },
+      meta,
+    );
+    const edge = await getDb().execute<{ certainty: string; public_source: string }>(sql`SELECT * FROM v_public_edge WHERE id = ${added.relationshipId}::uuid`);
+    expect(edge.rows[0]).toMatchObject({ certainty: 'traditional', public_source: 'the fictional hall chronicle' });
+    expect(JSON.stringify(edge.rows[0])).not.toContain('staff note');
+    const shown = await getDb().execute<{ era_text: string }>(sql`SELECT era_text FROM v_public_person WHERE id = ${created.id}::uuid`);
+    expect(shown.rows[0]).toEqual({ era_text: 'active 1850s to 1880s' });
+    // Editing changes the certainty; a missing certainty is "documented".
+    expect(await addArchiveLink(archivist.principal, { lineageId: l.id, teacherSlug: created.slug, studentSlug: (await record('Demo Era Second')).slug, source: 'A fictional note.', idempotencyKey: key() }, meta)).toMatchObject({ shown: true });
+    const edited = await editArchiveLink(archivist.principal, { relationshipId: added.relationshipId, fromYear: null, toYear: null, source: 'A fictional staff note.', certainty: 'disputed', publicSource: null, reason: 'A fictional correction.' }, meta);
+    expect(edited.changed).toBe(true);
+    const [rel] = await getDb().select({ certainty: teachingRelationship.certainty, publicSource: teachingRelationship.publicSource }).from(teachingRelationship).where(eq(teachingRelationship.id, added.relationshipId));
+    expect(rel).toEqual({ certainty: 'disputed', publicSource: null });
+    expect(await fields(addArchiveLink(archivist.principal, { lineageId: l.id, teacherSlug: created.slug, studentSlug: student.slug, source: 'x', certainty: 'rumour' as 'documented', idempotencyKey: key() }, meta))).toHaveProperty('certainty');
   });
 
   it('a record whose life status is unknown stays hidden, and so does the link, until a death is established', async () => {

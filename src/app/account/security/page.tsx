@@ -16,6 +16,9 @@
 //   screens-1: the path and the title stay the same, so Next.js announces nothing).
 // - On: the backup codes left, new codes with the password, and, for members, turning it off.
 //   A session that has not passed the second factor verifies it here (`?next=/admin`).
+// - Journey review P2-4 (ADR 0081): under it, "Change password", "Change e-mail address" and
+//   "Sign out of other devices", for a session that has passed the second factor (or an account
+//   without one).
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -42,10 +45,13 @@ import { readFormResult } from '@/server/forms/flash';
 import { readBackupCodes, readPendingSetup } from '@/server/forms/two-factor';
 import { serverClient } from '@/server/rpc/server';
 import {
+  ChangeEmailForm,
+  ChangePasswordForm,
   ConfirmTwoFactorForm,
   DisableTwoFactorForm,
   EnableTwoFactorForm,
   NewBackupCodesForm,
+  SignOutOtherDevicesForm,
   VerifySessionForm,
 } from './forms';
 
@@ -111,6 +117,9 @@ const NOTICES = {
   verified: 'Session verified. Staff pages open in this session now.',
   off: 'Two-factor authentication turned off. Signing in needs only your password now.',
   saved: 'Backup codes saved. Two-factor authentication is on: signing in asks for the code from your app.',
+  passwordChanged: 'Password changed. Sign in with the new one from now on.',
+  othersSignedOut: 'Your other devices are signed out. This one stays signed in.',
+  emailChanged: 'E-mail address changed. Sign in with the new one from now on; your old address was told.',
 } as const;
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
@@ -131,9 +140,9 @@ function Step({ n, title, arrival = false, children }: { n: number; title: strin
 }
 
 /** A disclosure for a second action of the page (new codes, turning off, starting again). */
-function More({ summary, children }: { summary: string; children: ReactNode }) {
+function More({ summary, open = false, children }: { summary: string; open?: boolean; children: ReactNode }) {
   return (
-    <details className="group border-t border-border-subtle">
+    <details open={open || undefined} className="group border-t border-border-subtle">
       <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 py-2 text-ui font-semibold [&::-webkit-details-marker]:hidden">
         {summary}
         <span aria-hidden="true" className="text-fg-muted transition-transform group-open:rotate-45">
@@ -340,6 +349,16 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
     );
   }
 
+  // P2-4: the forms of the sign-in itself; one that has just been sent stays open.
+  const accountForms =
+    !newCodes && !(tf.status === 'on' && !tf.sessionVerified)
+      ? {
+          password: await readFormResult('change-password', outcome),
+          email: await readFormResult('change-email', outcome),
+          others: await readFormResult('sign-out-others', outcome),
+        }
+      : null;
+
   return (
     <AuthFrame
       eyebrow="Settings"
@@ -383,6 +402,22 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
           </RegisterRow>
         </dl>
         {body}
+        {accountForms ? (
+          <section aria-labelledby="sign-in-settings" className="mt-10 grid">
+            <h2 id="sign-in-settings" className="pb-2 font-display text-xl">
+              Password, address and devices
+            </h2>
+            <More summary="Change password" open={accountForms.password !== null}>
+              <ChangePasswordForm initial={accountForms.password} />
+            </More>
+            <More summary="Change e-mail address" open={accountForms.email !== null}>
+              <ChangeEmailForm initial={accountForms.email} />
+            </More>
+            <More summary="Sign out of other devices" open={accountForms.others !== null}>
+              <SignOutOtherDevicesForm initial={accountForms.others} />
+            </More>
+          </section>
+        ) : null}
         <p className="mt-10 border-t border-border-subtle pt-5 text-ui">
           <Link href="/account" className="link inline-flex min-h-11 items-center">
             Back to settings

@@ -75,6 +75,14 @@ export const OrganizationsIcon = icon(
     <path d="M6 4.5h11.5l-2.7 4.2 2.7 4.3H6" />
   </>,
 );
+/** Journey review P2-8 (ADR 0084): the signed-in "Me" tab, a head and shoulders. */
+export const MeIcon = icon(
+  'Me',
+  <>
+    <circle cx="12" cy="8.5" r="3.8" />
+    <path d="M4.5 20.5c.9-3.9 3.9-6 7.5-6s6.6 2.1 7.5 6" />
+  </>,
+);
 export const SunIcon = icon(
   'Sun',
   <>

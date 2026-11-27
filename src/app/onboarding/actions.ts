@@ -16,9 +16,9 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult, keepFormResult } from '@/server/forms/flash';
 import { formStateFromFailure, formStateFromRpcError, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { afterOnboarding, afterOnboardingFor, chosenAccountType, onboardingNext, onboardingPage } from './destination';
+import { afterOnboarding, afterOnboardingFor, choseBeginner, chosenAccountType, onboardingNext, onboardingPage } from './destination';
 
-const TEXT_FIELDS = ['primaryName', 'originalName', 'originalLang', 'jyutping', 'pinyin', 'countryCode', 'placeId', 'trainingStartYear', 'accountType', 'next'];
+const TEXT_FIELDS = ['primaryName', 'originalName', 'originalLang', 'jyutping', 'pinyin', 'countryCode', 'placeId', 'trainingStartYear', 'accountType', 'takesPart', 'next'];
 
 /**
  * The required ticks named by the form that are not ticked, as field errors, in the words of the
@@ -39,7 +39,7 @@ export async function onboardAction(_previous: FormState, form: FormData): Promi
 }
 
 async function onboard(form: FormData, next: string): Promise<FormState> {
-  const values = keepValues(form, TEXT_FIELDS, ['showPublicly', ...CONSENT_ORDER]);
+  const values = keepValues(form, TEXT_FIELDS, ['showPublicly', 'trains', 'teaches', ...CONSENT_ORDER]);
   const client = serverClient(await headers(), await getRequestPrincipal());
 
   // The ticks are on the form only when a required confirmation is missing for the current
@@ -72,6 +72,7 @@ async function onboard(form: FormData, next: string): Promise<FormState> {
       placeId: textValue(form, 'placeId', 64),
       trainingStartYear: textValue(form, 'trainingStartYear', 8),
       showPublicly: ticked(form, 'showPublicly'),
+      newToWingChun: choseBeginner(form),
     });
   } catch (error) {
     const code = rpcErrorCode(error);

@@ -3,8 +3,10 @@
 // unit tests run it on fictional rows (src/server/services/organization-import.test.ts).
 //
 // The template (specification §9.1): First_Name, Last_Name, Email, Chinese_Name, Start_Year,
-// Current_Rank, Sifu_Database_ID, School_City. Header names match without regard to case, spaces
-// or underscores; a column the template does not name is ignored and said so.
+// Current_Rank, Sifu_Database_ID, School_City. Header names match without regard to case, spaces,
+// underscores or apostrophes; a column the template does not name is ignored and said so.
+// Journey review P2-5 (ADR 0082): Sifu_Database_ID is offered as Teacher_Profile_Address ("the
+// teacher's profile address"); a file with the old header is read the same way.
 //
 // DEFAULT M24 question 1: CSV only (UTF-8, with or without a byte-order mark; comma or semicolon
 // as the separator, as spreadsheet programs save it; fields in double quotes may hold separators,
@@ -15,11 +17,22 @@
 import { isLatinName, matchesScript, NAME_MAX_LENGTH, cleanName } from './names';
 import { ORGANIZATION_IMPORT_MAX_BYTES, ORGANIZATION_IMPORT_MAX_ROWS, ORGANIZATION_MEMBER_FIELD_MAX, type ImportRowError } from '../db/schema/organization-tools';
 
-export const TEMPLATE_COLUMNS = ['First_Name', 'Last_Name', 'Email', 'Chinese_Name', 'Start_Year', 'Current_Rank', 'Sifu_Database_ID', 'School_City'] as const;
+export const TEMPLATE_COLUMNS = ['First_Name', 'Last_Name', 'Email', 'Chinese_Name', 'Start_Year', 'Current_Rank', 'Teacher_Profile_Address', 'School_City'] as const;
 export type TemplateColumn = (typeof TEMPLATE_COLUMNS)[number];
 
 /** The header line of the template, as the import page offers it. */
 export const TEMPLATE_HEADER = TEMPLATE_COLUMNS.join(',');
+
+/**
+ * P2-5: a sample file to download from the import page, with fictional rows only (D20): the
+ * header and two members, one naming a teacher by the address of a demo profile.
+ */
+export const TEMPLATE_SAMPLE = [
+  TEMPLATE_HEADER,
+  'Demo,Member One,,示範一,2015,Level 3,/people/demo-hub-a,Demo City',
+  'Demo,Member Two,,,2021,,,Demo City',
+  '',
+].join('\r\n');
 
 /** A row of the file as the checks see it (Email is never kept). */
 export interface ParsedRow {
@@ -48,8 +61,13 @@ export class ImportFileError extends Error {
   }
 }
 
-const normalizeHeader = (h: string) => h.replace(/^﻿/, '').trim().toLowerCase().replace(/[\s_-]+/g, '');
-const HEADER_OF = new Map(TEMPLATE_COLUMNS.map((c) => [normalizeHeader(c), c]));
+const normalizeHeader = (h: string) => h.replace(/^﻿/, '').trim().toLowerCase().replace(/[\s_'’-]+/g, '');
+const HEADER_OF = new Map<string, TemplateColumn>([
+  ...TEMPLATE_COLUMNS.map((c) => [normalizeHeader(c), c] as const),
+  // The specification's name of the column (§9.1), kept for files made from the first template.
+  [normalizeHeader('Sifu_Database_ID'), 'Teacher_Profile_Address'],
+  [normalizeHeader('Teacher’s profile address'), 'Teacher_Profile_Address'],
+]);
 
 /** The records of a CSV text (RFC 4180, with `separator`); throws ImportFileError on a broken quote. */
 export function csvRecords(text: string, separator: ',' | ';'): string[][] {
@@ -146,7 +164,7 @@ export function parseImportFile(bytes: Uint8Array): ParsedFile {
       chineseName: value('Chinese_Name'),
       startYear: value('Start_Year'),
       rank: value('Current_Rank'),
-      sifuId: value('Sifu_Database_ID'),
+      sifuId: value('Teacher_Profile_Address'),
       schoolCity: value('School_City'),
     };
   });
@@ -160,7 +178,7 @@ export interface CheckedRow {
   chineseName: string | null;
   startYear: number | null;
   rank: string | null;
-  /** The teacher's profile address (slug), from Sifu_Database_ID (a slug or a /people/<slug> address). */
+  /** The teacher's profile address (slug), from Teacher_Profile_Address (a slug or a /people/<slug> address). */
   teacherSlug: string | null;
   schoolCity: string | null;
   errors: ImportRowError[];
@@ -169,7 +187,7 @@ export interface CheckedRow {
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
-/** A slug from Sifu_Database_ID: `demo-hub-a`, `/people/demo-hub-a` or a full address of a profile. */
+/** A slug from Teacher_Profile_Address: `demo-hub-a`, `/people/demo-hub-a` or a full address of a profile. */
 export function teacherSlugOf(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -209,7 +227,7 @@ export function checkRow(row: ParsedRow, thisYear: number): CheckedRow {
   const rank = text('Current_Rank', row.rank);
   const schoolCity = text('School_City', row.schoolCity);
   const teacherSlug = teacherSlugOf(row.sifuId);
-  if (teacherSlug === '') err('Sifu_Database_ID', 'Sifu_Database_ID is the address of the teacher’s profile, such as /people/demo-hub-a.');
+  if (teacherSlug === '') err('Teacher_Profile_Address', 'Teacher_Profile_Address is the address of the teacher’s profile, such as /people/demo-hub-a.');
   return { rowNumber: row.rowNumber, name, chineseName, startYear, rank, teacherSlug: teacherSlug || null, schoolCity, errors };
 }
 

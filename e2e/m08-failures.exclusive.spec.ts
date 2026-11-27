@@ -162,7 +162,7 @@ test('@M08 /account renders in full when its unread count cannot be read: the ap
 
   /**
    * The whole account page (the overview of Settings since the usability review of 2026-11): the
-   * shell (no tab is current: the account belongs to the account menu, docs/adr/0051), the heading, the address signed in, the section rows, the name, the
+   * shell (only the phone's Me tab is current: docs/adr/0084), the heading, the address signed in, the section rows, the name, the
    * profile and account sections, the link without a count. The tab is marked current once the shell's NavLinks resolve, which
    * without JavaScript stays at its Suspense fallback (no tab current; src/components/shell/nav-links.tsx).
    */
@@ -170,8 +170,12 @@ test('@M08 /account renders in full when its unread count cannot be read: the ap
     const nav = p.getByRole('navigation', { name: 'Main' });
     await expect(nav).toBeVisible();
     await expect(nav.locator('a[href="/organizations"]').filter({ visible: true })).toHaveCount(1);
-    // With JavaScript the tabs know the address and still mark none (without it, none is marked either).
-    if (javaScript) await expect(nav.locator('a[aria-current="page"]')).toHaveCount(0);
+    // With JavaScript the tabs know the address: only the phone's Me tab, which holds the account
+    // (journey review P2-8, ADR 0084), is current; the side rail marks none. Without it, none is marked.
+    if (javaScript) {
+      await expect(nav.locator('a[aria-current="page"]:not([data-nav="me"])')).toHaveCount(0);
+      await expect(nav.locator('a[data-nav="me"]')).toHaveAttribute('aria-current', 'page');
+    }
     await expect(p.getByRole('heading', { level: 1 })).toHaveText('Settings');
     await expect(p.getByTestId('signed-in-as')).toHaveText(`Signed in as ${account.email}`);
     await expect(p.getByTestId('settings-sections').getByRole('listitem')).toHaveCount(5);

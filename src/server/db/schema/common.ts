@@ -74,6 +74,14 @@ export const PUBLIC_RELATIONSHIP_STATUSES = ['verified', 'in_arbitration'] as co
 export const PUBLISHABLE_RELATIONSHIP_STATUSES = ['verified', 'in_arbitration', 'revoked'] as const;
 export const VERIFICATION_PATHS = ['teacher_approval', 'committee_review'] as const;
 export const DATE_PRECISIONS = ['year', 'month', 'day', 'unknown'] as const;
+/**
+ * Journey review 2026-11-26 (P1-3, ADR 0077): how sure the archive is of a link it entered from
+ * the record (not one a teacher confirmed): documented by sources of the time, a traditional
+ * account (oral tradition, a school's own history), or disputed by historians.
+ */
+export const LINK_CERTAINTIES = ['documented', 'traditional', 'disputed'] as const;
+export const PUBLIC_SOURCE_MAX = 300;
+export const PERSON_ERA_MAX = 60;
 
 // --- Evidence and moderation (plan §6.2) -------------------------------------------------------
 export const SCAN_STATUSES = ['pending', 'clean', 'rejected'] as const;
@@ -180,6 +188,12 @@ export const SCHOOL_STATUSES = ['draft', 'pending_review', 'active', 'hidden', '
 /** M11: the forms a school teaches (the six forms of Wing Chun), stored by key, shown in English. */
 export const SCHOOL_FORMS = ['siu_nim_tao', 'chum_kiu', 'biu_jee', 'muk_yan_jong', 'luk_dim_boon_kwan', 'baat_jaam_do'] as const;
 export const SCHOOL_INSTRUCTOR_ROLES = ['head_instructor', 'instructor', 'assistant'] as const;
+/**
+ * Journey review P3-10 (ADR 0087): how an instructor came onto a school. `listed`: the head
+ * instructor or one of their confirmed students (shown while that link holds); `invited`: another
+ * member asked to teach there, not shown until they accept; `accepted`: they accepted.
+ */
+export const SCHOOL_INSTRUCTOR_STATUSES = ['listed', 'invited', 'accepted'] as const;
 /**
  * M20 (docs/adr/0023-school-activity.md): the activity check of a listed school (specification
  * §7.3). `current` while its listing account edited or confirmed it within SCHOOL_AWAITING_DAYS;

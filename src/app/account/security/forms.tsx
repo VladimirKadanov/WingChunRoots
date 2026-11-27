@@ -6,14 +6,17 @@
 
 import { useActionState, useState } from 'react';
 
-import { CodeField, FormMessage, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
-import { MAX_PASSWORD_LENGTH } from '@/lib/account-limits';
+import { CheckboxField, CodeField, FormMessage, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
 import { IDLE, type FormState } from '@/lib/form-state';
 import {
+  changeEmailAction,
+  changePasswordAction,
   confirmTwoFactorAction,
   disableTwoFactorAction,
   enableTwoFactorAction,
   newBackupCodesAction,
+  signOutOtherDevicesAction,
   verifySessionAction,
 } from './actions';
 
@@ -172,5 +175,108 @@ export function DisableTwoFactorForm({ initial }: { initial?: FormState | null }
       variant="secondary"
       initial={initial}
     />
+  );
+}
+
+// Journey review P2-4 (ADR 0081): the password, the e-mail address and the other sessions.
+
+export function ChangePasswordForm({ initial }: { initial?: FormState | null }) {
+  const [state, action, pending] = useActionState(changePasswordAction, initial ?? IDLE);
+  const form = useFormId('change-password');
+  useFocusOnError(form, state);
+  return (
+    <form id={form} action={action} noValidate aria-busy={pending || undefined} className="grid gap-5">
+      <FormMessage form={form} state={state} />
+      <TextField
+        form={form}
+        name="password"
+        type="password"
+        label="Current password"
+        autoComplete="current-password"
+        maxLength={MAX_PASSWORD_LENGTH}
+        state={state}
+        autoFocus={state.status === 'error' && Boolean(state.fields?.password)}
+      />
+      <TextField
+        form={form}
+        name="newPassword"
+        type="password"
+        label="New password"
+        autoComplete="new-password"
+        enterKeyHint="done"
+        minLength={MIN_PASSWORD_LENGTH}
+        maxLength={MAX_PASSWORD_LENGTH}
+        hint={`At least ${MIN_PASSWORD_LENGTH} characters. A password manager or a long phrase works best; pasting is fine.`}
+        state={state}
+      />
+      <CheckboxField form={form} name="signOutOthers" label="Sign out of my other devices" defaultChecked state={state} />
+      <div>
+        <SubmitButton pending={pending} pendingLabel="Saving…" variant="secondary">
+          Change password
+        </SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+export function ChangeEmailForm({ initial }: { initial?: FormState | null }) {
+  const [state, action, pending] = useActionState(changeEmailAction, initial ?? IDLE);
+  const form = useFormId('change-email');
+  useFocusOnError(form, state);
+  if (state.status === 'done') {
+    return (
+      <p role="status" className="max-w-[56ch] text-ui" data-testid="change-email-sent">
+        Check the inbox of <span translate="no" className="font-semibold [overflow-wrap:anywhere]">{state.values?.email}</span>. The link there
+        makes it your sign-in address; until you use it, nothing changes. We also tell your current address once the change is made.
+      </p>
+    );
+  }
+  return (
+    <form id={form} action={action} noValidate aria-busy={pending || undefined} className="grid gap-5">
+      <FormMessage form={form} state={state} />
+      <TextField
+        form={form}
+        name="email"
+        type="email"
+        label="New e-mail address"
+        autoComplete="email"
+        inputMode="email"
+        maxLength={254}
+        hint="We send a link there; the address changes when you use it."
+        state={state}
+        autoFocus={state.status === 'error' && Boolean(state.fields?.email)}
+      />
+      <TextField
+        form={form}
+        name="password"
+        type="password"
+        label="Your password"
+        autoComplete="current-password"
+        enterKeyHint="go"
+        maxLength={MAX_PASSWORD_LENGTH}
+        state={state}
+      />
+      <div>
+        <SubmitButton pending={pending} pendingLabel="Sending…" variant="secondary">
+          Send the confirmation link
+        </SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+export function SignOutOtherDevicesForm({ initial }: { initial?: FormState | null }) {
+  const [state, action, pending] = useActionState(signOutOtherDevicesAction, initial ?? IDLE);
+  const form = useFormId('sign-out-others');
+  return (
+    <form id={form} action={action} aria-busy={pending || undefined} className="grid gap-4">
+      <FormMessage form={form} state={state} single />
+      <p className="max-w-[56ch] text-ui text-fg-muted">Every other browser and phone signed in to your account signs out; this one stays signed in.</p>
+      <div>
+        <SubmitButton pending={pending} pendingLabel="Signing out…" variant="secondary">
+          Sign out of other devices
+        </SubmitButton>
+      </div>
+    </form>
   );
 }

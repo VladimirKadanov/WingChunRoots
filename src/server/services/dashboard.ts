@@ -8,12 +8,13 @@
 // cached (no 'use cache': the page reads the session).
 
 import { allowanceSentence } from '@/lib/allowance-text';
-import { and, asc, count, desc, eq, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
 
 import { hasStaff2FA, requireUser } from '../auth/guards';
 import { isStaffRole, type Principal, type StaffRole } from '../auth/principal';
 import { getDb } from '../db';
 import {
+  ACTIVE_RELATIONSHIP_STATUSES,
   lineage,
   person,
   personClaim,
@@ -33,7 +34,7 @@ import { administersOrganization } from './account';
 import { listNotifications, type NotificationList } from './notifications';
 import { type NextStep, nextSteps } from './next-steps';
 import { listingLabel } from './school-activity';
-import { openTrialCounts } from './trial-lessons';
+import { openTrialCounts, TRIAL_STATUS_LABELS, type TrialStatus } from './trial-lessons';
 import { INSTRUCTOR_LABELS, instructorStatus, openPilotRequest, type PilotRequestView, type PlanSummary, planSummary } from './plans';
 
 export interface PersonRef {
@@ -123,6 +124,36 @@ export function offerText(key: FeatureKey, current: number, limit: number, from:
   };
 }
 
+/**
+ * Journey review 2026-11-26 (P2-1): a trial lesson the account asked for, on the dashboard home
+ * while it waits or for 60 days after the school answered.
+ */
+export interface OwnTrialItem {
+  id: string;
+  school: { slug: string; name: string; public: boolean };
+  status: TrialStatus;
+  statusLabel: string;
+  createdAt: string;
+}
+
+/** The account's recent trial lesson requests (P2-1): open ones, and others for 60 days; three at most. */
+async function recentTrials(db: Executor, userId: string): Promise<OwnTrialItem[]> {
+  const result = await db.execute<{ id: string; slug: string; name: string; public: boolean; status: TrialStatus; created_at: Date | string }>(sql`
+    SELECT t.id, s.slug, s.name, v.id IS NOT NULL AS public, t.status, t.created_at
+      FROM trial_inquiry t JOIN school s ON s.id = t.school_id LEFT JOIN v_public_school v ON v.id = s.id
+     WHERE t.sender_user_id = ${userId}::uuid AND t.status <> 'withdrawn'
+       AND (t.status = 'open' OR t.created_at > now() - interval '60 days')
+     ORDER BY (t.status = 'open') DESC, t.created_at DESC, t.id DESC
+     LIMIT 3`);
+  return result.rows.map((r) => ({
+    id: r.id,
+    school: { slug: r.slug, name: r.name, public: r.public },
+    status: r.status,
+    statusLabel: TRIAL_STATUS_LABELS[r.status],
+    createdAt: new Date(r.created_at).toISOString(),
+  }));
+}
+
 export interface DashboardOverview {
   accountType: 'student' | 'sifu';
   instructor: { status: 'not_instructor' | 'unverified' | 'verified'; label: string };
@@ -141,7 +172,12 @@ export interface DashboardOverview {
   staff: { role: StaffRole; secondFactorVerified: boolean; openPilotRequests: number | null } | null;
   /** Role replay 2026-11-25 (P2-6): an organization's admin without a practitioner profile, asked for none. */
   organizationOnly: boolean;
-  student: { teachers: TeacherItem[]; requests: RequestItem[] } | null;
+  /**
+   * A Student account's lists. Journey review 2026-11-26 (P1-1): many teachers also train, and a
+   * claimed record starts as Student, so a Student account sees the requests that wait for it and
+   * the schools that list it as an instructor; it answers them once it is a Sifu account.
+   */
+  student: { teachers: TeacherItem[]; requests: RequestItem[]; waitingStudentRequests: number; schools: SchoolItem[]; trials: OwnTrialItem[] } | null;
   sifu: {
     requests: StudentRequestItem[];
     students: { approved: number; limit: number | null };
@@ -261,12 +297,54 @@ export async function approvalOffer(
   return { approved: decision.current, limit, upgrade };
 }
 
+/**
+ * The schools the account listed and the schools that list its person as an instructor, once
+ * each (role replay 2026-11-25, P1-4): the same schools as Your schools, and more.
+ */
+async function ownSchools(db: ReturnType<typeof getDb>, userId: string, ownId: string): Promise<SchoolItem[]> {
+  const schoolRows = await db
+    .select({
+      id: school.id,
+      slug: school.slug,
+      name: school.name,
+      city: place.name,
+      countryCode: place.countryCode,
+      status: school.status,
+      activityStage: school.activityStage,
+      owned: sql<boolean>`${school.createdByUserId} = ${userId}::uuid`,
+      role: schoolInstructor.role,
+    })
+    .from(school)
+    .innerJoin(place, eq(place.id, school.placeId))
+    // P3-10 (ADR 0087): an invitation not yet accepted is not a school of yours.
+    .leftJoin(schoolInstructor, and(eq(schoolInstructor.schoolId, school.id), eq(schoolInstructor.personId, ownId), ne(schoolInstructor.status, 'invited')))
+    .where(and(isNull(school.deletedAt), or(eq(school.createdByUserId, userId), eq(schoolInstructor.personId, ownId))))
+    .orderBy(asc(school.name), asc(school.id));
+  const trials = await openTrialCounts(
+    db,
+    schoolRows.filter((s) => s.owned).map((s) => s.id),
+  );
+  return schoolRows.map((s) => ({
+    id: s.id,
+    slug: s.slug,
+    name: s.name,
+    city: s.city,
+    countryCode: s.countryCode,
+    status: s.status,
+    statusLabel: listingLabel(s.status, s.activityStage),
+    roleLabel: s.role ? SCHOOL_ROLE_LABELS[s.role] : 'Listed by you',
+    owned: s.owned,
+    openTrialRequests: s.owned ? (trials.get(s.id) ?? 0) : 0,
+    needsConfirmation: s.owned && s.status === 'active' && s.activityStage !== 'current',
+  }));
+}
+
 export async function dashboardOverview(principal: Principal | null): Promise<DashboardOverview> {
   const p = requireUser(principal);
   const db = getDb();
   const subject = { kind: 'user' as const, userId: p.user.id };
   const [own] = await db
-    .select({ id: person.id, slug: person.slug, visibility: person.visibility, photoId: person.photoId })
+    .select({ id: person.id, slug: person.slug, visibility: person.visibility, photoId: person.photoId, newToWingChun: person.newToWingChun })
     .from(person)
     .where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)));
   const looks = { profilePublic: own?.visibility === 'public', hasPhoto: Boolean(own?.photoId) };
@@ -312,6 +390,9 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   if (effective.accountType === 'student') {
     let teachers: TeacherItem[] = [];
     let requests: RequestItem[] = [];
+    let waitingStudentRequests = 0;
+    let schools: SchoolItem[] = [];
+    const trials = await recentTrials(db, p.user.id);
     if (own) {
       const rows = await db
         .select({
@@ -355,15 +436,17 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       }
       teachers = teachers.sort((a, b) => a.teacher.name.value.localeCompare(b.teacher.name.value, 'en'));
       requests = requests.slice(0, 50);
+      [waitingStudentRequests, schools] = await Promise.all([waitingRequests(db, own.id), ownSchools(db, p.user.id, own.id)]);
     }
-    const steps = nextSteps({ accountType: 'student', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: teachers.length + requests.length, schools: 0, ...looks });
-    return { ...base, student: { teachers, requests }, sifu: null, nextSteps: steps };
+    const steps = nextSteps({ accountType: 'student', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: teachers.length + requests.length, schools: 0, trials: trials.length, beginner: own?.newToWingChun === true, ...looks });
+    return { ...base, student: { teachers, requests, waitingStudentRequests, schools, trials }, sifu: null, nextSteps: steps };
   }
 
   // Sifu.
   let requests: StudentRequestItem[] = [];
   let waiting = 0;
   let schools: SchoolItem[] = [];
+  let ownTeachers = 0;
   if (own) {
     const rows = await db
       .select({ id: teachingRelationship.id, studentId: teachingRelationship.studentPersonId, lineage: lineage.name, createdAt: teachingRelationship.createdAt, updatedAt: teachingRelationship.updatedAt })
@@ -382,45 +465,16 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       createdAt: r.createdAt.toISOString(),
       waitingDays: Math.max(0, Math.floor((now - r.updatedAt.getTime()) / 86_400_000)),
     }));
-    // The schools the account listed and the schools that list its person as an instructor, once
-    // each (role replay 2026-11-25, P1-4): the same schools as Your schools, and more.
-    const schoolRows = await db
-      .select({
-        id: school.id,
-        slug: school.slug,
-        name: school.name,
-        city: place.name,
-        countryCode: place.countryCode,
-        status: school.status,
-        activityStage: school.activityStage,
-        owned: sql<boolean>`${school.createdByUserId} = ${p.user.id}::uuid`,
-        role: schoolInstructor.role,
-      })
-      .from(school)
-      .innerJoin(place, eq(place.id, school.placeId))
-      .leftJoin(schoolInstructor, and(eq(schoolInstructor.schoolId, school.id), eq(schoolInstructor.personId, own.id)))
-      .where(and(isNull(school.deletedAt), or(eq(school.createdByUserId, p.user.id), eq(schoolInstructor.personId, own.id))))
-      .orderBy(asc(school.name), asc(school.id));
-    const trials = await openTrialCounts(
-      db,
-      schoolRows.filter((s) => s.owned).map((s) => s.id),
-    );
-    schools = schoolRows.map((s) => ({
-      id: s.id,
-      slug: s.slug,
-      name: s.name,
-      city: s.city,
-      countryCode: s.countryCode,
-      status: s.status,
-      statusLabel: listingLabel(s.status, s.activityStage),
-      roleLabel: s.role ? SCHOOL_ROLE_LABELS[s.role] : 'Listed by you',
-      owned: s.owned,
-      openTrialRequests: s.owned ? (trials.get(s.id) ?? 0) : 0,
-      needsConfirmation: s.owned && s.status === 'active' && s.activityStage !== 'current',
-    }));
+    schools = await ownSchools(db, p.user.id, own.id);
+    // P2-3: the Sifu's own teachers, for "Name your teacher".
+    const [mine] = await db
+      .select({ n: count() })
+      .from(teachingRelationship)
+      .where(and(eq(teachingRelationship.studentPersonId, own.id), inArray(teachingRelationship.status, [...ACTIVE_RELATIONSHIP_STATUSES])));
+    ownTeachers = mine?.n ?? 0;
   }
 
   const { approved, limit, upgrade } = await approvalOffer(db, p.user.id, waiting);
-  const steps = nextSteps({ accountType: 'sifu', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: 0, schools: schools.length, ...looks });
+  const steps = nextSteps({ accountType: 'sifu', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: ownTeachers, schools: schools.length, students: approved + waiting, ...looks });
   return { ...base, student: null, sifu: { requests, students: { approved, limit }, schools, upgrade }, nextSteps: steps };
 }

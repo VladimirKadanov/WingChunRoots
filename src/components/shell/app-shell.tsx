@@ -13,6 +13,7 @@ import { DEMO_NOTICE } from './demo-notice';
 import { FocusInView } from './focus-in-view';
 import { NavLinks, NavList } from './nav-links';
 import { SearchField, SearchHost } from './search-trigger';
+import { SessionTabs } from './tab-tail';
 import { TabBarRoom } from './tab-bar-room';
 import { ThemeMenu } from './theme-menu';
 
@@ -67,8 +68,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <SearchField variant="rail" />
           </div>
           <div className="flex flex-1 md:hidden">
+            {/* Journey review P2-8 (ADR 0084): the tabs follow the session (Me when signed in). */}
             <Suspense fallback={<NavList variant="tabs" pathname={null} />}>
-              <NavLinks variant="tabs" />
+              <SessionTabs />
             </Suspense>
           </div>
           <div className="hidden md:block">

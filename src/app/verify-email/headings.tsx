@@ -17,7 +17,7 @@ const TITLE = (
 export const CONFIRM: FrameHeading = {
   eyebrow: EYEBROW,
   title: TITLE,
-  lede: 'Press the button to confirm that this address is yours. Then sign in with your password.',
+  lede: 'Press the button to confirm and continue.',
 };
 
 export const RESEND: FrameHeading = {

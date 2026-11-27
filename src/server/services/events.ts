@@ -1379,12 +1379,35 @@ export interface EventEditor {
   /** People of the archive the form offers: you, your confirmed students and teachers, your schools' instructors, your organizations' members. */
   instructorOptions: { id: string; label: string; self: boolean }[];
   timezones: string[];
+  /** The zone a new event starts with: the organizer's city's, or UTC. */
+  defaultTimezone: string;
 }
 
-/** Every zone the platform knows, UTC first. */
-function zones(): string[] {
+/** Journey review P3-7: the zones most organizers pick, after their own and before the rest. */
+export const COMMON_TIME_ZONES = [
+  'UTC',
+  'Europe/London',
+  'Europe/Berlin',
+  'Europe/Sofia',
+  'America/New_York',
+  'America/Chicago',
+  'America/Los_Angeles',
+  'Asia/Hong_Kong',
+  'Asia/Shanghai',
+  'Asia/Singapore',
+  'Australia/Sydney',
+] as const;
+
+/**
+ * Every zone the platform knows: the organizer's own (their city's) first, then the common ones,
+ * then the rest in order (journey review P3-7; before it the list began at Africa/Abidjan).
+ */
+function zones(own: string | null): string[] {
   const list = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
-  return ['UTC', ...list.filter((z) => z !== 'UTC')];
+  const known = new Set(['UTC', ...list]);
+  const first = [...(own && known.has(own) ? [own] : []), ...COMMON_TIME_ZONES.filter((z) => known.has(z))];
+  const seen = new Set(first);
+  return [...new Set(first), ...['UTC', ...list].filter((z) => !seen.has(z))];
 }
 
 /** events.editor: what the event form offers; `id` loads one of the account's events (404 for any other). */
@@ -1466,7 +1489,7 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
        UNION SELECT r.teacher_person_id FROM teaching_relationship r WHERE r.student_person_id = ${own?.id ?? null}::uuid
           AND r.status IN (${sql.join(PUBLIC_RELATIONSHIP_STATUSES.map((s) => sql`${s}`), sql`, `)})
        UNION SELECT si.person_id FROM school_instructor si JOIN school s ON s.id = si.school_id
-          WHERE s.created_by_user_id = ${p.user.id}::uuid AND s.deleted_at IS NULL
+          WHERE s.created_by_user_id = ${p.user.id}::uuid AND s.deleted_at IS NULL AND si.status <> 'invited'
        UNION SELECT m.person_id FROM organization_membership m
           WHERE ${orgIds.length > 0 ? sql`m.organization_id = ANY (${SQL_IDS(orgIds)})` : sql`false`}
             AND (m.ends_on IS NULL OR m.ends_on > current_date)
@@ -1475,6 +1498,9 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
        AND p.id IS DISTINCT FROM ${own?.id ?? null}::uuid
      ORDER BY p.display_name, p.id
      LIMIT 300`);
+  const ownZone = own
+    ? ((await db.execute<{ tz: string | null }>(sql`SELECT pl.timezone AS tz FROM person pe JOIN place pl ON pl.id = pe.place_id WHERE pe.id = ${own.id}::uuid`)).rows[0]?.tz ?? null)
+    : null;
   const ownName = own
     ? (await db.execute<{ value: string | null }>(sql`SELECT (SELECT pn.value FROM person_name pn WHERE pn.person_id = ${own.id}::uuid AND pn.is_primary LIMIT 1) AS value`)).rows[0]?.value
     : null;
@@ -1488,7 +1514,8 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
     kinds: EVENT_KINDS.map((key) => ({ key, label: EVENT_KIND_LABELS[key] })),
     schools: [...ownSchools.map((s) => ({ ...s, organizationId: null })), ...orgSchools],
     instructorOptions,
-    timezones: zones(),
+    timezones: zones(ownZone),
+    defaultTimezone: ownZone ?? 'UTC',
   };
 }
 

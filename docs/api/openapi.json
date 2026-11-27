@@ -212,6 +212,10 @@
                   "showPublicly": {
                     "default": false,
                     "type": "boolean"
+                  },
+                  "newToWingChun": {
+                    "default": false,
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -1410,6 +1414,17 @@
                           "invitable": {
                             "type": "boolean"
                           },
+                          "record": {
+                            "type": "string",
+                            "enum": [
+                              "claimed",
+                              "unclaimed",
+                              "historical"
+                            ]
+                          },
+                          "verifiedInstructor": {
+                            "type": "boolean"
+                          },
                           "photo": {
                             "anyOf": [
                               {
@@ -1472,7 +1487,9 @@
                           "countryCode",
                           "lineageName",
                           "verified",
-                          "invitable"
+                          "invitable",
+                          "record",
+                          "verifiedInstructor"
                         ],
                         "additionalProperties": false
                       }
@@ -2203,6 +2220,9 @@
                           "lifeStatus": {
                             "type": "string"
                           },
+                          "historical": {
+                            "type": "boolean"
+                          },
                           "claimState": {
                             "type": "string",
                             "enum": [
@@ -2371,6 +2391,27 @@
                           },
                           "approvedByUnverifiedInstructor": {
                             "type": "boolean"
+                          },
+                          "certainty": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "documented",
+                                  "traditional",
+                                  "disputed"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "publicSource": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
@@ -2586,6 +2627,9 @@
                           "lifeStatus": {
                             "type": "string"
                           },
+                          "historical": {
+                            "type": "boolean"
+                          },
                           "claimState": {
                             "type": "string",
                             "enum": [
@@ -2754,6 +2798,27 @@
                           },
                           "approvedByUnverifiedInstructor": {
                             "type": "boolean"
+                          },
+                          "certainty": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "documented",
+                                  "traditional",
+                                  "disputed"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "publicSource": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
@@ -3001,6 +3066,9 @@
                           "lifeStatus": {
                             "type": "string"
                           },
+                          "historical": {
+                            "type": "boolean"
+                          },
                           "claimState": {
                             "type": "string",
                             "enum": [
@@ -3169,6 +3237,27 @@
                           },
                           "approvedByUnverifiedInstructor": {
                             "type": "boolean"
+                          },
+                          "certainty": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "documented",
+                                  "traditional",
+                                  "disputed"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "publicSource": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
@@ -3404,6 +3493,9 @@
                           "lifeStatus": {
                             "type": "string"
                           },
+                          "historical": {
+                            "type": "boolean"
+                          },
                           "claimState": {
                             "type": "string",
                             "enum": [
@@ -3572,6 +3664,27 @@
                           },
                           "approvedByUnverifiedInstructor": {
                             "type": "boolean"
+                          },
+                          "certainty": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "documented",
+                                  "traditional",
+                                  "disputed"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "publicSource": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
@@ -3766,6 +3879,9 @@
                             "minimum": -9007199254740991,
                             "maximum": 9007199254740991
                           },
+                          "commonRoots": {
+                            "type": "boolean"
+                          },
                           "root": {
                             "type": "object",
                             "properties": {
@@ -3794,6 +3910,7 @@
                           "slug",
                           "name",
                           "people",
+                          "commonRoots",
                           "root"
                         ],
                         "additionalProperties": false
@@ -3804,6 +3921,246 @@
                     "lineages"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person: missing, or not public and not visible to this session (one answer for both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lineage/home": {
+      "get": {
+        "operationId": "lineage.home",
+        "summary": "The home page's line: the chosen public lineage, or today's in the rotation, from its root down",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "lineage": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            "slug": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "slug",
+                            "name"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "people": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "original": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "text": {
+                                    "type": "string"
+                                  },
+                                  "lang": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "text",
+                                  "lang"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "city": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "startYear": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "living": {
+                            "type": "boolean"
+                          },
+                          "students": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "slug",
+                          "displayName",
+                          "original",
+                          "city",
+                          "startYear",
+                          "living",
+                          "students"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "verified",
+                              "in_arbitration"
+                            ]
+                          },
+                          "certainty": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "documented",
+                                  "traditional",
+                                  "disputed"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "status",
+                          "certainty"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "lineage",
+                    "people",
+                    "links"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person: missing, or not public and not visible to this session (one answer for both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lineage/report-missing": {
+      "post": {
+        "operationId": "lineage.reportMissing",
+        "summary": "Tell the archivists a lineage is missing from the list (its name; at most five a day); audited",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3919,6 +4276,12 @@
                       ]
                     },
                     "bio": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "era": {
                       "type": [
                         "string",
                         "null"
@@ -4389,6 +4752,27 @@
                                 },
                                 "approvedByUnverifiedInstructor": {
                                   "type": "boolean"
+                                },
+                                "certainty": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "documented",
+                                        "traditional",
+                                        "disputed"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "publicSource": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
                                 }
                               },
                               "required": [
@@ -4733,6 +5117,27 @@
                                 },
                                 "approvedByUnverifiedInstructor": {
                                   "type": "boolean"
+                                },
+                                "certainty": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "documented",
+                                        "traditional",
+                                        "disputed"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "publicSource": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
                                 }
                               },
                               "required": [
@@ -5077,6 +5482,27 @@
                                 },
                                 "approvedByUnverifiedInstructor": {
                                   "type": "boolean"
+                                },
+                                "certainty": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "documented",
+                                        "traditional",
+                                        "disputed"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "publicSource": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
                                 }
                               },
                               "required": [
@@ -5419,6 +5845,9 @@
                               "lifeStatus": {
                                 "type": "string"
                               },
+                              "historical": {
+                                "type": "boolean"
+                              },
                               "claimState": {
                                 "type": "string",
                                 "enum": [
@@ -5587,6 +6016,27 @@
                               },
                               "approvedByUnverifiedInstructor": {
                                 "type": "boolean"
+                              },
+                              "certainty": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "documented",
+                                      "traditional",
+                                      "disputed"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "publicSource": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
                               }
                             },
                             "required": [
@@ -11508,6 +11958,12 @@
                       }
                     ]
                   },
+                  "featuredOnHome": {
+                    "type": "boolean"
+                  },
+                  "commonRoots": {
+                    "type": "boolean"
+                  },
                   "reason": {
                     "anyOf": [
                       {
@@ -11686,6 +12142,17 @@
                       }
                     ]
                   },
+                  "era": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 120
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "reason": {
                     "anyOf": [
                       {
@@ -11801,6 +12268,26 @@
                       {
                         "type": "string",
                         "maxLength": 4000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "certainty": {
+                    "default": "documented",
+                    "type": "string",
+                    "enum": [
+                      "documented",
+                      "traditional",
+                      "disputed"
+                    ]
+                  },
+                  "publicSource": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 600
                       },
                       {
                         "type": "null"
@@ -11969,6 +12456,26 @@
                       }
                     ]
                   },
+                  "certainty": {
+                    "default": "documented",
+                    "type": "string",
+                    "enum": [
+                      "documented",
+                      "traditional",
+                      "disputed"
+                    ]
+                  },
+                  "publicSource": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 600
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "reason": {
                     "anyOf": [
                       {
@@ -11983,6 +12490,68 @@
                 },
                 "required": [
                   "relationshipId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/archive-editor/records/merge": {
+      "post": {
+        "operationId": "archiveEditor.mergeRecord",
+        "summary": "Merge a duplicate record kept by the archive into the kept one: its links, names and evidence move, a link both have ends, its address redirects to the kept record; members’ records are refused; audited",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fromSlug": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "intoSlug": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "fromSlug",
+                  "intoSlug",
+                  "reason"
                 ]
               }
             }
@@ -13595,6 +14164,12 @@
                         "null"
                       ]
                     },
+                    "streetAddress": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "forms": {
                       "type": "array",
                       "items": {
@@ -14051,6 +14626,7 @@
                     "websiteUrl",
                     "contactEmail",
                     "contactPhone",
+                    "streetAddress",
                     "forms",
                     "lastActivityOn",
                     "instructors",
@@ -14133,6 +14709,63 @@
                       "not": {}
                     }
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schools/instructor-invitations/answer": {
+      "post": {
+        "operationId": "schools.answerInstructor",
+        "summary": "Accept or decline a school’s invitation to be listed as one of its instructors (the invited member only); audited",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "schoolId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "accept": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "schoolId",
+                  "accept"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -14351,6 +14984,17 @@
                       }
                     ]
                   },
+                  "addressLine": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 400
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "formsTaught": {
                     "default": [],
                     "maxItems": 6,
@@ -14376,6 +15020,17 @@
                       "format": "uuid",
                       "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                     }
+                  },
+                  "inviteSlug": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "idempotencyKey": {
                     "type": "string",
@@ -14518,6 +15173,17 @@
                       }
                     ]
                   },
+                  "addressLine": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 400
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "formsTaught": {
                     "default": [],
                     "maxItems": 6,
@@ -14543,6 +15209,17 @@
                       "format": "uuid",
                       "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                     }
+                  },
+                  "inviteSlug": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "id": {
                     "type": "string",
@@ -22428,6 +23105,29 @@
       "get": {
         "operationId": "dashboard.nav",
         "summary": "The signed-in account's dashboard menu: account type, profile, administered organizations, unread and waiting counts",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dashboard/organizations": {
+      "get": {
+        "operationId": "dashboard.organizations",
+        "summary": "The organizations the signed-in account administers at a glance: members, linked and waiting schools, the next event, the plan and what is left to do",
         "responses": {
           "200": {
             "description": "OK",

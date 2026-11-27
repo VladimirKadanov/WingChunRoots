@@ -84,7 +84,7 @@ function LinkSegment({ kind }: { kind: LinkKind }) {
 }
 
 function markOf(founder: boolean, person: LineageNodeDto): RouteMarkKind {
-  return founder ? 'founder' : person.lifeStatus === 'living' ? 'living' : 'other';
+  return founder ? 'founder' : person.lifeStatus === 'living' ? 'living' : person.historical ? 'historical' : 'other';
 }
 
 /** The marks the routes of `paths` draw, in the key's order: a key lists only what is drawn. */
@@ -103,7 +103,7 @@ function Node({ mark }: { mark: RouteMarkKind }) {
 }
 
 function StateWord({ edge }: { edge: LineageEdgeDto }) {
-  const status = relationStatus(edge.status);
+  const status = relationStatus(edge.status, edge.certainty);
   const kind = strokeOf(edge);
   const word = kind === 'cross_lineage' || kind === 'historical' ? `${status.label}, ${linkStyles[kind].label.toLowerCase()}` : status.label;
   return (

@@ -69,6 +69,13 @@ export function dashboardNavGroups(nav: NavData): DashboardNavGroup[] {
     if (nav.instructor !== 'verified') teaching.push(link('/dashboard/instructor', 'Instructor verification'));
     groups.push({ label: 'Teaching', links: teaching });
     groups.push({ label: 'Schools and events', links: [link('/dashboard/schools', 'My schools'), link('/dashboard/events', 'Events')] });
+  } else if (!nav.staffOnly) {
+    // Journey review 2026-11-26 (P1-1): a teacher with a Student account still sees what waits for
+    // them, and the schools that list them; the requests page offers "Start answering as a Sifu".
+    if (nav.waitingStudentRequests > 0) {
+      groups.push({ label: 'Teaching', links: [link('/dashboard/students/requests', 'Student requests', nav.waitingStudentRequests, 'waiting')] });
+    }
+    if (nav.instructorSchools > 0) groups.push({ label: 'Schools', links: [link('/dashboard/schools', 'My schools')] });
   }
   if (!nav.staffOnly) {
     const training = [link('/dashboard/teachers', 'My teachers'), link('/dashboard/passport', 'Training passport')];

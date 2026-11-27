@@ -96,13 +96,13 @@ test.describe('@M24 organization tools', () => {
     await expect(page.getByTestId('organization-separation-rules')).toBeVisible();
     await page.getByTestId('organization-tools-import').click();
     await expect(page.getByTestId('organization-import')).toBeVisible();
-    await expect(page.getByTestId('organization-import-header')).toContainText('First_Name,Last_Name,Email,Chinese_Name,Start_Year,Current_Rank,Sifu_Database_ID,School_City');
+    await expect(page.getByTestId('organization-import-header')).toContainText('First_Name,Last_Name,Email,Chinese_Name,Start_Year,Current_Rank,Teacher_Profile_Address,School_City');
     await axeInBothThemes(page, '/dashboard/organization/<id>/import');
     if (phone) await expectTouchTargets(page, '[data-testid="organization-import"] a, [data-testid="organization-import"] button, [data-testid="organization-import"] input[type="file"]');
 
     const name = surname();
     const csv = [
-      'First_Name,Last_Name,Email,Chinese_Name,Start_Year,Current_Rank,Sifu_Database_ID,School_City',
+      'First_Name,Last_Name,Email,Chinese_Name,Start_Year,Current_Rank,Teacher_Profile_Address,School_City',
       `Demo,${name},demo-not-read@example.test,詠春,2015,Demo first level,/people/demo-hub-a,Demo City`,
       `Demo,${name}b,,,not-a-year,,,`,
     ].join('\n');

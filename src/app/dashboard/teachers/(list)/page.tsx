@@ -258,15 +258,11 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
         </p>
         {mine.hasProfile ? (
           <p className="mt-5 flex flex-wrap gap-3">
-            <Link href={NEW} className={buttonVariants({ variant: 'primary', size: 'lg' })}>
-              Name a teacher
+            {/* Journey review 2026-11-26 (P2-2, ADR 0080): one way in, which starts with the search;
+                a teacher who is not here, or who has died, is offered from there. */}
+            <Link href={NEW} className={buttonVariants({ variant: 'primary', size: 'lg' })} data-testid="add-teacher">
+              Add a teacher
               <ArrowRightIcon />
-            </Link>
-            <Link href="/dashboard/teachers/historical" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
-              Name a historical teacher
-            </Link>
-            <Link href="/dashboard/teachers/invite" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
-              Invite your teacher
             </Link>
           </p>
         ) : null}

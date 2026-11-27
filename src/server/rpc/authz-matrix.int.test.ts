@@ -775,6 +775,7 @@ const ROWS: Row[] = [
   ),
   { path: 'lineage.subtree', make: async () => ({ input: { rootId: (await verifiedLink()).teacher.personId } }), expect: everyone },
   { path: 'lineage.start', make: noInput, expect: everyone },
+  { path: 'lineage.home', make: noInput, expect: everyone },
   { path: 'people.get', make: async () => ({ input: { slug: (await verifiedLink()).teacher.slug } }), expect: everyone },
   { path: 'people.students', make: async () => ({ input: { slug: (await verifiedLink()).teacher.slug } }), expect: everyone },
   // ADR 0045: the lineage card of a public member whose plan includes it is public; without the
@@ -1454,6 +1455,15 @@ const ROWS: Row[] = [
     },
     expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
   },
+  // Journey review P2-10 (ADR 0086): merge a duplicate record into the kept one.
+  {
+    path: 'archiveEditor.mergeRecord',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { fromSlug: p.student.slug, intoSlug: p.teacher.slug, reason: 'Matrix (fictional) duplicate' } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
   // Review 2026-11: a staff take-down of a profile (moderator or administrator) and account suspension (administrator).
   {
     path: 'moderation.takeDown',
@@ -1525,6 +1535,17 @@ const ROWS: Row[] = [
     expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'CONFLICT', archivist: 'CONFLICT', admin: 'CONFLICT', adminNo2fa: 'CONFLICT' },
   },
   { path: 'schools.options', make: () => ({ input: {} }), expect: { ...own('CONFLICT'), member: 'ok' } },
+  {
+    // Journey review P3-10 (ADR 0087): only the invited member answers the invitation.
+    path: 'schools.answerInstructor',
+    make: async () => {
+      const s = await draftSchool();
+      const invited = await actor('school-invited');
+      await getDb().execute(sql`INSERT INTO school_instructor (school_id, person_id, role, status) VALUES (${s.schoolId}::uuid, ${invited.personId}::uuid, 'instructor', 'invited')`);
+      return { owner: invited, input: { schoolId: s.schoolId, accept: true } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
   {
     path: 'schools.create',
     make: async () => {
@@ -1811,8 +1832,10 @@ const ROWS: Row[] = [
   { path: 'places.search', make: () => ({ input: { q: 'Sofia' } }), expect: everyone },
   // Role replay 2026-11-25, P2-12: any signed-in account may tell the admins (five a day).
   { path: 'places.reportMissing', make: () => ({ input: { name: 'Demo Missing Town', countryCode: 'FR' } }), expect: own() },
+  { path: 'lineage.reportMissing', make: () => ({ input: { name: 'Demo Missing Lineage' } }), expect: own() },
   { path: 'dashboard.overview', make: noInput, expect: own() },
   { path: 'dashboard.nav', make: noInput, expect: own() },
+  { path: 'dashboard.organizations', make: noInput, expect: own() },
   // M15: organizations. `party` is the owner of another organization: it reaches only its own
   // (404 here, the same answer as for none), as does every member and staff account.
   { path: 'organizations.list', make: noInput, expect: everyone },
@@ -2784,6 +2807,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/unsubscribe/actions.ts#unsubscribeAction', row: 'notifications.unsubscribe', form: same, roles: ['anonymous', 'member'], call: (fn, form) => fn(form) },
   { action: 'src/app/dashboard/actions.ts#requestPilotAccessAction', row: 'plans.requestPilotAccess', form: same, roles: ['anonymous', 'owner'] },
   { action: 'src/app/dashboard/places/missing/actions.ts#reportMissingPlaceAction', row: 'places.reportMissing', form: same, roles: ['anonymous', 'member'] },
+  { action: 'src/app/dashboard/lineages/missing/actions.ts#reportMissingLineageAction', row: 'lineage.reportMissing', form: same, roles: ['anonymous', 'member'] },
   { action: 'src/app/account/plan/actions.ts#setAccountTypeAction', row: 'account.setType', form: same, roles: ['anonymous', 'owner'] },
   { action: 'src/app/admin/grants/actions.ts#createGrantAction', row: 'grants.create', form: same, roles: ['anonymous', 'member', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/grants/actions.ts#revokeGrantAction', row: 'grants.revoke', form: same, roles: ['anonymous', 'member', 'party', 'adminNo2fa', 'admin'] },
@@ -2796,6 +2820,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/teachers/actions.ts#remindTeacherAction', row: 'relationships.remind', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/teachers/actions.ts#showProfilePubliclyAction', row: 'profile.publish', form: () => ({ page: 'teachers' }), roles: ['anonymous', 'owner'] },
   { action: 'src/app/dashboard/teachers/actions.ts#endTrainingAction', row: 'relationships.end', form: (i) => ({ ...same(i), endYear: '2024' }), roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/students/requests/actions.ts#startAnsweringAsSifuAction', row: 'account.setType', form: same, roles: ['anonymous', 'owner'] },
   { action: 'src/app/dashboard/students/requests/actions.ts#approveRequestAction', row: 'relationships.approve', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/students/requests/actions.ts#rejectRequestAction', row: 'relationships.reject', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/teachers/invite/actions.ts#sendInvitationAction', row: 'invitations.send', form: same, roles: ['anonymous', 'member', 'owner'] },
@@ -2844,6 +2869,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/admin/archive/actions.ts#addLinkAction', row: 'archiveEditor.addLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/archive/actions.ts#endLinkAction', row: 'archiveEditor.endLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/archive/actions.ts#editLinkAction', row: 'archiveEditor.editLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#mergeRecordAction', row: 'archiveEditor.mergeRecord', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   // Review 2026-11: the take-down and restore forms of the review pages post the procedures' fields.
   { action: 'src/app/admin/review/actions.ts#takeDownAction', row: 'moderation.takeDown', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/review/actions.ts#restoreAction', row: 'moderation.restore', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
@@ -2887,6 +2913,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     roles: ['anonymous', 'member', 'owner'],
   },
   { action: 'src/app/dashboard/schools/actions.ts#answerOrganizationLinkAction', row: 'organizations.answerSchoolLink', form: (i) => ({ ...same(i), answer: 'accept' }), roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/schools/actions.ts#answerInstructorAction', row: 'schools.answerInstructor', form: (i) => ({ ...same(i), answer: 'accept' }), roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/admin/organizations/actions.ts#grantOrganizationPlanAction', row: 'organizations.grant', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/organizations/actions.ts#revokeOrganizationPlanAction', row: 'organizations.revokeGrant', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   // M24: the organization tools' buttons post the procedures' fields; `party` is another organization's owner.

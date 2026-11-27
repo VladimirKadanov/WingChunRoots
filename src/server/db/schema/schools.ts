@@ -22,6 +22,7 @@ import {
   SCHOOL_PHOTO_KINDS,
   SCHOOL_PHOTO_STATUSES,
   SCHOOL_INSTRUCTOR_ROLES,
+  SCHOOL_INSTRUCTOR_STATUSES,
   SCHOOL_STATUSES,
   timestamps,
 } from './common';
@@ -85,6 +86,8 @@ export const school = pgTable(
     // M11: the ways to get in touch that the listing shows (all optional) and the forms it teaches.
     contactEmail: text('contact_email'),
     contactPhone: text('contact_phone'),
+    // Journey review P2-7 (ADR 0083): the street, building and floor; public only with the exact pin.
+    addressLine: text('address_line'),
     formsTaught: text('forms_taught', { enum: SCHOOL_FORMS }).array().notNull().default([]),
     // DEFAULT D17: changes only when the school is edited or confirmed, never on sign-in.
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
@@ -108,6 +111,7 @@ export const school = pgTable(
   },
   (t) => [
     uniqueIndex('school_slug_key').on(t.slug),
+    check('school_address_line_length', sql`${t.addressLine} IS NULL OR char_length(${t.addressLine}) BETWEEN 1 AND 200`),
     check('school_fees_text_length', sql`${t.feesText} IS NULL OR char_length(${t.feesText}) BETWEEN 1 AND ${sql.raw(String(SCHOOL_FEES_MAX))}`),
     index('school_place_id_idx').on(t.placeId),
     index('school_status_idx').on(t.status),
@@ -156,12 +160,15 @@ export const schoolInstructor = pgTable(
       .notNull()
       .references(() => person.id, { onDelete: 'cascade' }),
     role: text('role', { enum: SCHOOL_INSTRUCTOR_ROLES }).notNull().default('instructor'),
+    /** Journey review P3-10 (ADR 0087): listed, invited (not shown) or accepted. */
+    status: text('status', { enum: SCHOOL_INSTRUCTOR_STATUSES }).notNull().default('listed'),
     ...timestamps(),
   },
   (t) => [
     primaryKey({ name: 'school_instructor_pkey', columns: [t.schoolId, t.personId] }),
     index('school_instructor_person_id_idx').on(t.personId),
     check('school_instructor_role_check', inList(t.role.name, SCHOOL_INSTRUCTOR_ROLES)),
+    check('school_instructor_status_check', inList(t.status.name, SCHOOL_INSTRUCTOR_STATUSES)),
   ],
 );
 

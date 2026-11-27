@@ -8,7 +8,7 @@
 
 import { expect, test } from '@playwright/test';
 
-import { BASE_URL, closeHelpers, giveOwnAddress, loadTestEnv } from './helpers/auth';
+import { BASE_URL, closeHelpers, giveOwnAddress, loadTestEnv, signInAs } from './helpers/auth';
 import { openPalette, option, searchInput } from './helpers/search';
 
 test.beforeAll(loadTestEnv);
@@ -60,4 +60,21 @@ test('@nav the sitemap lists the organizations and each approved organization', 
   const text = await sitemap.text();
   expect(text).toContain('/organizations</loc>');
   expect(text).toContain('/organizations/demo-federation-north</loc>');
+});
+
+test('@nav signed in on a phone, the fifth tab is Me with the unread count, and Organizations is in the account menu (P2-8, ADR 0084)', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 1280) >= 768, 'the phone tabs only');
+  await signInAs(page, 'demo-pending');
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Main' });
+  const tabs = nav.locator('li > a').filter({ visible: true });
+  await expect(tabs).toHaveText([/^Home$/, /^Lineage$/, /^Schools$/, /^Events$/, /^Me/]);
+  const me = nav.locator('a[data-nav="me"]').filter({ visible: true });
+  await expect(me).toHaveAttribute('href', '/dashboard');
+  await me.click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(me).toHaveAttribute('aria-current', 'page');
+  // Organizations, one step away in the account menu.
+  await page.getByTestId('account-menu-trigger').filter({ visible: true }).first().click();
+  await expect(page.getByTestId('account-menu-organizations').filter({ visible: true })).toHaveAttribute('href', '/organizations');
 });

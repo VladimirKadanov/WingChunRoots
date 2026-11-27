@@ -20,7 +20,8 @@ export function StatusBadge({ state, label, size = 'md', className }: StatusBadg
     <span
       data-state={state}
       className={cn(
-        'inline-flex items-center gap-1.5 whitespace-nowrap font-semibold',
+        // The words may wrap ("Traditional account" at 200 % text on a 320 px phone); the seal keeps its size.
+        'inline-flex items-center gap-1.5 font-semibold [&>svg]:shrink-0',
         size === 'sm' ? 'text-label' : 'text-sm',
         className,
       )}

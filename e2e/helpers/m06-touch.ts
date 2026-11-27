@@ -21,7 +21,7 @@ export const TOUCH_TARGET = 44;
  * the zoom: graph content, DEFAULT, milestone M06 (e) 7) and outside inert content (a sheet's body
  * at its peek, which the keyboard and the pointer never reach). Each one is:
  * - at least TOUCH_TARGET x TOUCH_TARGET px; a checkbox or a radio button is measured by its label,
- *   which takes its taps (the toolbar's "Show ended training");
+ *   which takes its taps (the toolbar's "Show former students");
  * - whole: not cut by the edge of the window or of what clips it (the canvas frame, a sheet clipped
  *   at the tab bar), unless it lies in a list that scrolls, which brings it in;
  * - uncovered: a tap at the centre of its part on screen reaches it.

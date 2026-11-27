@@ -106,6 +106,8 @@ export const PERSON_OWNED_TABLES: readonly string[] = [
   'person_link',
   'person_name',
   'person_name_key',
+  // ADR 0086: the old addresses of records merged into this one (cascade).
+  'person_redirect',
   // ADR 0050: the videos of a profile (cascade).
   'person_video',
   'record_revision',

@@ -13,7 +13,7 @@
 import type { LineageGraphDto } from '@/server/dto/public';
 import type { AltName, Box, LineageGraph, Point } from '@/lib/lineage-layout/types';
 
-import { isHistoricalRelation } from '../status';
+import { formerLinkIn } from '../status';
 
 /** The caps of the lineage API (src/server/services/lineage-graph.ts). */
 export const MAX_UP = 16;
@@ -149,7 +149,8 @@ export function capFanout(
   for (const e of graph.edges) byTeacher.set(e.teacherId, [...(byTeacher.get(e.teacherId) ?? []), e]);
   const kept = new Set<string>();
   const more = new Map<string, number>();
-  const active = (e: LineageGraphDto['edges'][number]) => Number(!isHistoricalRelation(e.periods));
+  const former = formerLinkIn(graph.nodes);
+  const active = (e: LineageGraphDto['edges'][number]) => Number(!former(e));
   for (const [teacherId, edges] of byTeacher) {
     const sorted = [...edges].sort(
       (a, b) =>
@@ -344,13 +345,15 @@ export function joinToBox(at: Point, box: Box): Point[] {
 }
 
 /**
- * The people and lines drawn before anyone is selected: ended training only with show=historical
- * (plan §4.6), and nobody whose every line in the view is ended training, except the focus. The
+ * The people and lines drawn before anyone is selected: a living teacher's former students only
+ * with show=historical (plan §4.6, ADR 0075), and nobody whose every line in the view is such a
+ * link, except the focus. The
  * skeleton takes its shape from this, as the canvas draws it.
  */
 export function drawnByDefault(graph: LineageGraphDto, showHistorical: boolean): LineageGraphDto {
   if (showHistorical) return graph;
-  const edges = graph.edges.filter((e) => !isHistoricalRelation(e.periods));
+  const former = formerLinkIn(graph.nodes);
+  const edges = graph.edges.filter((e) => !former(e));
   const linked = new Set(graph.edges.flatMap((e) => [e.teacherId, e.studentId]));
   const kept = new Set(edges.flatMap((e) => [e.teacherId, e.studentId]));
   return { ...graph, nodes: graph.nodes.filter((n) => !linked.has(n.id) || kept.has(n.id) || n.id === graph.focusId), edges };

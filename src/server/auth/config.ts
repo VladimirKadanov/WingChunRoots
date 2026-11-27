@@ -6,6 +6,7 @@
 //   confirmed address; a reset ends every session.
 // - Rate limiting on in every environment (Better Auth turns it off outside production unless
 //   asked), in memory: one `next start` process in Phase 1.
+// - A new e-mail address is confirmed from the new mailbox first (/change-email, ADR 0081).
 // - Plugins: twoFactor (TOTP and backup codes), admin (the role field, bans), bearer (the same
 //   session in `Authorization: Bearer`, signed tokens only).
 // - The admin plugin's HTTP endpoints, the e-mail OTP second factor and /update-user are switched
@@ -88,7 +89,13 @@ export function createAuth() {
     // The router would print unexpected errors through its own global logger, unredacted.
     onAPIError: { onError: (error) => logAuthApiError(error) },
     database: drizzleAdapter(getDb(), { provider: 'pg', schema: AUTH_TABLES, transaction: false }),
-    user: { modelName: 'auth_user' },
+    user: {
+      modelName: 'auth_user',
+      // Journey review P2-4 (ADR 0081): a new address is confirmed from the new mailbox (the
+      // verification e-mail of emailVerification, with the link's `updateTo`) before it changes;
+      // the hooks ask for the password and send the notice to both addresses.
+      changeEmail: { enabled: true },
+    },
     session: {
       modelName: 'auth_session',
       additionalFields: {

@@ -16,6 +16,8 @@ import { LoadError } from '@/components/account/load-error';
 import { ORGANIZATION_LOAD_ERRORS } from '@/components/account/organization-load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { OutcomeNote, PersonName } from '@/components/relationships/parts';
+import { DownloadIcon } from '@/components/icons';
+import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
@@ -83,10 +85,22 @@ export default async function ImportPage({ params, searchParams }: Props) {
         <pre className="max-w-full rounded-sm bg-surface-2 px-4 py-3 text-sm whitespace-pre-wrap [overflow-wrap:anywhere]" translate="no" data-testid="organization-import-header">
           <code>{list.template}</code>
         </pre>
+        {/* Journey review P2-5 (ADR 0082): a sample file to start from, with fictional rows. */}
+        <p>
+          <a
+            href={`data:text/csv;charset=utf-8,${encodeURIComponent(list.sample)}`}
+            download="wingchunroots-members-sample.csv"
+            className={buttonVariants({ variant: 'secondary' })}
+            data-testid="organization-import-sample"
+          >
+            <DownloadIcon />
+            Download a sample file
+          </a>
+        </p>
         <ul className="grid max-w-[62ch] list-disc gap-1 pl-5 text-sm">
           <li>First_Name and Last_Name: the name in Latin letters. Chinese_Name: the name in Chinese characters.</li>
           <li>Start_Year: the year training began, such as 2015. Current_Rank and School_City: as your organization records them; they are never public.</li>
-          <li>Sifu_Database_ID: the address of the teacher’s profile, such as /people/demo-hub-a: a public profile or a member of your organization. It becomes your organization’s claim, never a verified relationship.</li>
+          <li>Teacher_Profile_Address: the teacher’s profile address, such as /people/demo-hub-a: a public profile or a member of your organization. It becomes your organization’s claim, never a verified relationship. A file with the older column name Sifu_Database_ID is read the same way.</li>
           <li>Email: not read. No one is invited or contacted by an import.</li>
           <li>A row whose name matches a current member is not imported, so no one is listed twice. Nobody is ever matched to an existing account.</li>
         </ul>

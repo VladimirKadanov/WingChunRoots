@@ -16,3 +16,6 @@ export type ListingBack = keyof typeof LISTING_BACK;
 export const SCHEDULE_FORM = 'school-schedule';
 /** M21: the form of one trial lesson request in /dashboard/schools/<id>/inquiries (answer, decline, close). */
 export const trialForm = (inquiryId: string) => `trial-${inquiryId}`;
+
+/** Journey review P3-10 (ADR 0087): the answer to a school's invitation to teach there. */
+export const instructorForm = (schoolId: string) => `school-instructor-${schoolId}`;

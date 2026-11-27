@@ -20,15 +20,16 @@ import { OutcomeNote } from '@/components/relationships/parts';
 import { LocationTag } from '@/components/schools/school-list';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
+import { countryName } from '@/lib/regions';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { linkForm } from '../organization/form-ids';
-import { listingForm } from './form-ids';
+import { instructorForm, listingForm } from './form-ids';
 import { PIN_TEXT } from './labels';
 import { ListingAction } from './listing-actions';
-import { LinkAnswer } from './organization-links';
+import { InstructorAnswer, LinkAnswer } from './organization-links';
 
 export const instant = false;
 
@@ -56,6 +57,9 @@ export default async function SchoolsDashboardPage({ searchParams }: { searchPar
   // M15: the organization links of this account's schools (organizations.schoolLinks).
   const [mine, links] = await Promise.all([pageRead(client.schools.mine()), pageRead(client.organizations.schoolLinks())]);
   if (!mine || !links) return <LoadError {...SCHOOLS_LOAD_ERROR} retryHref={PAGE} />;
+  // Journey review P3-10 (ADR 0087): schools that ask this account to teach there.
+  const invitationRows = await Promise.all(mine.invitations.map(async (i) => ({ ...i, initial: await readFormResult(instructorForm(i.id), query.outcome) })));
+  const instructorDone = query.instructor === 'accepted' ? 'Accepted: the school lists you as an instructor now.' : query.instructor === 'declined' ? 'Declined: the school does not list you.' : null;
   const linkRows = await Promise.all(links.links.map(async (l) => ({ ...l, initial: await readFormResult(linkForm(l.id), query.outcome) })));
   const linkDone = typeof query.organization === 'string' ? LINK_DONE[query.organization] : undefined;
   // "This listing is current" from a row (role replay 2026-11-25, P1-4): its outcome comes back here.
@@ -81,7 +85,7 @@ export default async function SchoolsDashboardPage({ searchParams }: { searchPar
         <div className="mt-8 grid gap-6">
           {mine.accountType !== 'sifu' ? (
             <div data-testid="schools-needs-sifu" className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
-              <p className="text-ui">Schools are listed from a Sifu account. Your account is a Student account.</p>
+              <p className="text-ui">To list a school of your own, use a Sifu account. Your account is a Student account; it is free to switch, and your teachers stay as they are.</p>
               <Link href="/account/plan" className={buttonVariants({ variant: 'secondary' })}>
                 Plan and billing
                 <ArrowRightIcon />
@@ -109,9 +113,49 @@ export default async function SchoolsDashboardPage({ searchParams }: { searchPar
               Confirmed: {confirmed.name} is current as of today{confirmed.pin === 'shown' ? ', and its pin is on the public map' : ''}.
             </OutcomeNote>
           ) : null}
+          {invitationRows.length > 0 || instructorDone ? (
+            <section id="instructor-invitations" aria-labelledby="instructor-invitations-heading" className="grid scroll-mt-4 gap-2" data-testid="instructor-invitations">
+              <h2 id="instructor-invitations-heading" className="font-display text-2xl">
+                Invitations to teach
+              </h2>
+              {instructorDone ? <OutcomeNote testId="instructor-invitation-done">{instructorDone}</OutcomeNote> : null}
+              {invitationRows.length > 0 ? (
+                <p className="max-w-[60ch] text-sm text-fg-muted">These schools ask to list you as one of their instructors. You are shown on a school&apos;s page only once you accept.</p>
+              ) : null}
+              <ul className="grid">
+                {invitationRows.map((i) => (
+                  <li key={i.id} className="grid gap-2 border-b border-border-subtle py-3" data-testid="instructor-invitation">
+                    <span className="grid gap-0.5">
+                      <span className="font-display text-lg [overflow-wrap:anywhere]">{i.name}</span>
+                      <span className="text-sm text-fg-muted">{i.city}, {countryName(i.countryCode) ?? i.countryCode}</span>
+                    </span>
+                    <InstructorAnswer schoolId={i.id} context={i.name} initial={i.initial} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {mine.teachingAt.length > 0 ? (
+            <section aria-labelledby="teaching-at-heading" className="grid gap-2" data-testid="teaching-at">
+              <h2 id="teaching-at-heading" className="font-display text-2xl">
+                Schools that list you as an instructor
+              </h2>
+              <p className="max-w-[60ch] text-sm text-fg-muted">The school&apos;s own account keeps these listings. Ask its owner to change what they say about you.</p>
+              <ul className="grid">
+                {mine.teachingAt.map((s) => (
+                  <li key={s.id} className="grid gap-0.5 border-b border-border-subtle py-3">
+                    <span className="font-display text-lg [overflow-wrap:anywhere]">{s.name}</span>
+                    <span className="text-sm text-fg-muted">
+                      {s.city}, {s.countryCode} · {s.roleLabel} · {s.statusLabel}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           {mine.schools.length === 0 ? (
             <p className="text-ui text-fg-muted" data-testid="no-schools">
-              You have not listed a school yet.
+              {mine.teachingAt.length > 0 ? 'You have not listed a school of your own.' : 'You have not listed a school yet.'}
             </p>
           ) : (
             <ul className="grid" data-testid="own-schools">

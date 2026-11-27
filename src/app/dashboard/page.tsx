@@ -25,6 +25,7 @@ import { PageRedirect } from '@/components/account/page-redirect';
 import { NameLine, NameText } from '@/components/account/person-names';
 import { ArrowRightIcon, PinIcon } from '@/components/icons';
 import { PILOT_ACCESS_FORM, UPGRADE_CLOSED_PARAM } from '@/components/plans/form-ids';
+import { StartAsSifu } from '@/components/dashboard/start-as-sifu';
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -39,9 +40,11 @@ import type { DashboardOverview, PersonRef } from '@/server/services/dashboard';
 import type { NextStep } from '@/server/services/next-steps';
 import type { FormState } from '@/lib/form-state';
 import { requestPilotAccessAction } from './actions';
+import { startAnsweringAsSifuAction } from './students/requests/actions';
 import { listingForm } from './schools/form-ids';
 import { ListingAction } from './schools/listing-actions';
 import { Notifications, NotificationsProvider, UnreadLink } from './notifications';
+import { OrganizationsGlance } from './organizations-glance';
 
 export const instant = false;
 
@@ -79,7 +82,7 @@ function YourPremium({ links, plan }: { links: { passportHref: string; familyHre
     { href: links.cardHref, title: 'Your lineage card', text: 'Your line from the roots, to share, print or save as a PDF.' },
   ];
   return (
-    <section aria-labelledby="your-premium-heading" className="mt-8 rounded-md border border-border-subtle bg-surface-1 p-5" data-testid="your-premium">
+    <section aria-labelledby="your-premium-heading" className="mt-3 rounded-md border border-border-subtle bg-surface-1 p-5" data-testid="your-premium">
       <h2 id="your-premium-heading" className="font-display text-xl">
         Your {plan}
       </h2>
@@ -143,10 +146,42 @@ function Row({ person, meta, status }: { person: PersonRef; meta: ReactNode; sta
 }
 
 function StudentLists({ overview }: { overview: DashboardOverview }) {
-  const { teachers, requests } = overview.student!;
+  const { teachers, requests, waitingStudentRequests, schools } = overview.student!;
   // Without a profile the page has one call to action, "Set up your profile", above the lists.
   return (
     <>
+      {waitingStudentRequests > 0 ? (
+        // Journey review 2026-11-26 (P1-1): a teacher with a Student account learns that students wait.
+        <Section id="student-requests" title={`Student requests (${waitingStudentRequests})`}>
+          <StartAsSifu action={startAnsweringAsSifuAction} waiting={waitingStudentRequests} testId="student-requests-waiting" />
+          <p>
+            <Link href="/dashboard/students/requests" className="link inline-flex min-h-11 items-center text-sm">
+              See who is waiting
+            </Link>
+          </p>
+        </Section>
+      ) : null}
+      {schools.length > 0 ? (
+        <Section id="schools" title="Schools you teach at">
+          <ul data-testid="schools" className="grid">
+            {schools.map((item) => (
+              <li key={item.id} className="grid gap-0.5 border-b border-border-subtle py-3">
+                <span className="font-display text-lg [overflow-wrap:anywhere]">{item.name}</span>
+                <span className="flex items-center gap-1.5 text-sm text-fg-muted">
+                  <PinIcon size={16} />
+                  {item.city}, {item.countryCode} · {item.roleLabel} · {item.statusLabel}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p>
+            <Link href="/dashboard/schools" className={buttonVariants({ variant: 'secondary' })}>
+              My schools
+              <ArrowRightIcon />
+            </Link>
+          </p>
+        </Section>
+      ) : null}
       <Section id="teachers" title="My teachers">
         {teachers.length === 0 ? (
           <Empty testId="empty-teachers" action={overview.hasProfile ? NAME_CHECK : undefined}>
@@ -381,6 +416,40 @@ function NextSteps({ steps, sifu }: { steps: NextStep[]; sifu: boolean }) {
   );
 }
 
+/**
+ * Journey review 2026-11-26 (P2-1, ADR 0079): the trial lessons the account asked for, at the top
+ * of the page while one waits or for 60 days after the school answered: the state in words.
+ */
+function TrialStatus({ trials }: { trials: NonNullable<DashboardOverview['student']>['trials'] }) {
+  if (trials.length === 0) return null;
+  return (
+    <section aria-labelledby="trial-status-heading" data-testid="trial-status" className="grid gap-2 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
+      <h2 id="trial-status-heading" className="font-display text-xl">
+        Your trial lessons
+      </h2>
+      <ul className="grid gap-1">
+        {trials.map((trial) => (
+          <li key={trial.id} data-status={trial.status} className="text-ui">
+            {trial.school.public ? (
+              <Link href={`/schools/${trial.school.slug}`} className="link">
+                {trial.school.name}
+              </Link>
+            ) : (
+              trial.school.name
+            )}
+            : <span className="font-semibold">{trial.statusLabel}</span>
+          </li>
+        ))}
+      </ul>
+      <p>
+        <Link href="/dashboard/trial-lessons" className="link inline-flex min-h-11 items-center text-sm">
+          See the replies
+        </Link>
+      </p>
+    </section>
+  );
+}
+
 /** For a student with a profile: where to say that they teach (the account type lives in Settings, Plan and billing). */
 function TeachPrompt() {
   return (
@@ -445,9 +514,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
   const query = await searchParams;
   const client = serverClient(await headers(), guard.principal);
   // A failed read shows the error state in the app shell, with "Try again" (final check, requirements-2).
-  const loaded = await pageRead(Promise.all([client.dashboard.overview(), client.account.me()]));
+  const loaded = await pageRead(Promise.all([client.dashboard.overview(), client.account.me(), client.dashboard.organizations()]));
   if (!loaded) return <LoadError {...DASHBOARD_LOAD_ERROR} retryHref="/dashboard" />;
-  const [overview, me] = loaded;
+  const [overview, me, organizations] = loaded;
   const names = me.person?.names ?? [];
   const primary = names.find((name) => name.isPrimary);
   const original = names.find((name) => !name.isPrimary && name.kind !== 'romanization');
@@ -477,45 +546,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
           <h1 className="mt-2 text-feature [overflow-wrap:anywhere]">
             {primary ? <NameLine primary={primary.value} original={original} /> : <span className="font-display">Your dashboard</span>}
           </h1>
-          <dl className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
-            <div className="grid gap-0.5">
-              <dt className="text-sm text-fg-muted">Account type</dt>
-              <dd data-testid="account-type" className="text-ui font-semibold">
-                {sifu ? 'Sifu' : 'Student'}
-              </dd>
-            </div>
-            {sifu ? (
-              <div className="grid gap-0.5">
-                <dt className="text-sm text-fg-muted">Shown as</dt>
-                <dd data-testid="shown-as" className="text-ui font-semibold">
-                  {instructorBadge ? <StatusBadge state={instructorBadge} label={overview.instructor.label} /> : overview.instructor.label}
-                </dd>
-              </div>
-            ) : null}
-            <div className="grid gap-0.5">
-              <dt className="text-sm text-fg-muted">Plan</dt>
-              <dd data-testid="plan-name" className="text-ui font-semibold">
-                {overview.plan.name}
-                {overview.until ? <span className="font-normal text-fg-muted"> {untilPlanEnd(overview.until)}</span> : null}
-              </dd>
-            </div>
-          </dl>
-          <p className="mt-3 flex flex-wrap gap-x-5 text-sm">
-            <Link href="/plans" className="link inline-flex min-h-11 items-center">
-              Compare plans
-            </Link>
-            <UnreadLink />
-          </p>
         </header>
-
-        {overview.premium ? <YourPremium links={overview.premium} plan={overview.plan.name} /> : null}
 
         <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-x-14">
           <div className="grid content-start gap-10">
             {pilotOutcome && !offer ? <FormMessage form={PILOT_ACCESS_FORM} state={pilotOutcome} single /> : null}
             {overview.staff ? <StaffWork staff={overview.staff} /> : null}
+            {/* Journey review P2-5 (ADR 0082): what an organization's admin manages comes first. */}
+            <OrganizationsGlance overview={organizations} />
+            {overview.student ? <TrialStatus trials={overview.student.trials} /> : null}
             {overview.nextSteps.length > 0 && !stepsLater ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
-            {!sifu && !staffOnly && overview.hasProfile ? <TeachPrompt /> : null}
+            {!sifu && !staffOnly && overview.hasProfile && !overview.student?.waitingStudentRequests ? <TeachPrompt /> : null}
 
             {staffOnly ? (
               <p data-testid="staff-no-profile" className="max-w-[56ch] text-ui text-fg-muted">
@@ -569,6 +610,46 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
               <StudentLists overview={overview} />
             )}
             {overview.nextSteps.length > 0 && stepsLater ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
+            {/* Journey review P2-8 (ADR 0084): what waits for an answer comes first; the account
+                type and the plan come last. */}
+            <section aria-labelledby="your-account-heading" className="grid content-start gap-3 border-t border-border-subtle pt-6" data-testid="your-account">
+              <h2 id="your-account-heading" className="font-display text-2xl">
+                Your account
+              </h2>
+            <dl className="flex flex-wrap gap-x-10 gap-y-3">
+              {/* P2-5: an organization's admin without a profile is not asked about an account type. */}
+              {overview.organizationOnly ? null : (
+                <div className="grid gap-0.5">
+                  <dt className="text-sm text-fg-muted">Account type</dt>
+                  <dd data-testid="account-type" className="text-ui font-semibold">
+                    {sifu ? 'Sifu' : 'Student'}
+                  </dd>
+                </div>
+              )}
+              {sifu ? (
+                <div className="grid gap-0.5">
+                  <dt className="text-sm text-fg-muted">Shown as</dt>
+                  <dd data-testid="shown-as" className="text-ui font-semibold">
+                    {instructorBadge ? <StatusBadge state={instructorBadge} label={overview.instructor.label} /> : overview.instructor.label}
+                  </dd>
+                </div>
+              ) : null}
+              <div className="grid gap-0.5">
+                <dt className="text-sm text-fg-muted">Plan</dt>
+                <dd data-testid="plan-name" className="text-ui font-semibold">
+                  {overview.plan.name}
+                  {overview.until ? <span className="font-normal text-fg-muted"> {untilPlanEnd(overview.until)}</span> : null}
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-3 flex flex-wrap gap-x-5 text-sm">
+              <Link href="/plans" className="link inline-flex min-h-11 items-center">
+                Compare plans
+              </Link>
+              <UnreadLink />
+            </p>
+              {overview.premium ? <YourPremium links={overview.premium} plan={overview.plan.name} /> : null}
+            </section>
           </div>
           <Notifications allHref="/dashboard/notifications" />
         </div>

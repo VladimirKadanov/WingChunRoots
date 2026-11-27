@@ -44,7 +44,7 @@ export const metadata: Metadata = {
 /** The one line under each section of the overview. Overview itself is this page. */
 const SECTION_LINES: Record<Exclude<SettingsSection, 'overview'>, { title: string; text: string }> = {
   profile: { title: 'Profile', text: 'Your names, how they are written, and whether your profile is public.' },
-  security: { title: 'Sign-in and security', text: 'The address you sign in with, two-factor authentication and backup codes.' },
+  security: { title: 'Sign-in and security', text: 'Your password and sign-in address, two-factor authentication and your other devices.' },
   plan: { title: 'Plan and billing', text: 'Student or Sifu, the plan in effect, and billing and invoices.' },
   notifications: { title: 'Notification settings', text: 'Which notices also come to you by e-mail.' },
   privacy: { title: 'Privacy', text: 'Your consents, what is public, and deleting your account.' },

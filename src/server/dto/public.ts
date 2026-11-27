@@ -69,6 +69,8 @@ export const lineageNodeSchema = z.object({
   displayName: z.string(),
   altNames: z.array(nameSchema),
   lifeStatus: z.string(),
+  /** Journey review 2026-11-26 (P1-3): a historical record of the archive (person.kind). */
+  historical: z.boolean().optional(),
   claimState: claimStateSchema,
   lineageIds: z.array(z.uuid()),
   /** Students along public relationships (v_public_edge only). */
@@ -100,6 +102,14 @@ export const lineageEdgeSchema = z.object({
    * always set it; absent (an older client's fixture) reads as false.
    */
   approvedByUnverifiedInstructor: z.boolean().optional(),
+  /**
+   * Journey review 2026-11-26 (P1-3, ADR 0077): for a link the archive entered, how sure the record
+   * is: documented, a traditional account, or disputed by historians; null for a link a teacher
+   * confirmed. Absent (an older client's fixture) reads as null.
+   */
+  certainty: z.enum(['documented', 'traditional', 'disputed']).nullable().optional(),
+  /** P1-3: the archive's public source line ("According to …"); never the staff-only note. */
+  publicSource: z.string().nullable().optional(),
 });
 export type LineageEdgeDto = z.infer<typeof lineageEdgeSchema>;
 
@@ -177,6 +187,8 @@ export const personProfileSchema = z.object({
   /** City level only, never a point (plan §6.4). */
   cityName: z.string().nullable(),
   bio: z.string().nullable(),
+  /** Journey review 2026-11-26 (P1-3, ADR 0077): the era of a historical record ("d. 1901"); null otherwise. */
+  era: z.string().nullable().optional(),
   /**
    * M10b (DEFAULT D04/D13): a Sifu account's record is an instructor, "verified" once an archivist
    * approved their evidence and "unverified" until then; null for anyone else.

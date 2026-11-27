@@ -27,6 +27,9 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/account/security/actions.ts#verifySessionAction': { auth: ['/two-factor/verify-totp', '/two-factor/verify-backup-code'] },
   'src/app/account/security/actions.ts#newBackupCodesAction': { auth: ['/two-factor/generate-backup-codes'] },
   'src/app/account/security/actions.ts#disableTwoFactorAction': { auth: ['/two-factor/disable'] },
+  'src/app/account/security/actions.ts#changePasswordAction': { auth: ['/change-password'] },
+  'src/app/account/security/actions.ts#changeEmailAction': { auth: ['/change-email'] },
+  'src/app/account/security/actions.ts#signOutOtherDevicesAction': { auth: ['/revoke-other-sessions'] },
   'src/app/onboarding/actions.ts#onboardAction': { rpc: ['consent.record', 'account.onboard', 'account.setType'] },
   'src/app/onboarding/actions.ts#confirmConsentsAction': { rpc: ['consent.record'] },
   // M08: plans, test plans and notifications.
@@ -34,6 +37,8 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/actions.ts#requestPilotAccessAction': { rpc: ['plans.requestPilotAccess'] },
   // Role replay 2026-11-25, P2-12: "My city is missing".
   'src/app/dashboard/places/missing/actions.ts#reportMissingPlaceAction': { rpc: ['places.reportMissing'] },
+  // Journey review 2026-11-26, P2-2: "My lineage is not listed".
+  'src/app/dashboard/lineages/missing/actions.ts#reportMissingLineageAction': { rpc: ['lineage.reportMissing'] },
   'src/app/account/plan/actions.ts#setAccountTypeAction': { rpc: ['account.setType'] },
   // M18: notice e-mail preferences and the one-press unsubscribe.
   'src/app/account/notifications/actions.ts#setNotificationEmailsAction': { rpc: ['notifications.preferences', 'notifications.setPreference'] },
@@ -55,6 +60,7 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/teachers/actions.ts#endTrainingAction': { rpc: ['relationships.end'] },
   'src/app/dashboard/students/requests/actions.ts#approveRequestAction': { rpc: ['relationships.approve'] },
   'src/app/dashboard/students/requests/actions.ts#rejectRequestAction': { rpc: ['relationships.reject'] },
+  'src/app/dashboard/students/requests/actions.ts#startAnsweringAsSifuAction': { rpc: ['account.setType'] },
   // M10a: historical teachers, evidence and the review queue.
   'src/app/dashboard/teachers/historical/actions.ts#requestHistoricalAction': { rpc: ['relationships.requestHistorical'] },
   'src/app/dashboard/teachers/historical/actions.ts#discardEvidenceAction': { rpc: ['evidence.discard'] },
@@ -70,6 +76,7 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/admin/archive/actions.ts#addLinkAction': { rpc: ['archiveEditor.addLink'] },
   'src/app/admin/archive/actions.ts#endLinkAction': { rpc: ['archiveEditor.endLink'] },
   'src/app/admin/archive/actions.ts#editLinkAction': { rpc: ['archiveEditor.editLink'] },
+  'src/app/admin/archive/actions.ts#mergeRecordAction': { rpc: ['archiveEditor.mergeRecord'] },
   // Review 2026-11: a staff take-down of a profile and its restore.
   'src/app/admin/review/actions.ts#takeDownAction': { rpc: ['moderation.takeDown'] },
   'src/app/admin/review/actions.ts#restoreAction': { rpc: ['moderation.restore'] },
@@ -108,6 +115,7 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/organization/actions.ts#requestOrganizationSchoolAction': { rpc: ['organizations.requestSchool'] },
   'src/app/dashboard/organization/actions.ts#endOrganizationSchoolAction': { rpc: ['organizations.endSchoolLink'] },
   'src/app/dashboard/schools/actions.ts#answerOrganizationLinkAction': { rpc: ['organizations.answerSchoolLink'] },
+  'src/app/dashboard/schools/actions.ts#answerInstructorAction': { rpc: ['schools.answerInstructor'] },
   'src/app/dashboard/schools/actions.ts#endOrganizationLinkAction': { rpc: ['organizations.endSchoolLink'] },
   // M21: trial lesson requests and the schedule and fees.
   'src/app/schools/[slug]/trial/actions.ts#requestTrialAction': { rpc: ['trial.request'] },

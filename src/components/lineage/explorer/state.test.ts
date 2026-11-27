@@ -182,7 +182,7 @@ describe('joinToBox (an edge reaches the smaller box of a compact or dot level o
   });
 });
 
-describe('drawnByDefault (plan §4.6: ended training only with show=historical)', () => {
+describe('drawnByDefault (plan §4.6, ADR 0075: a living teacher\'s former students only with show=historical)', () => {
   const ended = [{ from: '1980', to: '1990', ongoing: false, precision: 'year' as const }];
   const graph: LineageGraphDto = {
     focusId: id(2),
@@ -205,6 +205,15 @@ describe('drawnByDefault (plan §4.6: ended training only with show=historical)'
 
   it('keeps everything with show=historical', () => {
     expect(drawnByDefault(graph, true)).toBe(graph);
+  });
+
+  it('keeps ended training with a teacher who has died or whose life status is not recorded', () => {
+    for (const lifeStatus of ['deceased', 'unknown']) {
+      const late = { ...graph, nodes: graph.nodes.map((n) => (n.id === id(1) ? { ...n, lifeStatus } : n)) } as LineageGraphDto;
+      const drawn = drawnByDefault(late, false);
+      expect(drawn.edges).toHaveLength(3);
+      expect(drawn.nodes.map((n) => n.id)).toContain(id(1));
+    }
   });
 });
 

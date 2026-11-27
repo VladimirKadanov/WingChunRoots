@@ -49,7 +49,7 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { cacheLife } from 'next/cache';
 import * as z from 'zod';
 
@@ -226,13 +226,34 @@ export const schoolFieldsInput = z
       error: 'Use digits, spaces and + ( ) - only.',
     }),
     description: optionalText(2000, 'Use at most 2000 characters.'),
+    /** Journey review P2-7 (ADR 0083): street, building, floor; kept only with the exact pin. */
+    addressLine: optionalText(200, 'Use at most 200 characters.'),
     formsTaught: z.array(z.enum(SCHOOL_FORMS, { error: 'Choose forms from the list.' })).max(SCHOOL_FORMS.length).default([]),
-    /** Other instructors: people you confirmed as your students. You are the head instructor. */
+    /** Other instructors: people you confirmed as your students, or members invited before. You are the head instructor. */
     instructorIds: z.array(z.uuid({ error: 'Choose instructors from the list.' })).max(20, { error: 'List at most 20 instructors.' }).default([]),
+    /**
+     * Journey review P3-10 (ADR 0087): any member with a public profile, by its address, asked to
+     * teach here; listed once they accept.
+     */
+    inviteSlug: z
+      .string()
+      .trim()
+      .max(200)
+      .transform((v) => v.replace(/^.*\/people\//, '').replace(/[/?#].*$/, '') || null)
+      .nullable()
+      .default(null),
   })
   .superRefine((input, ctx) => {
     if (input.locationPrivacy === 'exact' && !input.point) ctx.addIssue({ code: 'custom', path: ['point'], message: 'Drop the pin on the map, or give its latitude and longitude.' });
   });
+
+/**
+ * Journey review P2-7 (ADR 0083): the address line a school keeps. A city-only school keeps none,
+ * so a private club's street is never stored where a later switch to the exact pin would publish it.
+ */
+function addressOf(input: { locationPrivacy: (typeof LOCATION_PRIVACIES)[number]; addressLine: string | null }): string | null {
+  return input.locationPrivacy === 'exact' ? input.addressLine : null;
+}
 
 export const schoolCreateInput = schoolFieldsInput.and(z.object({ idempotencyKey }));
 export const schoolUpdateInput = schoolFieldsInput.and(z.object({ id: z.uuid({ error: NO_SCHOOL }) }));
@@ -582,6 +603,7 @@ interface PageRow extends Record<string, unknown> {
   website_url: string | null;
   contact_email: string | null;
   contact_phone: string | null;
+  address_line: string | null;
   forms_taught: string[];
   last_activity_at: Date | string;
 }
@@ -591,7 +613,7 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
   cacheLife('minutes');
   const db = getDb();
   const result = await db.execute<PageRow>(sql`
-    SELECT ${PIN_COLUMNS}, v.description, v.website_url, v.contact_email, v.contact_phone, v.forms_taught, v.last_activity_at
+    SELECT ${PIN_COLUMNS}, v.description, v.website_url, v.contact_email, v.contact_phone, v.address_line, v.forms_taught, v.last_activity_at
       FROM v_public_school v WHERE v.slug = ${slug}`);
   const row = result.rows[0];
   if (!row) {
@@ -653,6 +675,7 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
     websiteUrl: row.website_url,
     contactEmail: row.contact_email,
     contactPhone: row.contact_phone,
+    streetAddress: row.address_line,
     forms: row.forms_taught.filter((f): f is keyof typeof SCHOOL_FORM_LABELS => f in SCHOOL_FORM_LABELS).map((key) => ({ key, label: SCHOOL_FORM_LABELS[key] })),
     lastActivityOn: last.toISOString().slice(0, 10),
     instructors: instructors.map((i) => {
@@ -747,6 +770,7 @@ export interface SchoolEditorView {
     websiteUrl: string | null;
     contactEmail: string | null;
     contactPhone: string | null;
+    addressLine: string | null;
     description: string | null;
     formsTaught: (typeof SCHOOL_FORMS)[number][];
     instructorIds: string[];
@@ -762,8 +786,8 @@ export interface SchoolEditorView {
    * school's own city, then the large cities (LISTED_PLACE_MIN_POPULATION and over), by country.
    */
   places: (PlaceSearchHit & { found: boolean })[];
-  /** The people who can be listed as instructors: you (head instructor) and your confirmed students. */
-  instructorOptions: { id: string; label: string; self: boolean }[];
+  /** The people who can be listed as instructors: you (head instructor), your confirmed students and the members invited (P3-10). */
+  instructorOptions: InstructorOption[];
   forms: { key: string; label: string }[];
   /** The open listing review, or the last decision on it. */
   review: { status: string; statusLabel: string; question: string | null; reason: string | null } | null;
@@ -777,7 +801,16 @@ export interface MySchools {
   accountType: 'student' | 'sifu';
   hasProfile: boolean;
   schools: OwnSchoolItem[];
+  /**
+   * Journey review 2026-11-26 (P1-1): the schools another account listed that name this account's
+   * person as an instructor, whatever the account type. Only the school's own account edits them.
+   */
+  teachingAt: { id: string; slug: string; name: string; city: string; countryCode: string; roleLabel: string; statusLabel: string }[];
+  /** Journey review P3-10 (ADR 0087): schools that ask this account's person to teach there, waiting for an answer. */
+  invitations: { id: string; slug: string; name: string; city: string; countryCode: string }[];
 }
+
+const INSTRUCTOR_ROLE_LABELS = { head_instructor: 'Head instructor', instructor: 'Instructor', assistant: 'Assistant' } as const;
 
 async function ownPersonId(db: Executor, userId: string): Promise<string | null> {
   const [row] = await db
@@ -835,9 +868,31 @@ export async function mySchools(principal: Principal | null): Promise<MySchools>
     db,
     rows.map((r) => r.id),
   );
+  const ownId = await ownPersonId(db, p.user.id);
+  const teaching = ownId
+    ? await db
+        .select({
+          id: school.id,
+          slug: school.slug,
+          name: school.name,
+          city: place.name,
+          countryCode: place.countryCode,
+          status: school.status,
+          activityStage: school.activityStage,
+          role: schoolInstructor.role,
+          invite: schoolInstructor.status,
+        })
+        .from(schoolInstructor)
+        .innerJoin(school, eq(school.id, schoolInstructor.schoolId))
+        .innerJoin(place, eq(place.id, school.placeId))
+        .where(and(eq(schoolInstructor.personId, ownId), isNull(school.deletedAt), ne(school.createdByUserId, p.user.id)))
+        .orderBy(asc(school.name), asc(school.id))
+    : [];
   return {
     accountType: await accountTypeOf(db, p.user.id),
-    hasProfile: (await ownPersonId(db, p.user.id)) !== null,
+    hasProfile: ownId !== null,
+    invitations: teaching.filter((t) => t.invite === 'invited').map((t) => ({ id: t.id, slug: t.slug, name: t.name, city: t.city, countryCode: t.countryCode })),
+    teachingAt: teaching.filter((t) => t.invite !== 'invited').map((t) => ({ id: t.id, slug: t.slug, name: t.name, city: t.city, countryCode: t.countryCode, roleLabel: INSTRUCTOR_ROLE_LABELS[t.role], statusLabel: listingLabel(t.status, t.activityStage) })),
     schools: rows.map((r) => ({
       id: r.id,
       slug: r.slug,
@@ -855,8 +910,11 @@ export async function mySchools(principal: Principal | null): Promise<MySchools>
   };
 }
 
-/** You, then the public people you confirmed as your students (verified or in arbitration). */
-async function instructorOptions(db: Executor, ownId: string): Promise<{ id: string; label: string; self: boolean }[]> {
+/**
+ * You, then the public people you confirmed as your students (verified or in arbitration), then the
+ * members already invited to this school (P3-10), each with whether they accepted.
+ */
+async function instructorOptions(db: Executor, ownId: string, schoolId: string | null = null): Promise<InstructorOption[]> {
   const result = await db.execute<{ id: string; display_name: string }>(sql`
     SELECT DISTINCT p.id, p.display_name
       FROM teaching_relationship r
@@ -867,7 +925,30 @@ async function instructorOptions(db: Executor, ownId: string): Promise<{ id: str
      LIMIT 200`);
   const [own] = await db.execute<{ display_name: string | null }>(sql`
     SELECT (SELECT pn.value FROM person_name pn WHERE pn.person_id = ${ownId}::uuid AND pn.is_primary LIMIT 1) AS display_name`).then((r) => r.rows);
-  return [{ id: ownId, label: `${own?.display_name ?? 'You'} (you)`, self: true }, ...result.rows.map((r) => ({ id: r.id, label: r.display_name, self: false }))];
+  const students = result.rows.map((r) => ({ id: r.id, label: r.display_name, self: false, student: true, invite: null }));
+  const studentIds = new Set(students.map((r) => r.id));
+  const invited = schoolId
+    ? (
+        await db.execute<{ id: string; display_name: string; status: 'invited' | 'accepted' }>(sql`
+          SELECT p.id, p.display_name, si.status FROM school_instructor si JOIN v_public_person p ON p.id = si.person_id
+           WHERE si.school_id = ${schoolId}::uuid AND si.status IN ('invited', 'accepted') ORDER BY p.display_name, p.id LIMIT 20`)
+      ).rows.filter((r) => !studentIds.has(r.id))
+    : [];
+  return [
+    { id: ownId, label: `${own?.display_name ?? 'You'} (you)`, self: true, student: false, invite: null },
+    ...students,
+    ...invited.map((r) => ({ id: r.id, label: r.display_name, self: false, student: false, invite: r.status })),
+  ];
+}
+
+export interface InstructorOption {
+  id: string;
+  label: string;
+  self: boolean;
+  /** A confirmed student of yours: listed at once. */
+  student: boolean;
+  /** P3-10: a member invited to this school, waiting (invited) or listed (accepted). */
+  invite: 'invited' | 'accepted' | null;
 }
 
 /** The upgrade prompt for the public pin (plan §5.6), only at the real limit: a plan without school_map. */
@@ -903,6 +984,7 @@ interface OwnedRow {
   websiteUrl: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
+  addressLine: string | null;
   description: string | null;
   formsTaught: (typeof SCHOOL_FORMS)[number][];
   lastActivityAt: Date;
@@ -923,6 +1005,7 @@ async function ownedSchool(db: Executor, userId: string, id: string, lock = fals
       websiteUrl: school.websiteUrl,
       contactEmail: school.contactEmail,
       contactPhone: school.contactPhone,
+      addressLine: school.addressLine,
       description: school.description,
       formsTaught: school.formsTaught,
       lastActivityAt: school.lastActivityAt,
@@ -996,7 +1079,7 @@ export async function schoolEditor(principal: Principal | null, raw: z.input<typ
   const parsed = schoolEditorInput.safeParse(raw);
   if (!parsed.success) throw notFound();
   const forms = SCHOOL_FORMS.map((key) => ({ key, label: SCHOOL_FORM_LABELS[key] }));
-  const options = await instructorOptions(db, ownId);
+  const options = await instructorOptions(db, ownId, parsed.data.id ?? null);
   const offer = await pinOffer(db, p.user.id);
   if (!parsed.data.id) return { school: null, places: await editorPlaces(db, null, parsed.data.city), instructorOptions: options, forms, review: null, ...offer };
   const row = await ownedSchool(db, p.user.id, parsed.data.id);
@@ -1024,6 +1107,7 @@ export async function schoolEditor(principal: Principal | null, raw: z.input<typ
       websiteUrl: row.websiteUrl,
       contactEmail: row.contactEmail,
       contactPhone: row.contactPhone,
+      addressLine: row.addressLine,
       description: row.description,
       formsTaught: row.formsTaught,
       instructorIds: instructors.map((i) => i.id).filter((id) => id !== ownId),
@@ -1042,7 +1126,12 @@ export async function schoolEditor(principal: Principal | null, raw: z.input<typ
 }
 
 /** The checks every save makes: a Sifu with a profile, a city, a pin near it, instructors from the list. */
-async function checkFields(db: Executor, userId: string, input: z.output<typeof schoolFieldsInput>): Promise<{ ownId: string; instructorIds: string[] }> {
+async function checkFields(
+  db: Executor,
+  userId: string,
+  input: z.output<typeof schoolFieldsInput>,
+  schoolId: string | null = null,
+): Promise<{ ownId: string; instructorIds: string[]; studentIds: Set<string> }> {
   if ((await accountTypeOf(db, userId)) !== 'sifu') {
     throw new ServiceError('FORBIDDEN', 'Schools are listed from a Sifu account. Change your account type in Settings, under Plan and billing.');
   }
@@ -1059,12 +1148,27 @@ async function checkFields(db: Executor, userId: string, input: z.output<typeof 
     }
   }
   const others = [...new Set(input.instructorIds.filter((id) => id !== ownId))];
+  const options = await instructorOptions(db, ownId, schoolId);
   if (others.length > 0) {
-    const allowed = new Set((await instructorOptions(db, ownId)).map((o) => o.id));
+    const allowed = new Set(options.map((o) => o.id));
     if (others.some((id) => !allowed.has(id))) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { instructorIds: 'Choose instructors from the list: people you confirmed as your students.' });
   }
-  return { ownId, instructorIds: others };
+  if (input.inviteSlug) {
+    // P3-10 (ADR 0087): a member with their own public profile, who can accept.
+    const [found] = (
+      await db.execute<{ id: string }>(sql`
+        SELECT v.id FROM v_public_person v JOIN person p ON p.id = v.id
+         WHERE v.slug = ${input.inviteSlug} AND p.stewardship = 'self' AND p.claimed_by_user_id IS NOT NULL`)
+    ).rows;
+    if (!found) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { inviteSlug: INVITE_NOT_FOUND });
+    if (found.id === ownId) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { inviteSlug: 'You are the head instructor already.' });
+    if (!others.includes(found.id)) others.push(found.id);
+    if (others.length > 20) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { instructorIds: 'List at most 20 instructors.' });
+  }
+  return { ownId, instructorIds: others, studentIds: new Set(options.filter((o) => o.student).map((o) => o.id)) };
 }
+
+export const INVITE_NOT_FOUND = 'No member with a public profile has this address. Copy the part after /people/ from their profile.';
 
 /** Writes the location: public_point (the exact point, or the city centroid) and the private point. */
 async function writeLocation(db: Executor, schoolId: string, input: z.output<typeof schoolFieldsInput>): Promise<void> {
@@ -1082,12 +1186,86 @@ async function writeLocation(db: Executor, schoolId: string, input: z.output<typ
   }
 }
 
-async function writeInstructors(db: Executor, schoolId: string, ownId: string, others: readonly string[]): Promise<void> {
+/**
+ * The school's instructors: you as head, your confirmed students listed, anyone else invited until
+ * they accept (an acceptance is kept across edits). Returns the people newly invited (P3-10).
+ */
+async function writeInstructors(db: Executor, schoolId: string, ownId: string, others: readonly string[], studentIds: ReadonlySet<string>): Promise<string[]> {
+  const before = new Map(
+    (await db.select({ id: schoolInstructor.personId, status: schoolInstructor.status }).from(schoolInstructor).where(eq(schoolInstructor.schoolId, schoolId))).map((r) => [r.id, r.status]),
+  );
+  const status = (id: string) => (before.get(id) === 'accepted' ? ('accepted' as const) : studentIds.has(id) ? ('listed' as const) : ('invited' as const));
   await db.delete(schoolInstructor).where(eq(schoolInstructor.schoolId, schoolId));
   await db.insert(schoolInstructor).values([
-    { schoolId, personId: ownId, role: 'head_instructor' as const },
-    ...others.map((personId) => ({ schoolId, personId, role: 'instructor' as const })),
+    { schoolId, personId: ownId, role: 'head_instructor' as const, status: 'listed' as const },
+    ...others.map((personId) => ({ schoolId, personId, role: 'instructor' as const, status: status(personId) })),
   ]);
+  return others.filter((id) => status(id) === 'invited' && before.get(id) !== 'invited');
+}
+
+/** P3-10: each newly invited member is told (in the Schools category). */
+async function tellInvited(tx: Transaction, schoolId: string, name: string, invited: readonly string[]): Promise<void> {
+  if (invited.length === 0) return;
+  const invitedAt = Date.now();
+  const accounts = await tx
+    .select({ userId: person.claimedByUserId })
+    .from(person)
+    .where(and(inArray(person.id, [...invited]), isNull(person.deletedAt)));
+  for (const a of accounts) {
+    // One notice per invitation: a member who declined and is invited again hears of it again.
+    if (a.userId) await notify(tx, a.userId, 'school.instructor-invited', { schoolId, name }, { key: `school.instructor-invited:${schoolId}:${a.userId}:${invitedAt}` });
+  }
+}
+
+export const answerInstructorInput = z.object({ schoolId: z.uuid({ error: 'No such invitation.' }), accept: z.boolean() });
+
+/**
+ * schools.answerInstructor (journey review P3-10, ADR 0087): the invited member accepts (listed on
+ * the school's page from now) or declines (taken off the school). Only their own invitation; an
+ * answer twice changes nothing. Audited; the school's public page follows.
+ */
+export async function answerInstructorInvitation(
+  principal: Principal | null,
+  raw: z.input<typeof answerInstructorInput>,
+  meta: RequestMeta,
+): Promise<{ status: 'accepted' | 'declined'; replayed: boolean }> {
+  const p = requireUser(principal);
+  const parsed = answerInstructorInput.safeParse(raw);
+  if (!parsed.success) throw notFound();
+  const input = parsed.data;
+  const outcome = await getDb().transaction(async (tx) => {
+    const ownId = await ownPersonId(tx, p.user.id);
+    if (!ownId) throw notFound();
+    const [row] = await tx
+      .select({ status: schoolInstructor.status })
+      .from(schoolInstructor)
+      .innerJoin(school, and(eq(school.id, schoolInstructor.schoolId), isNull(school.deletedAt)))
+      .where(and(eq(schoolInstructor.schoolId, input.schoolId), eq(schoolInstructor.personId, ownId)))
+      .for('update');
+    if (!row) {
+      if (!input.accept) return { status: 'declined' as const, replayed: true, changed: false };
+      throw notFound();
+    }
+    if (row.status !== 'invited') {
+      if (input.accept) return { status: 'accepted' as const, replayed: true, changed: false };
+      throw new ServiceError('CONFLICT', 'You are listed at this school already. Its owner takes you off the list.');
+    }
+    if (input.accept) await tx.update(schoolInstructor).set({ status: 'accepted', updatedAt: new Date() }).where(and(eq(schoolInstructor.schoolId, input.schoolId), eq(schoolInstructor.personId, ownId)));
+    else await tx.delete(schoolInstructor).where(and(eq(schoolInstructor.schoolId, input.schoolId), eq(schoolInstructor.personId, ownId)));
+    await writeAudit(tx, {
+      action: input.accept ? 'school.instructor_accept' : 'school.instructor_decline',
+      actorUserId: p.user.id,
+      actorRole: p.user.role,
+      subjectType: 'school',
+      subjectId: input.schoolId,
+      after: { personId: ownId },
+      requestId: meta.requestId,
+      ipHmac: meta.ipHmac,
+    });
+    return { status: input.accept ? ('accepted' as const) : ('declined' as const), replayed: false, changed: true };
+  });
+  if (outcome.changed) invalidatePublic([SCHOOLS_TAG], 'procedure');
+  return { status: outcome.status, replayed: outcome.replayed };
 }
 
 /** A slug from the name: Latin letters and digits, then a random suffix (any script is a valid name). */
@@ -1128,7 +1306,7 @@ export async function createSchool(principal: Principal | null, raw: z.input<typ
       const [row] = await tx.select({ id: school.id, slug: school.slug, status: school.status }).from(school).where(eq(school.id, earlier.id));
       if (row) return { ...row, replayed: true };
     }
-    const { ownId, instructorIds } = await checkFields(tx, p.user.id, input);
+    const { ownId, instructorIds, studentIds } = await checkFields(tx, p.user.id, input);
     // The slug's random suffix can repeat one already taken (3 bytes; the authorization matrix met it
     // in CI): draw again instead of failing the save.
     let created: { id: string; slug: string; status: (typeof school.$inferSelect)['status'] } | undefined;
@@ -1145,6 +1323,7 @@ export async function createSchool(principal: Principal | null, raw: z.input<typ
           websiteUrl: input.websiteUrl,
           contactEmail: input.contactEmail,
           contactPhone: input.contactPhone,
+          addressLine: addressOf(input),
           description: input.description,
           formsTaught: input.formsTaught,
           createdByUserId: p.user.id,
@@ -1154,7 +1333,7 @@ export async function createSchool(principal: Principal | null, raw: z.input<typ
     }
     if (!created) throw new Error('school.create: no free slug after 5 draws');
     await writeLocation(tx, created.id, input);
-    await writeInstructors(tx, created.id, ownId, instructorIds);
+    await tellInvited(tx, created.id, input.name, await writeInstructors(tx, created.id, ownId, instructorIds, studentIds));
     await writeAudit(tx, {
       action: 'school.create',
       actorUserId: p.user.id,
@@ -1202,7 +1381,7 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
     const row = await ownedSchool(tx, p.user.id, input.id, true);
     if (!row) throw notFound();
     if (!EDITABLE.includes(row.status)) throw new ServiceError('CONFLICT', 'A moderator hid this school or it is archived: it cannot be edited.');
-    const { ownId, instructorIds } = await checkFields(tx, p.user.id, input);
+    const { ownId, instructorIds, studentIds } = await checkFields(tx, p.user.id, input, row.id);
     const before = await tx.execute<{ lat: number | null; lng: number | null; instructors: string[] }>(sql`
       SELECT (SELECT ST_Y(exact_point::geometry) FROM school_private_location WHERE school_id = ${row.id}::uuid) AS lat,
              (SELECT ST_X(exact_point::geometry) FROM school_private_location WHERE school_id = ${row.id}::uuid) AS lng,
@@ -1217,6 +1396,7 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
     if (row.websiteUrl !== input.websiteUrl) changed.push('websiteUrl');
     if (row.contactEmail !== input.contactEmail || row.contactPhone !== input.contactPhone) changed.push('contact');
     if (row.description !== input.description) changed.push('description');
+    if (row.addressLine !== addressOf(input)) changed.push('addressLine');
     if ([...row.formsTaught].sort().join() !== [...input.formsTaught].sort().join()) changed.push('formsTaught');
     if ([...was.instructors].sort().join() !== [ownId, ...instructorIds].sort().join()) changed.push('instructors');
     if (changed.length === 0) return { saved: { id: row.id, slug: row.slug, status: row.status, replayed: false }, publicChange: false };
@@ -1230,6 +1410,7 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
         websiteUrl: input.websiteUrl,
         contactEmail: input.contactEmail,
         contactPhone: input.contactPhone,
+        addressLine: addressOf(input),
         description: input.description,
         formsTaught: input.formsTaught,
         lastActivityAt: now,
@@ -1240,7 +1421,7 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
       })
       .where(eq(school.id, row.id));
     await writeLocation(tx, row.id, input);
-    await writeInstructors(tx, row.id, ownId, instructorIds);
+    await tellInvited(tx, row.id, input.name, await writeInstructors(tx, row.id, ownId, instructorIds, studentIds));
     const reReview =
       row.status === 'active' && changed.some((c) => (RE_REVIEWED_CHANGES as readonly string[]).includes(c) && (c !== 'point' || input.locationPrivacy === 'exact'))
         ? await openReReview(tx, row.id, p)

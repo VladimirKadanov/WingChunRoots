@@ -45,7 +45,7 @@ import { EXPLORE_START_TAG, invalidatePublic, lineageTag, personTag } from '../c
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
 import { evidenceLink, lineage, person, personBio, personName, teachingRelationship, trainingPeriod } from '../db/schema';
-import { EVIDENCE_MAX_FILES_PER_CASE, PUBLIC_RELATIONSHIP_STATUSES } from '../db/schema/common';
+import { EVIDENCE_MAX_FILES_PER_CASE, LINK_CERTAINTIES, PERSON_ERA_MAX, PUBLIC_RELATIONSHIP_STATUSES, PUBLIC_SOURCE_MAX } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import { enqueue, type Transaction } from '../jobs/outbox';
 import { QUEUE } from '../jobs/queues';
@@ -80,6 +80,7 @@ const MEMBER_LINK = 'This is a member’s own record. Their teachers confirm the
 const NO_LINEAGE = 'No such lineage.';
 const NO_RECORD = 'No record has this address. Use the search, or copy the part after /people/ in the profile’s address.';
 const CHECK = 'Check the highlighted fields.';
+export const COMMON_ROOTS_LINK = 'This link is kept in the common roots already. Every lineage shares it from there; it is not recorded twice.';
 
 // --- Input -------------------------------------------------------------------------------------
 
@@ -152,6 +153,10 @@ export const updateLineageInput = z
     name: oneLine(LINEAGE_NAME_MAX),
     description: text(LINEAGE_DESCRIPTION_MAX),
     rootSlug: slugRef,
+    /** Journey review 2026-11-26 (P1-4, ADR 0078): draw this lineage on the home page (at most one). Absent: unchanged. */
+    featuredOnHome: z.boolean().optional(),
+    /** Journey review P2-10 (ADR 0086): this lineage holds the common roots (at most one). Absent: unchanged. */
+    commonRoots: z.boolean().optional(),
     reason: text(ARCHIVE_REASON_MAX),
   })
   .superRefine((input, ctx) => {
@@ -177,6 +182,8 @@ export const createRecordInput = z
     /** Deceased, or not known (treated as living and kept hidden until a death is established). */
     lifeStatus: z.enum(['deceased', 'unknown'], { error: 'Choose whether the person has died or it is not known.' }),
     bio: text(BIO_MAX_LENGTH),
+    /** Journey review 2026-11-26 (P1-3, ADR 0077): the era as the public pages say it ("d. 1901"). Optional. */
+    era: text(PERSON_ERA_MAX),
     reason: text(ARCHIVE_REASON_MAX),
     /** Optional: files this staff member uploaded for the record, linked to it. */
     evidenceIds: z.array(z.uuid({ error: ARCHIVAL_EVIDENCE_MESSAGE })).max(EVIDENCE_MAX_FILES_PER_CASE).default([]),
@@ -195,6 +202,7 @@ export const createRecordInput = z
     if (input.jyutping && (input.jyutping.length > NAME_MAX_LENGTH || !isJyutping(input.jyutping))) issue('jyutping', 'Write Jyutping in lower case, with optional tone numbers: sou1 zuk1 cing4.');
     if (input.pinyin && (input.pinyin.length > NAME_MAX_LENGTH || !isPinyin(input.pinyin))) issue('pinyin', 'Write pinyin in Latin letters, with tone marks or tone numbers.');
     if (input.bio && input.bio.length > BIO_MAX_LENGTH) issue('bio', `Use at most ${BIO_MAX_LENGTH} characters.`);
+    if (input.era && input.era.length > PERSON_ERA_MAX) issue('era', `Use at most ${PERSON_ERA_MAX} characters.`);
     checkReason(input.reason, issue);
   });
 export type CreateRecordInput = z.input<typeof createRecordInput>;
@@ -209,6 +217,10 @@ export const addLinkInput = z
     toYear: year,
     /** Required: where the link comes from (a book and page, an interview, a certificate). Staff only. */
     source: text(SOURCE_MAX),
+    /** Journey review 2026-11-26 (P1-3, ADR 0077): how sure the record is; shown in words and as the line. */
+    certainty: z.enum(LINK_CERTAINTIES, { error: 'Choose how sure the record is.' }).default('documented'),
+    /** P1-3: a short public source line ("According to …"); optional. The source above stays staff-only. */
+    publicSource: text(PUBLIC_SOURCE_MAX),
     evidenceIds: z.array(z.uuid({ error: ARCHIVAL_EVIDENCE_MESSAGE })).max(EVIDENCE_MAX_FILES_PER_CASE).default([]),
     idempotencyKey,
   })
@@ -222,7 +234,7 @@ export const addLinkInput = z
 export type AddLinkInput = z.input<typeof addLinkInput>;
 
 /** The years and the source of a link, as addLink and editLink take them. */
-function checkYearsAndSource(input: { fromYear: number | null; toYear: number | null; source: string | null }, issue: (path: string, message: string) => void) {
+function checkYearsAndSource(input: { fromYear: number | null; toYear: number | null; source: string | null; publicSource?: string | null }, issue: (path: string, message: string) => void) {
   const thisYear = new Date().getUTCFullYear();
   for (const [field, value] of [
     ['fromYear', input.fromYear],
@@ -235,6 +247,7 @@ function checkYearsAndSource(input: { fromYear: number | null; toYear: number | 
   if (input.fromYear !== null && input.toYear !== null && input.toYear < input.fromYear) issue('toYear', 'The end can’t be before the start.');
   if (!input.source) issue('source', 'Write the source: where this training is recorded.');
   else if (input.source.length > SOURCE_MAX) issue('source', `Use at most ${SOURCE_MAX} characters.`);
+  if (input.publicSource && input.publicSource.length > PUBLIC_SOURCE_MAX) issue('publicSource', `Use at most ${PUBLIC_SOURCE_MAX} characters.`);
 }
 
 export const editLinkInput = z
@@ -245,6 +258,10 @@ export const editLinkInput = z
     toYear: year,
     /** Required, as for a new link. Staff only. */
     source: text(SOURCE_MAX),
+    /** Journey review 2026-11-26 (P1-3, ADR 0077): how sure the record is; shown in words and as the line. */
+    certainty: z.enum(LINK_CERTAINTIES, { error: 'Choose how sure the record is.' }).default('documented'),
+    /** P1-3: a short public source line ("According to …"); optional. The source above stays staff-only. */
+    publicSource: text(PUBLIC_SOURCE_MAX),
     reason: text(ARCHIVE_REASON_MAX),
   })
   .superRefine((input, ctx) => {
@@ -298,6 +315,9 @@ export interface ArchiveLinkView {
   fromYear: number | null;
   toYear: number | null;
   source: string | null;
+  /** P1-3 (ADR 0077): how sure the record is (null: a link a teacher confirmed), and the public source line. */
+  certainty: 'documented' | 'traditional' | 'disputed' | null;
+  publicSource: string | null;
   /** How it was established: entered or confirmed by staff, or approved by the teacher. */
   path: 'committee_review' | 'teacher_approval';
   /** This staff member may end it here (a verified link between two records kept by the platform). */
@@ -320,6 +340,10 @@ export interface ArchiveLineageView {
   description: string | null;
   root: ArchiveRecordRef | null;
   listed: boolean;
+  /** P1-4 (ADR 0078): the lineage the home page draws. */
+  featuredOnHome: boolean;
+  /** P2-10 (ADR 0086): the shared teachers before the branches split. */
+  commonRoots: boolean;
   links: ArchiveLinkView[];
 }
 
@@ -500,7 +524,7 @@ export async function getArchiveLineage(principal: Principal | null, raw: z.inpu
   if (!parsed.success) throw new ServiceError('NOT_FOUND', NO_LINEAGE);
   const db = getDb();
   const [row] = await db
-    .select({ id: lineage.id, slug: lineage.slug, name: lineage.name, description: lineage.description, rootPersonId: lineage.rootPersonId })
+    .select({ id: lineage.id, slug: lineage.slug, name: lineage.name, description: lineage.description, rootPersonId: lineage.rootPersonId, featuredOnHome: lineage.featuredOnHome, commonRoots: lineage.commonRoots })
     .from(lineage)
     .where(and(eq(lineage.slug, parsed.data.slug), isNull(lineage.deletedAt)));
   if (!row) throw new ServiceError('NOT_FOUND', NO_LINEAGE);
@@ -512,6 +536,8 @@ export async function getArchiveLineage(principal: Principal | null, raw: z.inpu
       status: teachingRelationship.status,
       path: teachingRelationship.verificationPath,
       source: teachingRelationship.sourceNote,
+      certainty: teachingRelationship.certainty,
+      publicSource: teachingRelationship.publicSource,
       startsOn: sql<string | null>`(SELECT min(tp.starts_on)::text FROM training_period tp WHERE tp.relationship_id = teaching_relationship.id)`,
       endsOn: sql<string | null>`(SELECT max(tp.ends_on)::text FROM training_period tp WHERE tp.relationship_id = teaching_relationship.id)`,
     })
@@ -528,6 +554,8 @@ export async function getArchiveLineage(principal: Principal | null, raw: z.inpu
     description: row.description,
     root: row.rootPersonId ? (refs.get(row.rootPersonId) ?? null) : null,
     listed: listed.has(row.id),
+    featuredOnHome: row.featuredOnHome,
+    commonRoots: row.commonRoots,
     links: links
       .filter((l) => refs.has(l.teacher) && refs.has(l.student))
       .map((l) => {
@@ -543,6 +571,8 @@ export async function getArchiveLineage(principal: Principal | null, raw: z.inpu
           fromYear: yearOf(l.startsOn),
           toYear: yearOf(l.endsOn),
           source: l.source,
+          certainty: l.certainty,
+          publicSource: l.publicSource,
           path: l.path,
           endable: archiveKeepsLink({ status, path: l.path, teacher, student }),
         };
@@ -613,7 +643,7 @@ export async function updateArchiveLineage(principal: Principal | null, raw: Upd
   const outcome = await getDb().transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('lineage.create'))`);
     const [row] = await tx
-      .select({ id: lineage.id, slug: lineage.slug, name: lineage.name, description: lineage.description, rootPersonId: lineage.rootPersonId })
+      .select({ id: lineage.id, slug: lineage.slug, name: lineage.name, description: lineage.description, rootPersonId: lineage.rootPersonId, featuredOnHome: lineage.featuredOnHome, commonRoots: lineage.commonRoots })
       .from(lineage)
       .where(and(eq(lineage.id, input.lineageId), isNull(lineage.deletedAt)))
       .for('update');
@@ -623,27 +653,39 @@ export async function updateArchiveLineage(principal: Principal | null, raw: Upd
     if (root.error) fields.rootSlug = root.error;
     if (await nameTaken(tx, input.name!, row.id)) fields.name = 'Another lineage has this name.';
     if (Object.keys(fields).length > 0) throw new ServiceError('BAD_REQUEST', CHECK, fields);
-    const changed = { name: row.name !== input.name, description: row.description !== input.description, root: row.rootPersonId !== root.id };
-    if (!changed.name && !changed.description && !changed.root) return { slug: row.slug, changed: false, tags: [] as string[] };
-    await tx.update(lineage).set({ name: input.name!, description: input.description, rootPersonId: root.id, updatedAt: new Date() }).where(eq(lineage.id, row.id));
+    const featured = input.featuredOnHome ?? row.featuredOnHome;
+    const common = input.commonRoots ?? row.commonRoots;
+    const changed = {
+      name: row.name !== input.name,
+      description: row.description !== input.description,
+      root: row.rootPersonId !== root.id,
+      featuredOnHome: row.featuredOnHome !== featured,
+      commonRoots: row.commonRoots !== common,
+    };
+    if (!changed.name && !changed.description && !changed.root && !changed.featuredOnHome && !changed.commonRoots) return { slug: row.slug, changed: false, tags: [] as string[] };
+    // P1-4 (ADR 0078): one lineage on the home page; choosing this one takes it from any other.
+    if (changed.featuredOnHome && featured) await tx.update(lineage).set({ featuredOnHome: false }).where(eq(lineage.featuredOnHome, true));
+    // P2-10 (ADR 0086): one lineage holds the common roots; choosing this one takes it from any other.
+    const previousCommon = changed.commonRoots && common ? await tx.update(lineage).set({ commonRoots: false }).where(eq(lineage.commonRoots, true)).returning({ id: lineage.id }) : [];
+    await tx.update(lineage).set({ name: input.name!, description: input.description, rootPersonId: root.id, featuredOnHome: featured, commonRoots: common, updatedAt: new Date() }).where(eq(lineage.id, row.id));
     await writeAudit(tx, {
       action: 'lineage.update',
       actorUserId: p.user.id,
       actorRole: p.user.role,
       subjectType: 'lineage',
       subjectId: row.id,
-      before: { rootPersonId: row.rootPersonId },
-      after: { changed, rootPersonId: root.id, description: input.description ? { length: input.description.length } : null },
+      before: { rootPersonId: row.rootPersonId, featuredOnHome: row.featuredOnHome, commonRoots: row.commonRoots },
+      after: { changed, rootPersonId: root.id, featuredOnHome: featured, commonRoots: common, description: input.description ? { length: input.description.length } : null },
       reason: input.reason,
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
     // The depth below the root and the explorer's list of lineages follow the root (lineage_membership).
     if (changed.root) await enqueue(tx, QUEUE.lineageRecompute, { lineageIds: [row.id] });
-    const tags = [lineageTag(row.id), EXPLORE_START_TAG];
+    const tags = [lineageTag(row.id), EXPLORE_START_TAG, ...previousCommon.map((l) => lineageTag(l.id))];
     if (row.rootPersonId) tags.push(personTag(row.rootPersonId), lineageTag(row.rootPersonId));
     if (root.id) tags.push(personTag(root.id), lineageTag(root.id));
-    if (changed.name) {
+    if (changed.name || changed.commonRoots) {
       // Every profile that names the lineage on one of its links.
       const members = await tx
         .select({ t: teachingRelationship.teacherPersonId, s: teachingRelationship.studentPersonId })
@@ -674,7 +716,7 @@ export async function createArchiveRecord(principal: Principal | null, raw: Crea
     const id = uuidv7();
     const slug = slugFromName(input.primaryName!, randomBytes(4).toString('hex'));
     // DEFAULT D03: involved_only until a link is verified; publication.ts decides then.
-    await tx.insert(person).values({ id, slug, kind: 'historical', lifeStatus: input.lifeStatus, stewardship: 'platform', visibility: 'involved_only', createdByUserId: p.user.id });
+    await tx.insert(person).values({ id, slug, kind: 'historical', lifeStatus: input.lifeStatus, stewardship: 'platform', visibility: 'involved_only', createdByUserId: p.user.id, eraText: input.era });
     const script = input.originalName && input.originalLang ? originalScript(input.originalLang)! : null;
     const names: (typeof personName.$inferInsert)[] = [{ personId: id, kind: 'name', value: input.primaryName!, script: 'Latn', lang: 'und-Latn', isPrimary: true, sortOrder: 0 }];
     if (script && input.originalName) names.push({ personId: id, kind: 'name', value: input.originalName, script: script.script, lang: script.lang, sortOrder: 1 });
@@ -755,6 +797,19 @@ export async function addArchiveLink(principal: Principal | null, raw: AddLinkIn
           ),
         );
       if (duplicate) throw new ServiceError('CONFLICT', 'This link is already recorded in this lineage.', { studentSlug: 'This link is already recorded in this lineage.' });
+      // Journey review P2-10 (ADR 0086): a link of the common roots is kept once, there.
+      const [shared] = await tx
+        .select({ id: teachingRelationship.id })
+        .from(teachingRelationship)
+        .innerJoin(lineage, and(eq(lineage.id, teachingRelationship.lineageId), eq(lineage.commonRoots, true), isNull(lineage.deletedAt), ne(lineage.id, line.id)))
+        .where(
+          and(
+            eq(teachingRelationship.teacherPersonId, teacher.id),
+            eq(teachingRelationship.studentPersonId, student.id),
+            inArray(teachingRelationship.status, ['pending_teacher', 'awaiting_claim', 'under_review', 'verified', 'in_arbitration']),
+          ),
+        );
+      if (shared) throw new ServiceError('CONFLICT', COMMON_ROOTS_LINK, { studentSlug: COMMON_ROOTS_LINK });
       if (await closesCycle(tx, teacher.id, student.id)) throw new ServiceError('CONFLICT', CYCLE_MESSAGE, { studentSlug: CYCLE_MESSAGE });
 
       const id = uuidv7();
@@ -768,6 +823,8 @@ export async function addArchiveLink(principal: Principal | null, raw: AddLinkIn
         verificationPath: 'committee_review',
         requestedByUserId: p.user.id,
         sourceNote: input.source,
+        certainty: input.certainty,
+        publicSource: input.publicSource,
       });
       const fromYear = input.fromYear;
       const toYear = input.toYear;
@@ -798,6 +855,8 @@ export async function addArchiveLink(principal: Principal | null, raw: AddLinkIn
           studentPersonId: student.id,
           lineageId: line.id,
           years: { from: fromYear, to: toYear },
+          certainty: input.certainty,
+          publicSource: input.publicSource ? { length: input.publicSource.length } : null,
           source: { length: input.source!.length },
           ...verified,
           shown,
@@ -900,7 +959,10 @@ export async function editArchiveLink(principal: Principal | null, raw: EditLink
     const link = { status: row.status, path: row.verificationPath, teacher: { stewardship: stewardship(row.teacherPersonId) }, student: { stewardship: stewardship(row.studentPersonId) } };
     if (link.path !== 'committee_review' || link.teacher.stewardship === 'self' || link.student.stewardship === 'self') throw new ServiceError('CONFLICT', MEMBER_LINK_EDIT);
     if (!archiveKeepsLink(link)) throw new ServiceError('CONFLICT', NOT_VERIFIED_EDIT);
-    const [{ sourceNote } = { sourceNote: null }] = await tx.select({ sourceNote: teachingRelationship.sourceNote }).from(teachingRelationship).where(eq(teachingRelationship.id, row.id));
+    const [{ sourceNote, certainty, publicSource } = { sourceNote: null, certainty: null, publicSource: null }] = await tx
+      .select({ sourceNote: teachingRelationship.sourceNote, certainty: teachingRelationship.certainty, publicSource: teachingRelationship.publicSource })
+      .from(teachingRelationship)
+      .where(eq(teachingRelationship.id, row.id));
 
     const periods = await tx
       .select({ startsOn: trainingPeriod.startsOn, endsOn: trainingPeriod.endsOn, schoolId: trainingPeriod.schoolId })
@@ -911,8 +973,13 @@ export async function editArchiveLink(principal: Principal | null, raw: EditLink
     const endsOn = periods.map((x) => x.endsOn).filter((d): d is string => d !== null).sort();
     const before = { from: yearOf(starts[0] ?? null), to: yearOf(endsOn.at(-1) ?? null) };
     const after = { from: input.fromYear, to: input.toYear };
-    const changed = { years: before.from !== after.from || before.to !== after.to, source: sourceNote !== input.source };
-    if (!changed.years && !changed.source) return { changed: false, tags: [] as string[] };
+    const changed = {
+      years: before.from !== after.from || before.to !== after.to,
+      source: sourceNote !== input.source,
+      certainty: (certainty ?? 'documented') !== input.certainty,
+      publicSource: publicSource !== input.publicSource,
+    };
+    if (!changed.years && !changed.source && !changed.certainty && !changed.publicSource) return { changed: false, tags: [] as string[] };
 
     const now = new Date();
     if (changed.years) {
@@ -923,7 +990,7 @@ export async function editArchiveLink(principal: Principal | null, raw: EditLink
           : { startsOn: `${after.from}-01-01`, endsOn: after.to === null ? null : `${after.to}-01-01`, precision: 'year', ongoing: false, schoolId, sortOrder: 0 },
       ]);
     }
-    await tx.update(teachingRelationship).set({ sourceNote: input.source, updatedAt: now }).where(eq(teachingRelationship.id, row.id));
+    await tx.update(teachingRelationship).set({ sourceNote: input.source, certainty: input.certainty, publicSource: input.publicSource, updatedAt: now }).where(eq(teachingRelationship.id, row.id));
     // Only the lengths of the source go to the audit row, never its text.
     const sourceLength = input.source?.length ?? 0;
     await writeAudit(tx, {
@@ -933,7 +1000,7 @@ export async function editArchiveLink(principal: Principal | null, raw: EditLink
       subjectType: 'teaching_relationship',
       subjectId: row.id,
       before: { years: before, periods: periods.length, source: sourceNote ? { length: sourceNote.length } : null },
-      after: { archiveEditor: true, status: row.status, lineageId: row.lineageId, changed, years: after, source: { length: sourceLength } },
+      after: { archiveEditor: true, status: row.status, lineageId: row.lineageId, changed, years: after, source: { length: sourceLength }, certainty: input.certainty },
       reason: input.reason,
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,

@@ -341,6 +341,43 @@ async function changeAccountType(tx: Executor, p: Principal, from: AccountType, 
   return true;
 }
 
+/**
+ * Journey review 2026-11-26 (P1-1, ADR 0076): an approved claim of a record that already teaches
+ * (students on it, waiting requests, or a school that names it an instructor) makes the claimant's
+ * account a Sifu account, so the requests reach them. Inside the claim's transaction, by the
+ * reviewer: audited as account.type_change with the case (it counts as one of the day's changes).
+ * A Sifu account, or one whose paid subscription renews (it must cancel first,
+ * M22), is left as it is. Returns whether the type changed.
+ */
+export async function sifuOnClaim(tx: Executor, reviewer: Principal, userId: string, caseId: string, meta: RequestMeta): Promise<boolean> {
+  const account = await lockAccount(tx, { id: userId });
+  if (!account || account.accountType === 'sifu') return false;
+  const now = new Date();
+  try {
+    await beforeAccountTypeChange(tx, userId, now);
+  } catch (error) {
+    if (error instanceof ServiceError) return false;
+    throw error;
+  }
+  const subject = { kind: 'user' as const, userId };
+  const before = await effectivePlan(subject, { db: tx });
+  await tx.update(authUser).set({ accountType: 'sifu', updatedAt: now }).where(eq(authUser.id, userId));
+  const after = await effectivePlan(subject, { db: tx });
+  const closedPilotRequestId = await closeStalePilotRequest(tx, userId, 'sifu', now);
+  await writeAudit(tx, {
+    action: 'account.type_change',
+    actorUserId: reviewer.user.id,
+    actorRole: reviewer.user.role,
+    subjectType: 'user',
+    subjectId: userId,
+    before: { accountType: account.accountType, plan: before.plan },
+    after: { accountType: 'sifu', plan: after.plan, reason: 'claim_of_teaching_record', caseId, ...(closedPilotRequestId ? { closedPilotRequestId } : {}) },
+    requestId: meta.requestId,
+    ipHmac: meta.ipHmac,
+  });
+  return true;
+}
+
 // --- Pilot access ------------------------------------------------------------------------------------
 
 /** At most this many requests per account in PILOT_REQUEST_WINDOW_DAYS (against admin spam). */

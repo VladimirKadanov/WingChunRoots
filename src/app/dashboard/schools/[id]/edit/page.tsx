@@ -78,6 +78,7 @@ export default async function SchoolEditPage({ params, searchParams }: Props) {
           name: school.name,
           placeId: school.placeId,
           locationPrivacy: school.locationPrivacy,
+          addressLine: school.addressLine,
           point: school.point,
           websiteUrl: school.websiteUrl,
           contactEmail: school.contactEmail,

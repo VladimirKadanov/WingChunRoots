@@ -8,8 +8,8 @@
 // solid ink stroke for what the pilot has and a dotted pencil stroke for what is planned, the same
 // vocabulary as the home page's "How a link earns its seal". A check means the plan has it, a dash
 // that it does not, and a neutral value has no mark ("Browse only"). On a phone each feature takes
-// the full width with the two plans' values under it, and the planned features sit behind a
-// closed disclosure; from md up they follow in the same table. Federation, planned as a whole, has
+// the full width with the two plans' values under it. The planned features sit behind a closed
+// disclosure after each table at every width (journey review P3-13). Federation, planned as a whole, has
 // its own one-plan table behind a closed disclosure at every width (final check, requirements-4).
 //
 // M22 (docs/adr/0025-billing.md): a paid plan that exists now (Premium Student, Professional Sifu)
@@ -139,7 +139,6 @@ const rowClass = 'border-b border-border-subtle align-top max-sm:grid max-sm:gri
 function GroupRows({ group, plans, plannedLabel }: { group: { id: string; title: string; features: Feature[] }; plans: PlanSummary[]; plannedLabel: string }) {
   const planned = group.id === 'planned';
   return (
-    // Below md the planned rows are not displayed here (<PlannedFeatures> holds them instead).
     <tbody role="rowgroup" data-group={group.id} className={planned ? 'max-md:hidden' : 'max-sm:grid'}>
       <tr role="row" className="max-sm:grid">
         <th role="rowheader" scope="rowgroup" colSpan={plans.length + 1} className="pt-6 pb-2 text-left">
@@ -188,14 +187,13 @@ function Head({ plans }: { plans: PlanSummary[] }) {
 }
 
 /**
- * The features of two plans side by side. The features of this release come first; from md up the
- * planned ones follow under their own heading row, "Planned — not available yet", and each says so
- * to a screen reader as well. Below md the planned rows move to <PlannedFeatures>.
+ * The features of two plans side by side: only what exists now. The planned ones wait folded in
+ * <PlannedFeatures> after the table at every width (journey review P3-13: before it they followed
+ * in the same table, and the page was about 5,000 px tall).
  */
 function CompareTable({ catalog, plans, caption }: { catalog: PlanCatalog; plans: PlanSummary[]; caption: string }) {
   const groups = [
     { id: 'now', title: 'Available now', features: catalog.features.filter((f) => f.availability === 'now') },
-    { id: 'planned', title: catalog.plannedLabel, features: catalog.features.filter((f) => f.availability === 'planned') },
   ];
   return (
     <table role="table" className="w-full table-fixed border-collapse text-left text-sm sm:text-ui max-sm:grid">
@@ -214,11 +212,11 @@ function CompareTable({ catalog, plans, caption }: { catalog: PlanCatalog; plans
   );
 }
 
-/** Below md: the planned features behind a closed disclosure, so the phone page stays short. */
+/** The planned features behind a closed disclosure, so the page shows what exists first (P3-13). */
 function PlannedFeatures({ catalog, plans, caption }: { catalog: PlanCatalog; plans: PlanSummary[]; caption: string }) {
   const features = catalog.features.filter((f) => f.availability === 'planned');
   return (
-    <details data-testid="planned-features" className="group border-t border-border-subtle md:hidden">
+    <details data-testid="planned-features" className="group border-t border-border-subtle">
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-2 [&::-webkit-details-marker]:hidden">
         <span className="inline-flex items-center gap-2">
           <LinkStroke kind="unconfirmed" width={36} />
@@ -226,10 +224,10 @@ function PlannedFeatures({ catalog, plans, caption }: { catalog: PlanCatalog; pl
         </span>
         <ChevronDownIcon size={18} className="text-fg-muted transition-transform duration-(--duration-fast) group-open:rotate-180" />
       </summary>
-      <table role="table" className="w-full table-fixed border-collapse text-left text-sm max-sm:grid">
+      <table role="table" className="w-full table-fixed border-collapse text-left text-sm sm:text-ui max-sm:grid">
         <caption className="sr-only">{caption}</caption>
         <colgroup>
-          <col className="w-[38%]" />
+          <col className="w-[38%] sm:w-[44%]" />
           {plans.map((plan) => (
             <col key={plan.code} />
           ))}

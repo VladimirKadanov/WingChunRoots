@@ -12,12 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const visible = vi.fn<(principalOf: () => Promise<unknown>, input: { slug: string }) => Promise<boolean>>();
 const principal = vi.fn<(headers: Headers) => Promise<unknown>>();
+const merged = vi.fn<(slug: string) => Promise<string | null>>();
 
 const BUDGET_MS = 500;
 vi.mock('@/server/services/lineage', () => ({
   PERSON_CHECK_BUDGET_MS: BUDGET_MS,
   personPageVisible: (...args: Parameters<typeof visible>) => visible(...args),
 }));
+vi.mock('@/server/services/archive-redirect', () => ({ mergedRecordTarget: (slug: string) => merged(slug) }));
 vi.mock('@/server/auth/session', () => ({ principalFromHeaders: (headers: Headers) => principal(headers) }));
 vi.mock('@/server/auth/config', () => ({ COOKIE_PREFIX: 'wcr' }));
 
@@ -33,6 +35,34 @@ const request = (path: string, init?: { cookie?: string; authorization?: string 
 beforeEach(() => {
   visible.mockReset();
   principal.mockReset();
+  merged.mockReset();
+  merged.mockResolvedValue(null);
+});
+
+describe('a merged record (journey review P2-10, ADR 0086)', () => {
+  it('answers the old address with a permanent redirect to the kept record, the lineage page included', async () => {
+    visible.mockResolvedValue(false);
+    merged.mockResolvedValue('demo-kept-record');
+    const response = await proxy(request('/people/demo-merged-record/lineage?page=2'));
+    expect(response.status).toBe(308);
+    const location = new URL(response.headers.get('location')!);
+    expect(location.pathname).toBe('/people/demo-kept-record/lineage');
+    expect(location.search).toBe('?page=2');
+    expect(merged).toHaveBeenCalledWith('demo-merged-record');
+  });
+
+  it('keeps the not-on-record answer when there is no redirect, or the look-up fails', async () => {
+    visible.mockResolvedValue(false);
+    expect(isRewrite(await proxy(request('/people/demo-missing')))).toBe(true);
+    merged.mockRejectedValue(new Error('down'));
+    expect(isRewrite(await proxy(request('/people/demo-missing')))).toBe(true);
+  });
+
+  it('never looks up a redirect for a page that is visible', async () => {
+    visible.mockResolvedValue(true);
+    await proxy(request('/people/demo-hub-a'));
+    expect(merged).not.toHaveBeenCalled();
+  });
 });
 
 describe('matcher', () => {

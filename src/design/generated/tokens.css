@@ -325,6 +325,10 @@
   --link-cross-lineage-width: 1.75px;
   --link-historical-dash: none;
   --link-historical-width: 1px;
+  --link-traditional-dash: 12 3 3 3;
+  --link-traditional-width: 1.75px;
+  --link-contested-dash: 5 2 1 2;
+  --link-contested-width: 1.5px;
 }
 /*
  * Aliases of theme colours. A custom property resolves var() where it is declared, so they
@@ -354,6 +358,12 @@
   --link-historical-color: var(--fg-muted);
   --link-historical-stroke: var(--fg-muted);
   --link-historical-label: var(--fg-muted);
+  --link-traditional-color: var(--fg-muted);
+  --link-traditional-stroke: var(--fg);
+  --link-traditional-label: var(--fg-muted);
+  --link-contested-color: var(--arbitration);
+  --link-contested-stroke: var(--arbitration);
+  --link-contested-label: var(--arbitration);
 }
 :lang(zh-Hans) {
   --font-cjk-serif: 'Songti SC', 'SimSun', 'Noto Serif CJK SC', 'Noto Serif SC', serif;

@@ -40,6 +40,8 @@ export interface RequestScope {
   samePasswordUserId?: string;
   /** The address whose password this request reset. */
   resetEmail?: string;
+  /** Journey review P2-4: the address change a confirmation link makes (hooks.ts). */
+  emailChange?: { userId: string; from: string; to: string };
 }
 
 const globalScope = globalThis as unknown as { __wcrAuthScope?: AsyncLocalStorage<RequestScope> };

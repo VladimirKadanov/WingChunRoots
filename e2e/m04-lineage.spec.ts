@@ -204,7 +204,7 @@ test('@M04 a route counts the generations its gutter numbers, reads without "·"
     await openLineageKey(page);
     const drawn = new Set(await routes.locator('[data-mark]').evaluateAll((marks) => marks.map((m) => m.getAttribute('data-mark'))));
     const key = page.getByRole('list', { name: 'Marks on a route' });
-    const labels = { founder: 'Founder, as recorded', living: 'Living', other: 'Not recorded as living' } as const;
+    const labels = { founder: 'Founder, as recorded', living: 'Living', historical: 'Historical record', other: 'Not recorded as living' } as const;
     await expect(key.getByRole('listitem')).toHaveCount(drawn.size);
     for (const mark of drawn) await expect(key).toContainText(labels[mark as keyof typeof labels]);
     // No heading on the page reads its separators out.

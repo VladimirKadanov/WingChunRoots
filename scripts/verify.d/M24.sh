@@ -98,7 +98,10 @@ fi
 check "the limits: 500 rows, 256 KB, 10 previews a day, 24 hours" bash -c "
   grep -qF 'ORGANIZATION_IMPORT_MAX_ROWS = 500' $SCHEMA && grep -qF 'ORGANIZATION_IMPORT_MAX_BYTES = 256 * 1024' $SCHEMA &&
   grep -qF 'ORGANIZATION_IMPORTS_PER_DAY = 10' $SCHEMA && grep -qF 'ORGANIZATION_IMPORT_PREVIEW_HOURS = 24' $SCHEMA"
-check "the template has the columns of specification §9.1" grep -qF "TEMPLATE_COLUMNS = ['First_Name', 'Last_Name', 'Email', 'Chinese_Name', 'Start_Year', 'Current_Rank', 'Sifu_Database_ID', 'School_City']" "$CSV"
+# Journey review P2-5 (ADR 0082, owner 2026-11-26): Sifu_Database_ID of specification §9.1 is offered
+# as Teacher_Profile_Address, and a file with the specification's header is still read.
+check "the template has the columns of specification §9.1 (Sifu_Database_ID as Teacher_Profile_Address)" grep -qF "TEMPLATE_COLUMNS = ['First_Name', 'Last_Name', 'Email', 'Chinese_Name', 'Start_Year', 'Current_Rank', 'Teacher_Profile_Address', 'School_City']" "$CSV"
+check "a file with the specification's Sifu_Database_ID header is still read" grep -qF "[normalizeHeader('Sifu_Database_ID'), 'Teacher_Profile_Address']" "$CSV"
 check "a file that is not UTF-8 is refused (fatal decoder)" grep -qF 'fatal: true' "$CSV"
 # code(): the matching lines that are not comments.
 code() { grep -HnE "$@" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)'; }

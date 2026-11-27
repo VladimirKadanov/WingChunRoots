@@ -122,6 +122,10 @@ export function AccountMenu({ variant, menu, signOut }: { variant: 'bar' | 'rail
             Notifications
             {unread > 0 ? <span className="ml-auto text-xs text-fg-muted">{unread} unread</span> : null}
           </Row>
+          {/* Journey review P2-8 (ADR 0084): on phones the Organizations tab gives way to Me. */}
+          <Row href="/organizations" testId="account-menu-organizations">
+            Organizations
+          </Row>
           <Separator />
           <Row href="/account/plan">Plan and billing</Row>
           <Row href="/account/security">Account and security</Row>

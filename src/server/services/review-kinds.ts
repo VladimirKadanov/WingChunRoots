@@ -27,10 +27,11 @@
 //
 // Logs and audit rows carry ids and codes; a reviewer's words stay in the case (plan §6.4).
 
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 
 import { writeAudit } from '../audit';
 import type { Principal } from '../auth/principal';
+import { SCHOOLS_TAG } from '../cache';
 import { authUser, contentReport, person, personClaim, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
 import { enqueue, type Transaction } from '../jobs/outbox';
 import { QUEUE } from '../jobs/queues';
@@ -41,6 +42,7 @@ import { neighbourTags } from './profile';
 import { accountOf, namesFor, publicTags, recordEvent, type RelRow, url } from './relationships';
 import { type CaseRow, recordCaseEvent } from './review-core';
 import { notify } from './notify';
+import { sifuOnClaim } from './plans';
 import { applyTakeDown } from './takedown';
 
 export interface KindDecisionInput {
@@ -200,6 +202,14 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
     ipHmac: meta.ipHmac,
   });
   await tellClaimant(tx, c, 'approved', eventId);
+  // Journey review 2026-11-26 (P1-1, ADR 0076): a record that already teaches makes its claimant a
+  // Sifu account, so the requests that wait for it can be answered.
+  const [teaches] = await tx.execute<{ teaches: boolean }>(sql`
+    SELECT EXISTS (SELECT 1 FROM teaching_relationship r WHERE r.teacher_person_id = ${c.personId}::uuid
+                     AND r.status IN ('verified', 'in_arbitration', 'pending_teacher', 'awaiting_claim'))
+        OR EXISTS (SELECT 1 FROM school_instructor i JOIN school s ON s.id = i.school_id
+                    WHERE i.person_id = ${c.personId}::uuid AND s.deleted_at IS NULL AND i.status <> 'invited') AS teaches`).then((r) => r.rows);
+  const madeSifu = teaches?.teaches ? await sifuOnClaim(tx, p, c.openedByUserId, c.id, meta) : false;
   // awaiting_claim → pending_teacher: only now, after the approved claim (plan §6.7). Every
   // request that waits for this record moves, not only the one of this case: other students may
   // have asked the same teacher before they joined, and a claim from the profile page has no
@@ -232,6 +242,8 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
   }
   // A public profile says "claimed" now, and the pages beside it as well (cached): a claim from the
   // profile page, and an invitation to a public record found in search (ADR 0056).
+  // A Sifu account's school pins show (v_public_school), and its profile says "Instructor (unverified)".
+  if (madeSifu) return { tags: [...(await neighbourTags(tx, c.personId)), SCHOOLS_TAG] };
   return self || record.visibility === 'public' ? { tags: await neighbourTags(tx, c.personId) } : NONE;
 }
 

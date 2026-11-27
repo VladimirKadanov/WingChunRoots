@@ -12,7 +12,7 @@ import { useActionState } from 'react';
 
 import { useAdminT } from '@/components/admin/i18n/client';
 import type { AdminT } from '@/components/admin/i18n/translate';
-import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
+import { CheckboxField, FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { TextAreaField } from '@/components/account/textarea-field';
 import { EvidenceUploader } from '@/components/evidence/uploader';
 import { pickWords } from '@/components/admin/pick-words';
@@ -30,6 +30,7 @@ const recordLabels = (t: AdminT) => ({
   jyutping: 'Jyutping',
   pinyin: t('Pinyin'),
   lifeStatus: t('Life status'),
+  era: t('Era'),
   bio: t('Biography (English)'),
   reason: t('Reason'),
   evidenceIds: t('Evidence'),
@@ -41,6 +42,8 @@ const linkLabels = (t: AdminT) => ({
   fromYear: t('From (year)'),
   toYear: t('To (year)'),
   source: t('Source'),
+  certainty: t('How sure the record is'),
+  publicSource: t('Public source line'),
   evidenceIds: t('Evidence'),
 });
 const reasonHint = (t: AdminT) => t('Required. Why, and on what basis; kept in the audit log with your name and role.');
@@ -97,7 +100,7 @@ export function EditLineageForm({
   lineage,
   initial,
 }: {
-  lineage: { id: string; slug: string; name: string; description: string | null; rootSlug: string | null };
+  lineage: { id: string; slug: string; name: string; description: string | null; rootSlug: string | null; featuredOnHome?: boolean; commonRoots?: boolean };
   initial?: FormState | null;
 }) {
   const t = useAdminT();
@@ -111,6 +114,26 @@ export function EditLineageForm({
       <input type="hidden" name="lineageId" value={lineage.id} />
       <input type="hidden" name="slug" value={lineage.slug} />
       <LineageFields formId={formId} state={state} start={lineage} />
+      {/* Journey review 2026-11-26 (P1-4, ADR 0078): the lineage the home page draws. */}
+      <input type="hidden" name="featuredOnHomeShown" value="1" />
+      <CheckboxField
+        form={formId}
+        name="featuredOnHome"
+        label={t('Show this lineage on the home page')}
+        hint={t('One lineage at a time: choosing this one takes the place of any other. With none chosen, the home page shows a different public lineage each day.')}
+        state={state}
+        defaultChecked={lineage.featuredOnHome ?? false}
+      />
+      {/* Journey review P2-10 (ADR 0086): the shared teachers before the branches split. */}
+      <input type="hidden" name="commonRootsShown" value="1" />
+      <CheckboxField
+        form={formId}
+        name="commonRoots"
+        label={t('This lineage holds the common roots')}
+        hint={t('The teachers every branch shares, before the branches split, kept once here. A link kept here is not recorded again in another lineage. One lineage at a time.')}
+        state={state}
+        defaultChecked={lineage.commonRoots ?? false}
+      />
       <div>
         <SubmitButton pending={pending} pendingLabel={t('Saving…')} variant="secondary">
           {t('Save the lineage')}
@@ -161,6 +184,8 @@ export function CreateRecordForm({ scripts, back, name, initial }: { scripts: { 
         <option value="deceased">{t('Deceased')}</option>
         <option value="unknown">{t('Not known')}</option>
       </SelectField>
+      {/* Journey review 2026-11-26 (P1-3, ADR 0077): the era the public pages show. */}
+      <TextField form={formId} name="era" label={labels.era} optional autoComplete="off" maxLength={60} hint={t('Shown on the public pages, for example "d. 1901" or "active 1850s to 1880s".')} state={state} className="max-w-[34rem]" />
       <TextAreaField form={formId} name="bio" label={labels.bio} optional maxLength={1000} rows={5} lang="en" state={state} className="max-w-[40rem]" />
       <EvidenceUploader
         label={t('Evidence')}
@@ -235,6 +260,7 @@ export function AddLinkForm({
         state={state}
         className="max-w-[40rem]"
       />
+      <CertaintyFields formId={formId} state={state} t={t} labels={labels} />
       <EvidenceUploader
         label={t('Evidence')}
         hint={t('Optional. JPEG, PNG, WebP or PDF, up to 20 MB each: a scan of the page, a photo of the certificate. Staff only.')}
@@ -248,6 +274,39 @@ export function AddLinkForm({
         </SubmitButton>
       </div>
     </form>
+  );
+}
+
+/** How sure the archive is of a link, and its public source line (P1-3, ADR 0077). */
+function CertaintyFields({ formId, state, t, labels }: { formId: string; state: FormState; t: AdminT; labels: ReturnType<typeof linkLabels> }) {
+  return (
+    <>
+      <SelectField
+        form={formId}
+        name="certainty"
+        label={labels.certainty}
+        autoComplete="off"
+        hint={t('Shown on the public pages in words and by the line. Documented: a written record of the time. Traditional account: told within the lineage. Disputed by historians: sources disagree.')}
+        state={state}
+        defaultValue="documented"
+        className="max-w-[34rem]"
+      >
+        <option value="documented">{t('Documented')}</option>
+        <option value="traditional">{t('Traditional account')}</option>
+        <option value="disputed">{t('Disputed by historians')}</option>
+      </SelectField>
+      <TextField
+        form={formId}
+        name="publicSource"
+        label={labels.publicSource}
+        optional
+        autoComplete="off"
+        maxLength={300}
+        hint={t('Shown to everyone after "According to", for example "the hall\'s oral history". Keep private notes in Source.')}
+        state={state}
+        className="max-w-[40rem]"
+      />
+    </>
   );
 }
 

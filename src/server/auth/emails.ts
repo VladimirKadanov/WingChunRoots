@@ -30,6 +30,7 @@ import type { NameData } from '../templates/email';
 import { appUrl } from './env';
 import { logAuth } from './logger';
 import { accountSuspended } from './suspension';
+import { confirmationClaims } from './tokens';
 
 /** This process's job producer (pg-boss stays inside src/server/jobs). */
 type Producer = Awaited<ReturnType<typeof getProducer>>;
@@ -137,7 +138,10 @@ export async function sendVerificationEmail(user: Recipient, token: string, next
   // An unconfirmed account without a password (its password was wiped by a later sign-up) is
   // finished by choosing a password, never by confirming the address alone.
   if (!(await hasPassword(user.id))) return sendFinishSignUpEmail(user);
-  const back = ridesInConfirmationLink(next) ? `&next=${encodeURIComponent(next)}` : '';
+  // Journey review P2-4 (ADR 0081): the link of /change-email goes to the new address (user.email
+  // is the new one here) and says so; it never carries `next`.
+  const change = typeof (confirmationClaims(token) as { updateTo?: unknown } | null)?.updateTo === 'string';
+  const back = !change && ridesInConfirmationLink(next) ? `&next=${encodeURIComponent(next)}` : '';
   const url = `${appUrl()}/verify-email?token=${encodeURIComponent(token)}${back}`;
   const names = await recipientNames(user.id);
   await withinHourlyCap(user.id, 'verify-email', (tx, boss) =>
@@ -146,7 +150,7 @@ export async function sendVerificationEmail(user: Recipient, token: string, next
       to: user.email,
       userId: user.id,
       idempotencyKey: keyFor('verify-email', token),
-      data: { url, expiresInHours: VERIFY_EMAIL_EXPIRES_IN_S / 3600, ...(names ? { recipientNames: names } : {}) },
+      data: { url, expiresInHours: VERIFY_EMAIL_EXPIRES_IN_S / 3600, ...(names ? { recipientNames: names } : {}), ...(change ? { newAddress: true } : {}) },
     }, boss),
   );
 }

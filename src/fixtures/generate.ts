@@ -317,6 +317,9 @@ class Builder {
       name: `Demo Lineage ${key.toUpperCase()}`,
       rootPersonId: null,
       description: `${FICTIONAL_MARK}: a made-up lineage for tests and the local pilot.`,
+      // P1-4 (ADR 0078): lineage A is the one the home page draws, so the page is the same every day.
+      featuredOnHome: key === 'a',
+      commonRoots: false,
       createdAt: at,
       updatedAt: at,
       deletedAt: null,
@@ -350,6 +353,9 @@ class Builder {
       placeId: null,
       trainingStartYear: null,
       birthDate: null,
+      // Journey review 2026-11-26 (P1-3, ADR 0077): a fictional era for the oldest historical records.
+      eraText: historical ? (opts.gen === 0 ? 'active 1850s to 1880s' : opts.gen === 1 ? 'active 1890s to 1920s' : null) : null,
+      newToWingChun: false,
       // M14: the demo photos are added by db:seed (src/server/db/seed-photos.ts), not here.
       photoId: null,
       takenDownAt: null,
@@ -437,6 +443,7 @@ class Builder {
     primary: boolean;
     period: PeriodShape;
     reason?: string;
+    certainty?: 'documented' | 'traditional' | 'disputed';
   }): RelationshipRow {
     const { teacher, student } = opts;
     if (teacher.gen >= student.gen) {
@@ -467,6 +474,10 @@ class Builder {
       statusReason: opts.reason ?? null,
       // M26: the demo data enters no links through the archive editor, so none has a source note.
       sourceNote: null,
+      // Journey review 2026-11-26 (P1-3, ADR 0077): a verified link the archive keeps has a certainty;
+      // the oldest ones are a traditional account with a fictional public source line.
+      certainty: committee && wasVerified ? (opts.certainty ?? (teacher.gen === 0 ? 'traditional' : 'documented')) : null,
+      publicSource: committee && wasVerified && (opts.certainty ?? (teacher.gen === 0 ? 'traditional' : 'documented')) !== 'documented' ? 'Fictional demo source: the Demo Hall oral history' : null,
       requestNote: null,
       viaInviteLink: false,
       createdAt: created,
@@ -649,7 +660,8 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   for (const t of teachersA) b.rel({ teacher: rootA, student: t, lineage: 'a', status: 'verified', primary: true, period: 'ongoing' });
   for (const t of teachersB) b.rel({ teacher: rootB, student: t, lineage: 'b', status: 'verified', primary: true, period: 'ongoing' });
   // demo-root-c is historical: these relationships ended and were verified by review.
-  for (const t of teachersC) b.rel({ teacher: rootC, student: t, lineage: 'c', status: 'verified', primary: true, period: 'ended' });
+  // One of them is disputed by historians (P1-3): drawn and named as such.
+  for (const [i, t] of teachersC.entries()) b.rel({ teacher: rootC, student: t, lineage: 'c', status: 'verified', primary: true, period: 'ended', ...(i === teachersC.length - 1 ? { certainty: 'disputed' as const } : {}) });
 
   // --- Students of the first generation (generation 3) --------------------------------------
   const regular3: P[] = [];
@@ -915,6 +927,8 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
       // M11: a reserved, never-delivered address (example.test) and the first forms of the system.
       contactEmail: `${spec.slug}@example.test`,
       contactPhone: null,
+      // Journey review P2-7 (ADR 0083): one exact school with a fictional address line.
+      addressLine: spec.slug === 'demo-school-sofia' ? '1 Demo Street, hall on the second floor' : null,
       formsTaught: ['siu_nim_tao', 'chum_kiu'],
       lastActivityAt: at,
       // M20: the activity check leaves the platform's records alone (no listing account to ask).
@@ -931,7 +945,7 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     });
     schoolPrivateLocations.push({ schoolId: id, exactPoint: exact, addressLine: 'Fictional demo address', createdAt: at, updatedAt: at });
     spec.instructors.forEach((p, i) =>
-      schoolInstructors.push({ schoolId: id, personId: p.row.id, role: i === 0 ? 'head_instructor' : 'instructor', createdAt: at, updatedAt: at }),
+      schoolInstructors.push({ schoolId: id, personId: p.row.id, role: i === 0 ? 'head_instructor' : 'instructor', status: 'listed', createdAt: at, updatedAt: at }),
     );
   }
 
@@ -1279,6 +1293,7 @@ function demoSchoolActivity(seed: number, r: DemoSchoolActivityRefs): Pick<Fixtu
       websiteUrl: null,
       contactEmail: `${spec.slug}@example.test`,
       contactPhone: null,
+      addressLine: null,
       formsTaught: ['siu_nim_tao', 'chum_kiu', 'biu_jee'],
       lastActivityAt: spec.last,
       activityStage: spec.hidden ? 'hidden' : 'awaiting_confirmation',
@@ -1292,7 +1307,7 @@ function demoSchoolActivity(seed: number, r: DemoSchoolActivityRefs): Pick<Fixtu
       firstTrialFree: false,
     });
     schoolPrivateLocations.push({ schoolId, exactPoint: exact, addressLine: 'Fictional demo address', createdAt: spec.created, updatedAt: spec.last });
-    schoolInstructors.push({ schoolId, personId: r.instructor, role: 'head_instructor', createdAt: spec.created, updatedAt: spec.created });
+    schoolInstructors.push({ schoolId, personId: r.instructor, role: 'head_instructor', status: 'listed', createdAt: spec.created, updatedAt: spec.created });
     const key = `${schoolId}:${spec.last.getTime()}`;
     const confirmBy = new Date(Math.max(spec.last.getTime() + SCHOOL_HIDDEN_DAYS * 86_400_000, spec.awaiting.getTime() + SCHOOL_CONFIRM_GRACE_DAYS * 86_400_000));
     notifications.push(
