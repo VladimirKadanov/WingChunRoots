@@ -108,6 +108,7 @@ export async function cachedProfile(personId: string): Promise<PersonProfileDto 
       countryCode: row.country_code,
       cityName: row.city_name,
       bio: row.bio,
+      era: row.era_text,
       instructor: row.instructor_status === 'verified' || row.instructor_status === 'unverified' ? row.instructor_status : null,
       visibility: 'public' as const,
       isOwn: false,

@@ -98,7 +98,7 @@ export async function updateLineageAction(_previous: FormState, form: FormData):
 
 /** "Create the record" (archiveEditor.createRecord). Success names the new record on the editor's page. */
 export async function createRecordAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const values = keepValues(form, ['primaryName', 'originalName', 'originalLang', 'jyutping', 'pinyin', 'lifeStatus', 'bio', 'reason', 'back']);
+  const values = keepValues(form, ['primaryName', 'originalName', 'originalLang', 'jyutping', 'pinyin', 'lifeStatus', 'era', 'bio', 'reason', 'back']);
   // The lineage page the form was opened from, to go back to with the new record chosen.
   const back = textValue(form, 'back', 200);
   let slug: string;
@@ -110,6 +110,7 @@ export async function createRecordAction(_previous: FormState, form: FormData): 
       jyutping: textValue(form, 'jyutping', 300) || null,
       pinyin: textValue(form, 'pinyin', 300) || null,
       lifeStatus: (textValue(form, 'lifeStatus', 20) || '') as 'deceased',
+      era: textValue(form, 'era', 200) || null,
       bio: textValue(form, 'bio', 4000) || null,
       reason: textValue(form, 'reason', 4000),
       evidenceIds: files(form),
@@ -126,7 +127,7 @@ export async function createRecordAction(_previous: FormState, form: FormData): 
 
 /** "Add the link" (archiveEditor.addLink). */
 export async function addLinkAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const values = keepValues(form, ['lineageId', 'slug', 'teacherSlug', 'studentSlug', 'fromYear', 'toYear', 'source', 'person']);
+  const values = keepValues(form, ['lineageId', 'slug', 'teacherSlug', 'studentSlug', 'fromYear', 'toYear', 'source', 'certainty', 'publicSource', 'person']);
   const base = lineagePage(textValue(form, 'slug', 200));
   // The person open in the outline's panel: the page comes back with them selected.
   const person = textValue(form, 'person', 200);
@@ -141,6 +142,8 @@ export async function addLinkAction(_previous: FormState, form: FormData): Promi
       fromYear: textValue(form, 'fromYear', 8) || null,
       toYear: textValue(form, 'toYear', 8) || null,
       source: textValue(form, 'source', 4000),
+      certainty: (textValue(form, 'certainty', 20) || 'documented') as 'documented',
+      publicSource: textValue(form, 'publicSource', 600) || null,
       evidenceIds: files(form),
       idempotencyKey: key(form),
     });
@@ -180,7 +183,7 @@ export async function endLinkAction(_previous: FormState, form: FormData): Promi
  */
 export async function editLinkAction(_previous: FormState, form: FormData): Promise<never> {
   const relationshipId = textValue(form, 'relationshipId', 40);
-  const values = keepValues(form, ['relationshipId', 'fromYear', 'toYear', 'source', 'reason']);
+  const values = keepValues(form, ['relationshipId', 'fromYear', 'toYear', 'source', 'certainty', 'publicSource', 'reason']);
   const slug = textValue(form, 'slug', 200);
   const base = SLUG.test(slug) ? `${lineagePage(slug)}/links` : HOME;
   const link = UUID.test(relationshipId) ? `&link=${relationshipId}` : '';
@@ -192,6 +195,8 @@ export async function editLinkAction(_previous: FormState, form: FormData): Prom
       fromYear: textValue(form, 'fromYear', 8) || null,
       toYear: textValue(form, 'toYear', 8) || null,
       source: textValue(form, 'source', 4000),
+      certainty: (textValue(form, 'certainty', 20) || 'documented') as 'documented',
+      publicSource: textValue(form, 'publicSource', 600) || null,
       reason: textValue(form, 'reason', 4000),
     });
     changed = result.changed;

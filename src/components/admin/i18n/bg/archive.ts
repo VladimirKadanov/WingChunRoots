@@ -355,4 +355,12 @@ export const BG_ARCHIVE: AdminDict = {
   'Your account does not have access to this.': "Акаунтът ви няма достъп до това.",
   'Confirm this session with your authenticator app first.': 'Първо потвърдете тази сесия с приложението си за удостоверяване.',
   "verb|Open": "Отвори",
+  // Journey review 2026-11-26 (P1-3, ADR 0077).
+  'How sure the record is': 'Колко сигурен е записът',
+  'Documented': 'Документирано',
+  'Traditional account': 'Традиционен разказ',
+  'Disputed by historians': 'Оспорвано от историци',
+  'Public source line, optional': 'Публичен ред за източника, по избор',
+  'Shown to everyone after "According to".': 'Показва се на всички след „According to“.',
+  'Choose how sure the record is.': 'Изберете колко сигурен е записът.',
 };

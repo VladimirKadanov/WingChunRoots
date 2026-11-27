@@ -67,7 +67,7 @@ export function EditLinkForm({
   initial,
 }: {
   t: AdminT;
-  link: { id: string; fromYear: number | null; toYear: number | null; source: string | null };
+  link: { id: string; fromYear: number | null; toYear: number | null; source: string | null; certainty?: string | null; publicSource?: string | null };
   slug: string;
   initial: FormState | null;
 }) {
@@ -99,6 +99,19 @@ export function EditLinkForm({
       </div>
       <Field form={form} name="source" label={t('Source')} hint={t('Required. Where this training is recorded. Staff only.')} error={error('source')}>
         {(props) => <textarea {...props} name="source" rows={3} maxLength={2000} required defaultValue={value('source', link.source ?? '')} className={cx(fieldClass, 'py-2')} />}
+      </Field>
+      {/* Journey review 2026-11-26 (P1-3, ADR 0077): how sure the record is, and the public source line. */}
+      <Field form={form} name="certainty" label={t('How sure the record is')} error={error('certainty')}>
+        {(props) => (
+          <select {...props} name="certainty" defaultValue={value('certainty', link.certainty ?? 'documented')} className={cx(fieldClass, 'max-w-[20rem]')}>
+            <option value="documented">{t('Documented')}</option>
+            <option value="traditional">{t('Traditional account')}</option>
+            <option value="disputed">{t('Disputed by historians')}</option>
+          </select>
+        )}
+      </Field>
+      <Field form={form} name="publicSource" label={t('Public source line, optional')} hint={t('Shown to everyone after "According to".')} error={error('publicSource')}>
+        {(props) => <input {...props} name="publicSource" maxLength={300} autoComplete="off" defaultValue={value('publicSource', link.publicSource ?? '')} className={fieldClass} />}
       </Field>
       <Field form={form} name="reason" label={t('Reason')} hint={t('Required. Why, and on what basis; kept in the audit log with your name and role.')} error={error('reason')}>
         {(props) => <textarea {...props} name="reason" rows={2} maxLength={2000} required defaultValue={value('reason', '')} className={cx(fieldClass, 'py-2')} />}

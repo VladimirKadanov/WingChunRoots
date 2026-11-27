@@ -350,6 +350,8 @@ class Builder {
       placeId: null,
       trainingStartYear: null,
       birthDate: null,
+      // Journey review 2026-11-26 (P1-3, ADR 0077): a fictional era for the oldest historical records.
+      eraText: historical ? (opts.gen === 0 ? 'active 1850s to 1880s' : opts.gen === 1 ? 'active 1890s to 1920s' : null) : null,
       // M14: the demo photos are added by db:seed (src/server/db/seed-photos.ts), not here.
       photoId: null,
       takenDownAt: null,
@@ -437,6 +439,7 @@ class Builder {
     primary: boolean;
     period: PeriodShape;
     reason?: string;
+    certainty?: 'documented' | 'traditional' | 'disputed';
   }): RelationshipRow {
     const { teacher, student } = opts;
     if (teacher.gen >= student.gen) {
@@ -467,6 +470,10 @@ class Builder {
       statusReason: opts.reason ?? null,
       // M26: the demo data enters no links through the archive editor, so none has a source note.
       sourceNote: null,
+      // Journey review 2026-11-26 (P1-3, ADR 0077): a verified link the archive keeps has a certainty;
+      // the oldest ones are a traditional account with a fictional public source line.
+      certainty: committee && wasVerified ? (opts.certainty ?? (teacher.gen === 0 ? 'traditional' : 'documented')) : null,
+      publicSource: committee && wasVerified && (opts.certainty ?? (teacher.gen === 0 ? 'traditional' : 'documented')) !== 'documented' ? 'Fictional demo source: the Demo Hall oral history' : null,
       requestNote: null,
       viaInviteLink: false,
       createdAt: created,
@@ -649,7 +656,8 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   for (const t of teachersA) b.rel({ teacher: rootA, student: t, lineage: 'a', status: 'verified', primary: true, period: 'ongoing' });
   for (const t of teachersB) b.rel({ teacher: rootB, student: t, lineage: 'b', status: 'verified', primary: true, period: 'ongoing' });
   // demo-root-c is historical: these relationships ended and were verified by review.
-  for (const t of teachersC) b.rel({ teacher: rootC, student: t, lineage: 'c', status: 'verified', primary: true, period: 'ended' });
+  // One of them is disputed by historians (P1-3): drawn and named as such.
+  for (const [i, t] of teachersC.entries()) b.rel({ teacher: rootC, student: t, lineage: 'c', status: 'verified', primary: true, period: 'ended', ...(i === teachersC.length - 1 ? { certainty: 'disputed' as const } : {}) });
 
   // --- Students of the first generation (generation 3) --------------------------------------
   const regular3: P[] = [];

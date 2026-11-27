@@ -543,7 +543,18 @@ export default async function PersonPage({ params, searchParams }: Props) {
           {profile.visibility === 'involved_only' ? <PrivateRecordNotice own={profile.isOwn} limited={profile.limited} /> : null}
           {trainedWith ? (
             <p>
-              <Link href={trainedWith} prefetch={false} className={buttonVariants({ variant: 'primary' })} data-testid="trained-with">
+              {/* Journey review 2026-11-26 (P1-3): on a historical record or a teacher who has died,
+                  a quiet link, not the page's main action. */}
+              <Link
+                href={trainedWith}
+                prefetch={false}
+                className={
+                  profile.kind === 'historical' || profile.lifeStatus === 'deceased'
+                    ? 'link inline-flex min-h-11 items-center gap-1.5 text-ui'
+                    : buttonVariants({ variant: 'primary' })
+                }
+                data-testid="trained-with"
+              >
                 <span>
                   I trained with <LatinName name={profile.displayName} />
                 </span>

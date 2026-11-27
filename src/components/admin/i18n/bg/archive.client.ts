@@ -68,4 +68,14 @@ export const BG_ARCHIVE_CLIENT: AdminDict = {
   'Chosen: {name}': 'Избрано: {name}',
   'Ending…': 'Прекратяване…',
   'End this link': 'Прекрати тази връзка',
+  // Journey review 2026-11-26 (P1-3, ADR 0077).
+  'Era': 'Епоха',
+  'Shown on the public pages, for example "d. 1901" or "active 1850s to 1880s".': 'Показва се на публичните страници, например „d. 1901“ или „active 1850s to 1880s“ (на английски).',
+  'How sure the record is': 'Колко сигурен е записът',
+  'Public source line': 'Публичен ред за източника',
+  'Shown on the public pages in words and by the line. Documented: a written record of the time. Traditional account: told within the lineage. Disputed by historians: sources disagree.': 'Показва се на публичните страници с думи и с линията. Документирано: писмен запис от времето. Традиционен разказ: предаван в рамките на линията. Оспорвано от историци: източниците се разминават.',
+  'Documented': 'Документирано',
+  'Traditional account': 'Традиционен разказ',
+  'Disputed by historians': 'Оспорвано от историци',
+  'Shown to everyone after "According to", for example "the hall\'s oral history". Keep private notes in Source.': 'Показва се на всички след „According to“, например „the hall\'s oral history“ (на английски). Личните бележки остават в „Източник“.',
 };

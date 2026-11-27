@@ -1,5 +1,5 @@
 // The mark of a person (Ink Register): a square on its point for a recorded founder, a filled dot
-// for the living, a ring otherwise. The routes of descent (M04) and the explorer's cards (owner
+// for the living, a hollow square for a historical record, a ring otherwise. The routes of descent (M04) and the explorer's cards (owner
 // decision 2026-10-31, "Ink restyle") draw it, and their keys explain it (ROUTE_MARK_LABELS).
 
 import { cx } from '@/lib/cx';
@@ -10,16 +10,18 @@ import { cx } from '@/lib/cx';
  * (LineageKey `marks`), and a screen reader hears "Founder of …, as recorded" or "Living" in the
  * step's text (final check, screens-4).
  */
-export type RouteMarkKind = 'founder' | 'living' | 'other';
+export type RouteMarkKind = 'founder' | 'living' | 'historical' | 'other';
 
 export const ROUTE_MARK_LABELS: Record<RouteMarkKind, string> = {
   founder: 'Founder, as recorded',
   living: 'Living',
+  // Journey review 2026-11-26 (P1-3): a record the archive keeps of a figure of the past.
+  historical: 'Historical record',
   other: 'Not recorded as living',
 };
 
 /** The marks in a key's order. */
-export const MARK_ORDER: RouteMarkKind[] = ['founder', 'living', 'other'];
+export const MARK_ORDER: RouteMarkKind[] = ['founder', 'living', 'historical', 'other'];
 
 export function RouteMark({ mark, className }: { mark: RouteMarkKind; className?: string }) {
   return (
@@ -28,6 +30,8 @@ export function RouteMark({ mark, className }: { mark: RouteMarkKind; className?
         <span className="block size-full rotate-45 bg-fg" />
       ) : mark === 'living' ? (
         <span className="block size-full rounded-full bg-fg" />
+      ) : mark === 'historical' ? (
+        <span className="block size-full border-[1.5px] border-fg bg-bg" />
       ) : (
         <span className="block size-full rounded-full border-[1.5px] border-fg bg-bg" />
       )}

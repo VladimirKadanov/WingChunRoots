@@ -375,18 +375,26 @@ export interface LinkStyle {
    */
   labelColor: ColorRole;
   /** How the stroke is drawn. */
-  stroke: 'dotted' | 'broken' | 'solid' | 'double' | 'hollow-curve' | 'thin';
+  stroke: 'dotted' | 'broken' | 'solid' | 'double' | 'hollow-curve' | 'thin' | 'brushed' | 'split';
   /** SVG stroke-dasharray of a 2 px stroke, or null for a continuous stroke. */
   dash: string | null;
   /** Stroke width in px at 100% zoom. */
   width: number;
   /** Seal icon (src/components/seal.tsx). */
-  seal: 'question' | 'hourglass' | 'check' | 'scales' | 'bridge' | 'period';
+  seal: 'question' | 'hourglass' | 'check' | 'scales' | 'bridge' | 'period' | 'scroll' | 'split';
   /** One-line explanation used by legends. */
   description: string;
 }
 
-export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historical', LinkStyle> = {
+/**
+ * Journey review 2026-11-26 (P1-3, ADR 0077): besides the states, how sure the archive is of a link
+ * it entered. "Verified" stays for links confirmed by people or evidence; an archive link says
+ * Documented (the verified ink), Traditional account (a brushed line) or Disputed by historians (a
+ * split line), each with its own seal and word.
+ */
+export type RecordKind = 'traditional' | 'contested';
+
+export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historical' | RecordKind, LinkStyle> = {
   unconfirmed: {
     label: 'Unconfirmed',
     color: 'unconfirmed',
@@ -444,7 +452,8 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
     description: 'A teacher from another lineage; drawn as its own curve and labelled.',
   },
   historical: {
-    label: 'Historical',
+    // Journey review 2026-11-26 (P1-3): "Former", so "Historical" names only people (historical records).
+    label: 'Former',
     color: 'fg-muted',
     strokeColor: 'fg-muted',
     labelColor: 'fg-muted',
@@ -453,5 +462,27 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
     width: 1,
     seal: 'period',
     description: 'Training that has ended; shown with its years.',
+  },
+  traditional: {
+    label: 'Traditional account',
+    color: 'fg-muted',
+    strokeColor: 'fg',
+    labelColor: 'fg-muted',
+    stroke: 'brushed',
+    dash: '12 3 3 3',
+    width: 1.75,
+    seal: 'scroll',
+    description: 'Told by oral tradition or a school’s own history; not documented at the time.',
+  },
+  contested: {
+    label: 'Disputed by historians',
+    color: 'arbitration',
+    strokeColor: 'arbitration',
+    labelColor: 'arbitration',
+    stroke: 'split',
+    dash: '5 2 1 2',
+    width: 1.5,
+    seal: 'split',
+    description: 'Sources disagree about this link; the archive records it with the dispute.',
   },
 };

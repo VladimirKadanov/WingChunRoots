@@ -10,7 +10,7 @@ import { dotsD, inkShapes, type Cubic, type InkShape } from '@/design/ink';
 import { linkStyles, type VerificationState } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 
-export type LinkKind = VerificationState | 'cross_lineage' | 'historical';
+export type LinkKind = VerificationState | 'cross_lineage' | 'historical' | 'traditional' | 'contested';
 
 const SAMPLE: Cubic = [
   [3, 11],
@@ -114,6 +114,11 @@ export function InkShapeSvg({ shape }: { shape: InkShape }) {
 function shapeFor(kind: LinkKind): InkShape {
   if (kind === 'cross_lineage') return inkShapes(SAMPLE, 'verified', { w0: 4.8, w1: 1.3, n: 30, crossLineage: true });
   if (kind === 'historical') return inkShapes(SAMPLE, 'verified', { w0: 1.6, w1: 1, n: 30 });
+  // P1-3 (ADR 0077): an archive link's certainty as a hollow ribbon with its own dash (brushed, split).
+  if (kind === 'traditional' || kind === 'contested') {
+    const shape = inkShapes(SAMPLE, 'verified', { w0: 3.6, w1: 1.3, n: 30, crossLineage: true });
+    return shape.kind === 'hollow' ? { ...shape, dash: linkStyles[kind].dash } : shape;
+  }
   return inkShapes(SAMPLE, kind, { w0: 4.8, w1: 1.3, n: 30 });
 }
 
@@ -125,7 +130,7 @@ function shapeFor(kind: LinkKind): InkShape {
  */
 function canvasSample(kind: LinkKind): InkShape {
   const shape = shapeFor(kind);
-  return shape.kind === 'hollow' ? { ...shape, dash: linkStyles.cross_lineage.dash } : shape;
+  return shape.kind === 'hollow' ? { ...shape, dash: linkStyles[kind].dash ?? linkStyles.cross_lineage.dash } : shape;
 }
 
 export function LinkStroke({

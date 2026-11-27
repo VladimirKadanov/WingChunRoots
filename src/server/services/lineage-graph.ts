@@ -560,6 +560,7 @@ async function routesUp(
 interface PersonRow {
   id: string;
   slug: string;
+  kind: string;
   life_status: string;
   stewardship: string;
   display_name: string;
@@ -582,6 +583,9 @@ interface EdgeRow {
   lineage_root_person_id: string | null;
   /** M10b (DEFAULT D04/D13): v_public_edge.approved_by_unverified_instructor. */
   approved_by_unverified_instructor: boolean | null;
+  /** Journey review 2026-11-26 (P1-3): v_public_edge.certainty and public_source. */
+  certainty?: 'documented' | 'traditional' | 'disputed' | null;
+  public_source?: string | null;
 }
 
 interface CountRow {
@@ -627,7 +631,7 @@ async function publicPeople(ex: Executor, ids: readonly string[]): Promise<Map<s
   if (ids.length === 0) return new Map();
   const list = await rows<PersonRow>(
     ex,
-    sql`SELECT id::text AS id, slug, life_status, stewardship, display_name, alt_names, photo_id::text AS photo_id, photo_sha256
+    sql`SELECT id::text AS id, slug, kind, life_status, stewardship, display_name, alt_names, photo_id::text AS photo_id, photo_sha256
           FROM v_public_person WHERE id = ANY(${uuids(ids)})`,
   );
   return new Map(list.map((p) => [p.id, p]));
@@ -740,7 +744,7 @@ export async function assembleGraph(
           sql`SELECT id::text AS id, teacher_person_id::text AS teacher_id, student_person_id::text AS student_id,
                      lineage_id::text AS lineage_id, status, is_display_primary, periods,
                      lineage_slug, lineage_name, lineage_root_person_id::text AS lineage_root_person_id,
-                     approved_by_unverified_instructor
+                     approved_by_unverified_instructor, certainty, public_source
                 FROM v_public_edge
                WHERE student_person_id = ANY(${uuids(ids)}) AND teacher_person_id = ANY(${uuids(ids)})
                  AND (${lineageFilter}::uuid IS NULL OR lineage_id = ${lineageFilter}::uuid)
@@ -781,6 +785,8 @@ export async function assembleGraph(
       visibility: 'public' as const,
       periods: periodsOf(e.periods),
       approvedByUnverifiedInstructor: e.approved_by_unverified_instructor === true,
+      certainty: e.certainty ?? null,
+      publicSource: e.public_source ?? null,
     })),
     ...ownEdges.map((e) => ({
       id: e.id,
@@ -822,6 +828,8 @@ export async function assembleGraph(
       displayName: p ? p.display_name : own!.displayName,
       altNames: p ? namesOf(p.alt_names) : own!.altNames,
       lifeStatus: p ? p.life_status : own!.lifeStatus,
+      // Journey review 2026-11-26 (P1-3): a historical record gets its own mark in the drawing.
+      historical: (p ? p.kind : own!.kind) === 'historical',
       claimState: claimStateOf(p ? p.stewardship : own!.stewardship),
       lineageIds: c.lineage_ids,
       childCount: c.students,
@@ -968,12 +976,14 @@ export interface ProfileRow {
   bio: string | null;
   /** M10b (DEFAULT D04/D13): the record of a Sifu account; null for anyone else. */
   instructor_status: 'verified' | 'unverified' | null;
+  /** Journey review 2026-11-26 (P1-3): the era of a historical record. */
+  era_text: string | null;
 }
 
 export async function publicProfileRow(ex: Executor, personId: string): Promise<ProfileRow | null> {
   const list = await rows<ProfileRow>(
     ex,
-    sql`SELECT id::text AS id, slug, kind, life_status, stewardship, country_code, city_name, display_name, alt_names, bio, instructor_status
+    sql`SELECT id::text AS id, slug, kind, life_status, stewardship, country_code, city_name, display_name, alt_names, bio, instructor_status, era_text
           FROM v_public_person WHERE id = ${personId}::uuid`,
   );
   return list[0] ?? null;
@@ -1044,7 +1054,8 @@ function studentsCte(teacherId: string): SQL {
            'is_display_primary', pe.is_display_primary, 'periods', pe.periods,
            'lineage_slug', pe.lineage_slug, 'lineage_name', pe.lineage_name,
            'lineage_root_person_id', pe.lineage_root_person_id,
-           'approved_by_unverified_instructor', pe.approved_by_unverified_instructor) ORDER BY pe.created_at, pe.id) AS edges,
+           'approved_by_unverified_instructor', pe.approved_by_unverified_instructor,
+           'certainty', pe.certainty, 'public_source', pe.public_source) ORDER BY pe.created_at, pe.id) AS edges,
          bool_and(
            jsonb_array_length(pe.periods) > 0
            AND NOT jsonb_path_exists(pe.periods, '$[*] ? (@.ongoing == true)')
@@ -1264,6 +1275,8 @@ export async function studentPage(
         visibility: 'public' as const,
         periods: periodsOf(e.periods),
         approvedByUnverifiedInstructor: e.approved_by_unverified_instructor === true,
+        certainty: e.certainty ?? null,
+        publicSource: e.public_source ?? null,
       };
     });
     return {

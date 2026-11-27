@@ -30,6 +30,7 @@ const recordLabels = (t: AdminT) => ({
   jyutping: 'Jyutping',
   pinyin: t('Pinyin'),
   lifeStatus: t('Life status'),
+  era: t('Era'),
   bio: t('Biography (English)'),
   reason: t('Reason'),
   evidenceIds: t('Evidence'),
@@ -41,6 +42,8 @@ const linkLabels = (t: AdminT) => ({
   fromYear: t('From (year)'),
   toYear: t('To (year)'),
   source: t('Source'),
+  certainty: t('How sure the record is'),
+  publicSource: t('Public source line'),
   evidenceIds: t('Evidence'),
 });
 const reasonHint = (t: AdminT) => t('Required. Why, and on what basis; kept in the audit log with your name and role.');
@@ -161,6 +164,8 @@ export function CreateRecordForm({ scripts, back, name, initial }: { scripts: { 
         <option value="deceased">{t('Deceased')}</option>
         <option value="unknown">{t('Not known')}</option>
       </SelectField>
+      {/* Journey review 2026-11-26 (P1-3, ADR 0077): the era the public pages show. */}
+      <TextField form={formId} name="era" label={labels.era} optional autoComplete="off" maxLength={60} hint={t('Shown on the public pages, for example "d. 1901" or "active 1850s to 1880s".')} state={state} className="max-w-[34rem]" />
       <TextAreaField form={formId} name="bio" label={labels.bio} optional maxLength={1000} rows={5} lang="en" state={state} className="max-w-[40rem]" />
       <EvidenceUploader
         label={t('Evidence')}
@@ -235,6 +240,7 @@ export function AddLinkForm({
         state={state}
         className="max-w-[40rem]"
       />
+      <CertaintyFields formId={formId} state={state} t={t} labels={labels} />
       <EvidenceUploader
         label={t('Evidence')}
         hint={t('Optional. JPEG, PNG, WebP or PDF, up to 20 MB each: a scan of the page, a photo of the certificate. Staff only.')}
@@ -248,6 +254,39 @@ export function AddLinkForm({
         </SubmitButton>
       </div>
     </form>
+  );
+}
+
+/** How sure the archive is of a link, and its public source line (P1-3, ADR 0077). */
+function CertaintyFields({ formId, state, t, labels }: { formId: string; state: FormState; t: AdminT; labels: ReturnType<typeof linkLabels> }) {
+  return (
+    <>
+      <SelectField
+        form={formId}
+        name="certainty"
+        label={labels.certainty}
+        autoComplete="off"
+        hint={t('Shown on the public pages in words and by the line. Documented: a written record of the time. Traditional account: told within the lineage. Disputed by historians: sources disagree.')}
+        state={state}
+        defaultValue="documented"
+        className="max-w-[34rem]"
+      >
+        <option value="documented">{t('Documented')}</option>
+        <option value="traditional">{t('Traditional account')}</option>
+        <option value="disputed">{t('Disputed by historians')}</option>
+      </SelectField>
+      <TextField
+        form={formId}
+        name="publicSource"
+        label={labels.publicSource}
+        optional
+        autoComplete="off"
+        maxLength={300}
+        hint={t('Shown to everyone after "According to", for example "the hall\'s oral history". Keep private notes in Source.')}
+        state={state}
+        className="max-w-[40rem]"
+      />
+    </>
   );
 }
 

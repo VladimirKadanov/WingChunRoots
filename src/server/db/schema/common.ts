@@ -74,6 +74,14 @@ export const PUBLIC_RELATIONSHIP_STATUSES = ['verified', 'in_arbitration'] as co
 export const PUBLISHABLE_RELATIONSHIP_STATUSES = ['verified', 'in_arbitration', 'revoked'] as const;
 export const VERIFICATION_PATHS = ['teacher_approval', 'committee_review'] as const;
 export const DATE_PRECISIONS = ['year', 'month', 'day', 'unknown'] as const;
+/**
+ * Journey review 2026-11-26 (P1-3, ADR 0077): how sure the archive is of a link it entered from
+ * the record (not one a teacher confirmed): documented by sources of the time, a traditional
+ * account (oral tradition, a school's own history), or disputed by historians.
+ */
+export const LINK_CERTAINTIES = ['documented', 'traditional', 'disputed'] as const;
+export const PUBLIC_SOURCE_MAX = 300;
+export const PERSON_ERA_MAX = 60;
 
 // --- Evidence and moderation (plan §6.2) -------------------------------------------------------
 export const SCAN_STATUSES = ['pending', 'clean', 'rejected'] as const;

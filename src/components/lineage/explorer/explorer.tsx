@@ -211,7 +211,7 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
     const incoming =
       extra.length === 0 ? incomingByDefault : new Map([[sn.id, (into.get(sn.id) ?? []).filter((e) => byDefault(e) || extra.includes(e))]]);
     const statusEdge = chainEdge(incoming.get(sn.id) ?? []);
-    const status = statusEdge ? relationStatus(statusEdge.status) : null;
+    const status = statusEdge ? relationStatus(statusEdge.status, statusEdge.certainty) : null;
     const lit = selected || extra.some((e) => e.teacherId === sn.id || e.studentId === sn.id);
     const focus = markFocus && sn.id === graph.focusId;
     // M06 seam: node-data. Counts in the record (public, plan §4.9): the teachers and students in
@@ -255,7 +255,7 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
         focus,
         root: roots.has(sn.id),
         // DEFAULT D22: a founder only as recorded (the lineage's root), as the routes of descent mark one.
-        mark: roots.has(sn.id) ? 'founder' : person.lifeStatus === 'living' ? 'living' : 'other',
+        mark: roots.has(sn.id) ? 'founder' : person.lifeStatus === 'living' ? 'living' : person.historical ? 'historical' : 'other',
         // M14: the profile photo (public people and the viewer's own only), or the monogram.
         photo: person.photo ?? null,
         slot: { x: sn.x, y: sn.y, width: sn.width, height: sn.height },
@@ -276,6 +276,7 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
     const stroke = strokeOf(edge);
     const lineageName = lineages.get(edge.lineageId)?.name ?? 'another lineage';
     const label = se.kind === 'crossLineage' ? `Teacher in ${lineageName}` : historical ? periodText(edge.periods) : null;
+    const state = relationStatus(edge.status, edge.certainty).label;
     return {
       id: se.id,
       type: 'lineage',
@@ -284,7 +285,7 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
       hidden: !byDefault(edge),
       selectable: false,
       focusable: false,
-      ariaLabel: `${persons.get(edge.teacherId)?.displayName ?? ''} taught ${persons.get(edge.studentId)?.displayName ?? ''}: ${relationStatus(edge.status).label}${se.kind === 'crossLineage' ? `, teacher in ${lineageName}` : ''}${historical ? `, ${periodText(edge.periods)}` : ''}`,
+      ariaLabel: `${persons.get(edge.teacherId)?.displayName ?? ''} taught ${persons.get(edge.studentId)?.displayName ?? ''}: ${state}${se.kind === 'crossLineage' ? `, teacher in ${lineageName}` : ''}${historical ? `, ${periodText(edge.periods)}` : ''}`,
       data: { stroke, kind: se.kind, lineageId: edge.lineageId, routedBy: se.routedBy, path: se.path, label, historical, ends: { teacher: boxes.get(se.teacherId)!, student: boxes.get(se.studentId)! } },
     };
   });
@@ -313,9 +314,10 @@ function drawnKinds(graph: LineageGraphDto, edges: readonly LineageEdge[]): Link
   const kinds = new Set<LinkKind>();
   for (const e of graph.edges) {
     if (!visible.has(e.id)) continue;
-    kinds.add(relationStatus(e.status).kind);
+    const state = relationStatus(e.status, e.certainty).kind;
+    kinds.add(state);
     if (e.kind === 'crossLineage') kinds.add('cross_lineage');
-    if (isHistoricalRelation(e.periods)) kinds.add('historical');
+    if (isHistoricalRelation(e.periods) && state !== 'traditional' && state !== 'contested') kinds.add('historical');
   }
   return legendKinds(kinds);
 }

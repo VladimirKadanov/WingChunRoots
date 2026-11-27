@@ -106,6 +106,10 @@ export function FactStrip({ profile, className }: { profile: PersonProfileDto; c
   const founded = foundedLineages(profile);
   const facts: { key: string; node: ReactNode }[] = [];
   if (!profile.limited && profile.lifeStatus !== 'unknown') facts.push({ key: 'life', node: lifeText(profile.lifeStatus, profile.kind) });
+  // Journey review 2026-11-26 (P1-3): the era of a historical record, as the archive words it.
+  if (!profile.limited && profile.kind === 'historical') {
+    facts.push({ key: 'era', node: <span data-testid="era-fact">{profile.era ?? 'Dates unknown'}</span> });
+  }
   const place = placeText(profile);
   if (place) facts.push({ key: 'place', node: place });
   for (const lineage of profile.lineages) {

@@ -189,7 +189,7 @@ export function DescendantsOutline({
     const edges = edgesOf(parentId, person.id);
     const year = yearText(edges);
     // A link that is not public and verified says so: a seal and a word, and who can see it.
-    const marked = edges.find((e) => e.visibility !== 'public' || relationStatus(e.status).kind !== 'verified');
+    const marked = edges.find((e) => e.visibility !== 'public' || relationStatus(e.status, e.certainty).kind !== 'verified');
     const request = edges.length > 0 && edges.every((e) => e.visibility === 'involved_only');
     const count = `${students(publicKids.length)}${ownRequests > 0 ? ` and your ${ownRequests === 1 ? 'request' : 'requests'}` : ''}`;
     // The "more in their list" line lines up with the names of the list above it.

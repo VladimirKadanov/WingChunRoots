@@ -44,6 +44,8 @@ export const vPublicPerson = pgView('v_public_person', {
   // the app builds its address from the id and the content hash. Never the storage key.
   photoId: uuid('photo_id'),
   photoSha256: text('photo_sha256'),
+  // Journey review 2026-11-26 (P1-3, ADR 0077): the era of a historical record ("d. 1901").
+  eraText: text('era_text'),
 }).existing();
 
 /**
@@ -72,6 +74,9 @@ export const vPublicEdge = pgView('v_public_edge', {
   // M10b (DEFAULT D04/D13): the teacher approved it from their own account and no archivist has
   // verified them as an instructor yet ("Approved by an unverified instructor").
   approvedByUnverifiedInstructor: boolean('approved_by_unverified_instructor').notNull(),
+  // Journey review 2026-11-26 (P1-3, ADR 0077): an archive link's certainty and public source line.
+  certainty: text('certainty'),
+  publicSource: text('public_source'),
 }).existing();
 
 /**

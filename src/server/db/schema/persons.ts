@@ -32,6 +32,7 @@ import {
   PROFILE_LINKS_MAX,
   PROFILE_VIDEO_TITLE_MAX,
   PROFILE_VIDEOS_MAX,
+  PERSON_ERA_MAX,
   VIDEO_PROVIDERS,
 } from './common';
 
@@ -61,6 +62,9 @@ export const person = pgTable(
     trainingStartYear: integer('training_start_year'),
     // Private and not collected in the pilot (D16); the public role never sees it.
     birthDate: date('birth_date'),
+    // Journey review 2026-11-26 (P1-3, ADR 0077): the era of a historical record as the archive
+    // words it ("d. 1901", "active 1850s to 1880s"); public. Living people have none.
+    eraText: text('era_text'),
     // M14: the current profile photo (person_photo, status active), or none. v_public_person
     // shows it only for a public person (docs/adr/0016-profile-photos.md).
     photoId: uuid('photo_id').references((): AnyPgColumn => personPhoto.id, { onDelete: 'set null' }),
@@ -91,6 +95,7 @@ export const person = pgTable(
     check('person_slug_format', sql`${t.slug} ~ ${sql.raw(`'${SLUG_PATTERN}'`)}`),
     check('person_kind_check', inList(t.kind.name, PERSON_KINDS)),
     check('person_life_status_check', inList(t.lifeStatus.name, LIFE_STATUSES)),
+    check('person_era_text_length', sql`${t.eraText} IS NULL OR char_length(${t.eraText}) BETWEEN 1 AND ${sql.raw(String(PERSON_ERA_MAX))}`),
     check('person_stewardship_check', inList(t.stewardship.name, STEWARDSHIPS)),
     check('person_visibility_check', inList(t.visibility.name, VISIBILITIES)),
     // A taken-down record is never public, whichever code path writes it (review 2026-11), and the

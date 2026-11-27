@@ -45,7 +45,7 @@ import { EXPLORE_START_TAG, invalidatePublic, lineageTag, personTag } from '../c
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
 import { evidenceLink, lineage, person, personBio, personName, teachingRelationship, trainingPeriod } from '../db/schema';
-import { EVIDENCE_MAX_FILES_PER_CASE, PUBLIC_RELATIONSHIP_STATUSES } from '../db/schema/common';
+import { EVIDENCE_MAX_FILES_PER_CASE, LINK_CERTAINTIES, PERSON_ERA_MAX, PUBLIC_RELATIONSHIP_STATUSES, PUBLIC_SOURCE_MAX } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import { enqueue, type Transaction } from '../jobs/outbox';
 import { QUEUE } from '../jobs/queues';
@@ -177,6 +177,8 @@ export const createRecordInput = z
     /** Deceased, or not known (treated as living and kept hidden until a death is established). */
     lifeStatus: z.enum(['deceased', 'unknown'], { error: 'Choose whether the person has died or it is not known.' }),
     bio: text(BIO_MAX_LENGTH),
+    /** Journey review 2026-11-26 (P1-3, ADR 0077): the era as the public pages say it ("d. 1901"). Optional. */
+    era: text(PERSON_ERA_MAX),
     reason: text(ARCHIVE_REASON_MAX),
     /** Optional: files this staff member uploaded for the record, linked to it. */
     evidenceIds: z.array(z.uuid({ error: ARCHIVAL_EVIDENCE_MESSAGE })).max(EVIDENCE_MAX_FILES_PER_CASE).default([]),
@@ -195,6 +197,7 @@ export const createRecordInput = z
     if (input.jyutping && (input.jyutping.length > NAME_MAX_LENGTH || !isJyutping(input.jyutping))) issue('jyutping', 'Write Jyutping in lower case, with optional tone numbers: sou1 zuk1 cing4.');
     if (input.pinyin && (input.pinyin.length > NAME_MAX_LENGTH || !isPinyin(input.pinyin))) issue('pinyin', 'Write pinyin in Latin letters, with tone marks or tone numbers.');
     if (input.bio && input.bio.length > BIO_MAX_LENGTH) issue('bio', `Use at most ${BIO_MAX_LENGTH} characters.`);
+    if (input.era && input.era.length > PERSON_ERA_MAX) issue('era', `Use at most ${PERSON_ERA_MAX} characters.`);
     checkReason(input.reason, issue);
   });
 export type CreateRecordInput = z.input<typeof createRecordInput>;
@@ -209,6 +212,10 @@ export const addLinkInput = z
     toYear: year,
     /** Required: where the link comes from (a book and page, an interview, a certificate). Staff only. */
     source: text(SOURCE_MAX),
+    /** Journey review 2026-11-26 (P1-3, ADR 0077): how sure the record is; shown in words and as the line. */
+    certainty: z.enum(LINK_CERTAINTIES, { error: 'Choose how sure the record is.' }).default('documented'),
+    /** P1-3: a short public source line ("According to …"); optional. The source above stays staff-only. */
+    publicSource: text(PUBLIC_SOURCE_MAX),
     evidenceIds: z.array(z.uuid({ error: ARCHIVAL_EVIDENCE_MESSAGE })).max(EVIDENCE_MAX_FILES_PER_CASE).default([]),
     idempotencyKey,
   })
@@ -222,7 +229,7 @@ export const addLinkInput = z
 export type AddLinkInput = z.input<typeof addLinkInput>;
 
 /** The years and the source of a link, as addLink and editLink take them. */
-function checkYearsAndSource(input: { fromYear: number | null; toYear: number | null; source: string | null }, issue: (path: string, message: string) => void) {
+function checkYearsAndSource(input: { fromYear: number | null; toYear: number | null; source: string | null; publicSource?: string | null }, issue: (path: string, message: string) => void) {
   const thisYear = new Date().getUTCFullYear();
   for (const [field, value] of [
     ['fromYear', input.fromYear],
@@ -235,6 +242,7 @@ function checkYearsAndSource(input: { fromYear: number | null; toYear: number | 
   if (input.fromYear !== null && input.toYear !== null && input.toYear < input.fromYear) issue('toYear', 'The end can’t be before the start.');
   if (!input.source) issue('source', 'Write the source: where this training is recorded.');
   else if (input.source.length > SOURCE_MAX) issue('source', `Use at most ${SOURCE_MAX} characters.`);
+  if (input.publicSource && input.publicSource.length > PUBLIC_SOURCE_MAX) issue('publicSource', `Use at most ${PUBLIC_SOURCE_MAX} characters.`);
 }
 
 export const editLinkInput = z
@@ -245,6 +253,10 @@ export const editLinkInput = z
     toYear: year,
     /** Required, as for a new link. Staff only. */
     source: text(SOURCE_MAX),
+    /** Journey review 2026-11-26 (P1-3, ADR 0077): how sure the record is; shown in words and as the line. */
+    certainty: z.enum(LINK_CERTAINTIES, { error: 'Choose how sure the record is.' }).default('documented'),
+    /** P1-3: a short public source line ("According to …"); optional. The source above stays staff-only. */
+    publicSource: text(PUBLIC_SOURCE_MAX),
     reason: text(ARCHIVE_REASON_MAX),
   })
   .superRefine((input, ctx) => {
@@ -298,6 +310,9 @@ export interface ArchiveLinkView {
   fromYear: number | null;
   toYear: number | null;
   source: string | null;
+  /** P1-3 (ADR 0077): how sure the record is (null: a link a teacher confirmed), and the public source line. */
+  certainty: 'documented' | 'traditional' | 'disputed' | null;
+  publicSource: string | null;
   /** How it was established: entered or confirmed by staff, or approved by the teacher. */
   path: 'committee_review' | 'teacher_approval';
   /** This staff member may end it here (a verified link between two records kept by the platform). */
@@ -512,6 +527,8 @@ export async function getArchiveLineage(principal: Principal | null, raw: z.inpu
       status: teachingRelationship.status,
       path: teachingRelationship.verificationPath,
       source: teachingRelationship.sourceNote,
+      certainty: teachingRelationship.certainty,
+      publicSource: teachingRelationship.publicSource,
       startsOn: sql<string | null>`(SELECT min(tp.starts_on)::text FROM training_period tp WHERE tp.relationship_id = teaching_relationship.id)`,
       endsOn: sql<string | null>`(SELECT max(tp.ends_on)::text FROM training_period tp WHERE tp.relationship_id = teaching_relationship.id)`,
     })
@@ -543,6 +560,8 @@ export async function getArchiveLineage(principal: Principal | null, raw: z.inpu
           fromYear: yearOf(l.startsOn),
           toYear: yearOf(l.endsOn),
           source: l.source,
+          certainty: l.certainty,
+          publicSource: l.publicSource,
           path: l.path,
           endable: archiveKeepsLink({ status, path: l.path, teacher, student }),
         };
@@ -674,7 +693,7 @@ export async function createArchiveRecord(principal: Principal | null, raw: Crea
     const id = uuidv7();
     const slug = slugFromName(input.primaryName!, randomBytes(4).toString('hex'));
     // DEFAULT D03: involved_only until a link is verified; publication.ts decides then.
-    await tx.insert(person).values({ id, slug, kind: 'historical', lifeStatus: input.lifeStatus, stewardship: 'platform', visibility: 'involved_only', createdByUserId: p.user.id });
+    await tx.insert(person).values({ id, slug, kind: 'historical', lifeStatus: input.lifeStatus, stewardship: 'platform', visibility: 'involved_only', createdByUserId: p.user.id, eraText: input.era });
     const script = input.originalName && input.originalLang ? originalScript(input.originalLang)! : null;
     const names: (typeof personName.$inferInsert)[] = [{ personId: id, kind: 'name', value: input.primaryName!, script: 'Latn', lang: 'und-Latn', isPrimary: true, sortOrder: 0 }];
     if (script && input.originalName) names.push({ personId: id, kind: 'name', value: input.originalName, script: script.script, lang: script.lang, sortOrder: 1 });
@@ -768,6 +787,8 @@ export async function addArchiveLink(principal: Principal | null, raw: AddLinkIn
         verificationPath: 'committee_review',
         requestedByUserId: p.user.id,
         sourceNote: input.source,
+        certainty: input.certainty,
+        publicSource: input.publicSource,
       });
       const fromYear = input.fromYear;
       const toYear = input.toYear;
@@ -798,6 +819,8 @@ export async function addArchiveLink(principal: Principal | null, raw: AddLinkIn
           studentPersonId: student.id,
           lineageId: line.id,
           years: { from: fromYear, to: toYear },
+          certainty: input.certainty,
+          publicSource: input.publicSource ? { length: input.publicSource.length } : null,
           source: { length: input.source!.length },
           ...verified,
           shown,
@@ -900,7 +923,10 @@ export async function editArchiveLink(principal: Principal | null, raw: EditLink
     const link = { status: row.status, path: row.verificationPath, teacher: { stewardship: stewardship(row.teacherPersonId) }, student: { stewardship: stewardship(row.studentPersonId) } };
     if (link.path !== 'committee_review' || link.teacher.stewardship === 'self' || link.student.stewardship === 'self') throw new ServiceError('CONFLICT', MEMBER_LINK_EDIT);
     if (!archiveKeepsLink(link)) throw new ServiceError('CONFLICT', NOT_VERIFIED_EDIT);
-    const [{ sourceNote } = { sourceNote: null }] = await tx.select({ sourceNote: teachingRelationship.sourceNote }).from(teachingRelationship).where(eq(teachingRelationship.id, row.id));
+    const [{ sourceNote, certainty, publicSource } = { sourceNote: null, certainty: null, publicSource: null }] = await tx
+      .select({ sourceNote: teachingRelationship.sourceNote, certainty: teachingRelationship.certainty, publicSource: teachingRelationship.publicSource })
+      .from(teachingRelationship)
+      .where(eq(teachingRelationship.id, row.id));
 
     const periods = await tx
       .select({ startsOn: trainingPeriod.startsOn, endsOn: trainingPeriod.endsOn, schoolId: trainingPeriod.schoolId })
@@ -911,8 +937,13 @@ export async function editArchiveLink(principal: Principal | null, raw: EditLink
     const endsOn = periods.map((x) => x.endsOn).filter((d): d is string => d !== null).sort();
     const before = { from: yearOf(starts[0] ?? null), to: yearOf(endsOn.at(-1) ?? null) };
     const after = { from: input.fromYear, to: input.toYear };
-    const changed = { years: before.from !== after.from || before.to !== after.to, source: sourceNote !== input.source };
-    if (!changed.years && !changed.source) return { changed: false, tags: [] as string[] };
+    const changed = {
+      years: before.from !== after.from || before.to !== after.to,
+      source: sourceNote !== input.source,
+      certainty: (certainty ?? 'documented') !== input.certainty,
+      publicSource: publicSource !== input.publicSource,
+    };
+    if (!changed.years && !changed.source && !changed.certainty && !changed.publicSource) return { changed: false, tags: [] as string[] };
 
     const now = new Date();
     if (changed.years) {
@@ -923,7 +954,7 @@ export async function editArchiveLink(principal: Principal | null, raw: EditLink
           : { startsOn: `${after.from}-01-01`, endsOn: after.to === null ? null : `${after.to}-01-01`, precision: 'year', ongoing: false, schoolId, sortOrder: 0 },
       ]);
     }
-    await tx.update(teachingRelationship).set({ sourceNote: input.source, updatedAt: now }).where(eq(teachingRelationship.id, row.id));
+    await tx.update(teachingRelationship).set({ sourceNote: input.source, certainty: input.certainty, publicSource: input.publicSource, updatedAt: now }).where(eq(teachingRelationship.id, row.id));
     // Only the lengths of the source go to the audit row, never its text.
     const sourceLength = input.source?.length ?? 0;
     await writeAudit(tx, {
@@ -933,7 +964,7 @@ export async function editArchiveLink(principal: Principal | null, raw: EditLink
       subjectType: 'teaching_relationship',
       subjectId: row.id,
       before: { years: before, periods: periods.length, source: sourceNote ? { length: sourceNote.length } : null },
-      after: { archiveEditor: true, status: row.status, lineageId: row.lineageId, changed, years: after, source: { length: sourceLength } },
+      after: { archiveEditor: true, status: row.status, lineageId: row.lineageId, changed, years: after, source: { length: sourceLength }, certainty: input.certainty },
       reason: input.reason,
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,

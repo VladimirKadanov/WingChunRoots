@@ -563,7 +563,7 @@ test('@M09 a teacher marks training as ended and the relationship stays visible 
   const profile = await anonymous.newPage();
   await profile.goto(`/people/${student.slug}`);
   const link = profile.getByRole('list', { name: /^Teachers of / }).locator(`li[data-person="${teacher.slug}"]`);
-  await expect(link).toContainText('Historical');
+  await expect(link).toContainText('Former');
   await expect(link).toContainText('2017–2024');
   // The student sees it among their teachers, historical.
   await student.page.goto('/dashboard/teachers');

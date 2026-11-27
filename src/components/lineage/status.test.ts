@@ -75,6 +75,21 @@ describe('the state of a relationship, as a word and a stroke', () => {
     expect(kindsOf(asStudentEdges(edges))).toEqual(['verified']);
     expect(strokeOf(asStudentEdges(edges)[0]!)).toBe('verified');
   });
+
+  it('says how sure the archive is of a link it entered, with its own line (P1-3, ADR 0077)', () => {
+    const ended = [period('1881', '1890')];
+    expect(relationStatus('verified', 'documented')).toEqual({ kind: 'verified', label: 'Documented' });
+    expect(relationStatus('verified', 'traditional')).toEqual({ kind: 'traditional', label: 'Traditional account' });
+    expect(relationStatus('verified', 'disputed')).toEqual({ kind: 'contested', label: 'Disputed by historians' });
+    expect(relationStatus('verified', null)).toEqual({ kind: 'verified', label: 'Verified' });
+    // Arbitration wins over the archive's certainty.
+    expect(relationStatus('in_arbitration', 'traditional').kind).toBe('arbitration');
+    // A traditional account draws its own line, not the thin line of ended training.
+    expect(strokeOf({ status: 'verified', periods: ended, certainty: 'traditional' })).toBe('traditional');
+    expect(kindsOf([{ status: 'verified', periods: ended, certainty: 'disputed' }])).toEqual(['contested']);
+    expect(kindsOf([{ status: 'verified', periods: ended, certainty: 'documented' }])).toEqual(['verified', 'historical']);
+    expect(asStudentEdges([{ status: 'verified', periods: ended, certainty: 'traditional' }])[0]!.certainty).toBe('traditional');
+  });
 });
 
 describe('sameNameNotes', () => {
@@ -136,9 +151,9 @@ describe('bySeniority', () => {
 describe('studentTotalsText', () => {
   it('leaves out a part that would be zero', () => {
     expect(studentTotalsText(129, 0)).toBe('129 active students');
-    expect(studentTotalsText(0, 3)).toBe('3 historical students');
+    expect(studentTotalsText(0, 3)).toBe('3 former students');
     expect(studentTotalsText(1, 0)).toBe('1 active student');
-    expect(studentTotalsText(1200, 3)).toBe('1,200 active and 3 historical students');
+    expect(studentTotalsText(1200, 3)).toBe('1,200 active and 3 former students');
     expect(studentTotalsText(0, 0)).toBe('No students on the public record');
   });
 });

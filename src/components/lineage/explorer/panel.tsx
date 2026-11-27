@@ -66,7 +66,7 @@ import type { GenerationLabel } from '../generation';
 import { GenerationText } from '../generation-text';
 import { PersonAvatar } from '../person-avatar';
 import { LatinName, PersonLink } from '../person-name';
-import { RelationBadges, UnverifiedApprovalNote } from '../relation-list';
+import { PublicSourceNote, RelationBadges, UnverifiedApprovalNote } from '../relation-list';
 import { periodText } from '../status';
 import type { CanvasHandle, NodeActions, PanelHandle } from './graph-api';
 import { countsInView, ExpandActions } from './node-controls';
@@ -491,6 +491,7 @@ function PersonBody({
                   <RelationBadges edge={e} role="teacher" />
                   {/* M10b (DEFAULT D04/D13): as on the profile, the link's note while its approver is unverified. */}
                   <UnverifiedApprovalNote edge={e} className="text-sm text-fg-muted" />
+                  <PublicSourceNote edge={e} className="text-sm text-fg-muted" />
                 </li>
               );
             })}
