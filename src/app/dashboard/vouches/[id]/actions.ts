@@ -1,6 +1,6 @@
 'use server';
 
-// The Server Action of /dashboard/vouches/<id> (ADR 0088): a thin wrapper over
+// The Server Action of /dashboard/vouches/<id> (ADR 0089): a thin wrapper over
 // identityVouches.answer (src/server/rpc/parity.ts), called in-process with this request's session.
 
 import { headers } from 'next/headers';

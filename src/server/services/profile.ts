@@ -461,7 +461,7 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
       .for('update');
     if (input.personId && input.personId !== own?.id) throw new ServiceError('FORBIDDEN', NOT_YOURS_MESSAGE);
     if (!own) throw new ServiceError('NOT_FOUND', 'Create your profile first: finish setting up your account.');
-    // ADR 0088: no renames or other changes while an impersonation report holds the profile.
+    // ADR 0089: no renames or other changes while an impersonation report holds the profile.
     await refuseWhileHeld(tx, own.id);
 
     let countryCode = input.countryCode === undefined ? own.countryCode : input.countryCode;

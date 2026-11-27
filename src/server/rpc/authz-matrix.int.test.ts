@@ -64,6 +64,7 @@ import { createSchool } from '../services/schools';
 import { requestTrial } from '../services/trial-lessons';
 import { cancelSubscription, startCheckout, testPay } from '../services/billing';
 import { applyPendingBillingEvents, paidSubscription } from '../services/billing.test-support';
+import { adminIdOf, membershipIdOf, settleNaming } from '../services/naming.test-support';
 import { startFederationTrial } from '../services/federation-trials';
 import { suspendAccount } from '../services/suspension';
 import { takeDownProfile } from '../services/takedown';
@@ -511,6 +512,7 @@ async function federationBillingOf(opts: { subscribed?: boolean } = {}) {
   const o = await organizationOf({ active: true });
   const party = await actor('org-co-admin', { noPerson: true });
   await addOrganizationAdmin(o.owner.principal, { organizationId: o.organizationId, email: party.email }, meta);
+  await settleNaming({ organizationId: o.organizationId, kind: 'organization_admin' });
   let subscriptionId: string | null = null;
   if (opts.subscribed) {
     const checkout = await startCheckout(o.owner.principal, { planCode: 'federation', interval: 'month', organizationId: o.organizationId }, meta);
@@ -580,7 +582,7 @@ async function claimWithTeacher(opts: { asked?: boolean } = {}) {
 }
 
 /**
- * ADR 0088: a public profile run by the `party`, reported by an account without a profile (the
+ * ADR 0089: a public profile run by the `party`, reported by an account without a profile (the
  * `owner`) as pretending to be them; held after the moderators' check when `held`. With `teacher`,
  * the profile has a verified teacher with an account of 400 days (who may vouch).
  */
@@ -599,14 +601,14 @@ async function identityCase(opts: { held?: boolean; teacher?: boolean } = {}) {
   return { subject, reporter, caseId, teacher };
 }
 
-/** ADR 0088: a held report whose reporter asked the profile's teacher to vouch. */
+/** ADR 0089: a held report whose reporter asked the profile's teacher to vouch. */
 async function identityVouch() {
   const c = await identityCase({ held: true, teacher: true });
   const { id } = await askIdentityVouch(c.reporter.principal, { caseId: c.caseId, slug: c.teacher!.slug!, kind: 'teacher', message: 'A fictional message.' }, meta);
   return { ...c, vouchId: id };
 }
 
-/** ADR 0088: a code the reporter of a held report asked for, and (e-mail) the six digits sent. */
+/** ADR 0089: a code the reporter of a held report asked for, and (e-mail) the six digits sent. */
 async function identityCodeOf(channel: 'email' | 'page') {
   const c = await identityCase({ held: true });
   const address = `office-${(addresses += 1)}@demo-school-${randomBytes(3).toString('hex')}.example.test`;
@@ -622,7 +624,7 @@ async function identityCodeOf(channel: 'email' | 'page') {
   return { ...c, codeId: code.id, digits };
 }
 
-/** ADR 0088: one open report per account, three in 30 days: the world's accounts file again in each row. */
+/** ADR 0089: one open report per account, three in 30 days: the world's accounts file again in each row. */
 async function noIdentityReports(who: Who): Promise<void> {
   const a = worldActor(who);
   if (a) await getDb().execute(sql`UPDATE identity_report SET status = 'closed', created_at = now() - interval '60 days' WHERE reporter_user_id = ${a.id}::uuid`);
@@ -709,6 +711,37 @@ const noInput = () => ({ input: undefined });
 const ROWS: Row[] = [
   // account
   { path: 'account.menu', make: noInput, expect: own() },
+  // Review 2026-11-13 (ADR 0088): naming requests. The named account answers its own; the
+  // archive team (archivist or admin with a verified second factor) decides for people without one.
+  { path: 'naming.mine', make: noInput, expect: own() },
+  {
+    path: 'naming.answer',
+    make: async () => {
+      const o = await organizationOf({ federation: true });
+      const named = await actor('naming-named');
+      await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: named.slug!, role: 'member' }, meta);
+      const [r] = (await getDb().execute<{ id: string }>(sql`SELECT id::text FROM naming_request WHERE organization_id = ${o.organizationId}::uuid`)).rows;
+      return { owner: named, party: o.owner, input: { id: r!.id, accept: true } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  { path: 'naming.queue', make: noInput, expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  {
+    path: 'naming.review',
+    make: async () => {
+      const o = await organizationOf({ federation: true });
+      // A record without an account: the request goes to review.
+      const personId = uuidv7();
+      const slug = `demo-naming-record-${randomBytes(4).toString('hex')}`;
+      await getDb().insert(person).values({ id: personId, slug, kind: 'living', lifeStatus: 'living', stewardship: 'unclaimed', visibility: 'public' });
+      await getDb().insert(personName).values({ personId, value: 'Demo Naming Record', script: 'Latn', lang: 'en', isPrimary: true });
+      await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: slug, role: 'member' }, meta);
+      const [r] = (await getDb().execute<{ id: string }>(sql`SELECT id::text FROM naming_request WHERE organization_id = ${o.organizationId}::uuid AND status = 'in_review'`)).rows;
+      return { input: { id: r!.id, approve: false, reason: 'ADR 0088 authorization matrix (fictional)' } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+
   { path: 'account.me', make: noInput, expect: own() },
   { path: 'account.landing', make: () => ({ input: { next: '/dashboard' } }), expect: own() },
   { path: 'account.twoFactor', make: noInput, expect: own() },
@@ -721,6 +754,7 @@ const ROWS: Row[] = [
   // Own-account changes run as a fresh account (the owner), so the shared actors stay as they are.
   { path: 'account.setType', make: async () => ({ owner: await actor('type'), input: { accountType: 'sifu' } }), expect: { ...signedInOnly, owner: 'ok' } },
   { path: 'account.privacy', make: noInput, expect: own() },
+  { path: 'account.export', make: noInput, expect: own() },
   { path: 'account.requestDeletion', make: async () => ({ owner: await actor('deleting'), input: { confirm: true } }), expect: { ...signedInOnly, owner: 'ok' } },
   { path: 'consent.record', make: async () => ({ owner: await actor('consenting'), input: { kinds: ['terms'] } }), expect: { ...signedInOnly, owner: 'ok' } },
   { path: 'consent.withdraw', make: async () => ({ owner: await actor('withdrawing'), input: { kinds: ['privacy_ack'] } }), expect: { ...signedInOnly, owner: 'ok' } },
@@ -1390,7 +1424,7 @@ const ROWS: Row[] = [
     },
     expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
   },
-  // ADR 0088: impersonation reports. Any signed-in account may report a profile another account
+  // ADR 0089: impersonation reports. Any signed-in account may report a profile another account
   // runs; a moderator or an administrator makes the first check; the two sides prove; the vouch is
   // the asked person's alone; an administrator confirms a code seen on a page.
   {
@@ -2016,11 +2050,24 @@ const ROWS: Row[] = [
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
   {
+    // Review 2026-11-13 (ADR 0088): an owner or admin takes back a member request that waits.
+    path: 'organizations.withdrawRequest',
+    make: async () => {
+      const o = await organizationOf({ federation: true });
+      await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: (await actor('org-asked')).slug!, role: 'member' }, meta);
+      const [r] = (await getDb().execute<{ id: string }>(sql`SELECT id::text FROM naming_request WHERE organization_id = ${o.organizationId}::uuid`)).rows;
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, requestId: r!.id } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
     path: 'organizations.removeAdmin',
     make: async () => {
       const o = await organizationOf({ active: true });
-      const added = await addOrganizationAdmin(o.owner.principal, { organizationId: o.organizationId, email: (await actor('org-removed-admin', { noPerson: true })).email }, meta);
-      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, adminId: added.adminId } };
+      const removed = await actor('org-removed-admin', { noPerson: true });
+      await addOrganizationAdmin(o.owner.principal, { organizationId: o.organizationId, email: removed.email }, meta);
+      await settleNaming({ organizationId: o.organizationId, kind: 'organization_admin' });
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, adminId: await adminIdOf(o.organizationId, removed.id) } };
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
@@ -2045,8 +2092,10 @@ const ROWS: Row[] = [
     path: 'organizations.endMember',
     make: async () => {
       const o = await organizationOf({ federation: true });
-      const m = await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: (await actor('org-member')).slug! }, meta);
-      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, membershipId: m.membershipId } };
+      const named = await actor('org-member');
+      await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: named.slug! }, meta);
+      await settleNaming({ organizationId: o.organizationId });
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, membershipId: await membershipIdOf(o.organizationId, named.personId!) } };
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
@@ -2211,8 +2260,9 @@ const ROWS: Row[] = [
     make: async () => {
       const o = await organizationOf({ federation: true });
       const member = await actor('org-leaving');
-      const m = await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: member.slug! }, meta);
-      return { owner: member, party: o.owner, input: { membershipId: m.membershipId } };
+      await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: member.slug! }, meta);
+      await settleNaming({ organizationId: o.organizationId });
+      return { owner: member, party: o.owner, input: { membershipId: await membershipIdOf(o.organizationId, member.personId!) } };
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
@@ -2965,7 +3015,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/admin/review/actions.ts#decideCaseAction', row: 'review.decide', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'] },
   { action: 'src/app/admin/review/actions.ts#addNoteAction', row: 'review.note', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'moderator'] },
   { action: 'src/app/admin/review/actions.ts#askTeacherAction', row: 'review.askTeacher', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'moderator'] },
-  // ADR 0088: impersonation reports.
+  // ADR 0089: impersonation reports.
   { action: 'src/app/people/[slug]/identity/actions.ts#reportIdentityAction', row: 'identity.report', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/admin/review/actions.ts#triageIdentityAction', row: 'identity.triage', form: same, roles: ['anonymous', 'member', 'owner', 'party', 'archivist', 'adminNo2fa', 'moderator'] },
   { action: 'src/app/admin/review/actions.ts#checkIdentityCodeAction', row: 'identity.checkCode', form: same, roles: ['anonymous', 'owner', 'moderator', 'adminNo2fa', 'admin'] },
@@ -3032,6 +3082,14 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/organization/actions.ts#removeOrganizationAdminAction', row: 'organizations.removeAdmin', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/organization/actions.ts#addOrganizationMemberAction', row: 'organizations.addMember', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/organization/actions.ts#endOrganizationMemberAction', row: 'organizations.endMember', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/actions.ts#withdrawOrganizationRequestAction', row: 'organizations.withdrawRequest', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/naming/actions.ts#answerNamingAction', row: 'naming.answer', form: (i) => ({ id: String(i.id), answer: 'accept' }), roles: ['anonymous', 'member', 'party', 'owner'] },
+  {
+    action: 'src/app/admin/archive/naming/actions.ts#reviewNamingAction',
+    row: 'naming.review',
+    form: (i) => ({ id: String(i.id), decision: 'decline', reason: String(i.reason) }),
+    roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'],
+  },
   { action: 'src/app/dashboard/organization/actions.ts#requestOrganizationSchoolAction', row: 'organizations.requestSchool', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/organization/actions.ts#endOrganizationSchoolAction', row: 'organizations.endSchoolLink', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   // M21: the trial lesson request form, the inbox's answers and the schedule form.

@@ -88,7 +88,7 @@ const APPEAL_STATUS_WORDS = { pending: 'Waiting for a decision', upheld: 'Upheld
 
 const MODERATED_KINDS = new Set(['relationship_dispute', 'lineage_report']);
 
-/** ADR 0088: an impersonation report's decision, as each side reads it. */
+/** ADR 0089: an impersonation report's decision, as each side reads it. */
 const IDENTITY_DECISION_WORDS: Record<'reporter' | 'reported', Record<'approved' | 'rejected', string>> = {
   reporter: { approved: 'Upheld.', rejected: 'Not upheld.' },
   reported: { approved: 'The administrators decided that the profile belongs to someone else.', rejected: 'The report was not upheld: the profile stays with you.' },
@@ -409,7 +409,7 @@ export default async function PartyCasePage({ params, searchParams }: { params: 
                   ? 'A short video (MP4 or WebM, up to 50 MB) of you saying your name and today’s date, or JPEG, PNG, WebP or PDF up to 20 MB.'
                   : 'JPEG, PNG, WebP or PDF, up to 20 MB each. A file added to a case stays with it.'
               }
-              // ADR 0088: an impersonation report's case also takes a short MP4 or WebM video, up to 50 MB.
+              // ADR 0089: an impersonation report's case also takes a short MP4 or WebM video, up to 50 MB.
               {...(c.identity ? { accept: 'image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/webm', maxMb: 50 } : {})}
             />
           ) : null}

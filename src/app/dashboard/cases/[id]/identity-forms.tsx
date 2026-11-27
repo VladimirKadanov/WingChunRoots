@@ -1,6 +1,6 @@
 'use client';
 
-// The proof forms of an impersonation report on /dashboard/cases/<id> (ADR 0088): ask someone to
+// The proof forms of an impersonation report on /dashboard/cases/<id> (ADR 0089): ask someone to
 // vouch, ask for an own-channel code, type a mailed code back. Plain forms posted to thin Server
 // Actions over identity.askVouch, identity.addCode and identity.confirmCode. Work without JavaScript.
 

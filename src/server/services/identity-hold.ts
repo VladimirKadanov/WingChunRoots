@@ -1,4 +1,4 @@
-// The hold of an impersonation report (ADR 0088, decision 1): once a moderator checked a report,
+// The hold of an impersonation report (ADR 0089, decision 1): once a moderator checked a report,
 // the profile it is about does not change until the administrators decide, so nothing can be moved
 // or hidden in the meantime. A leaf module (no service imports), so the services it guards can use it.
 

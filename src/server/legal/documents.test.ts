@@ -41,7 +41,11 @@ describe('legal documents', () => {
   it('the privacy notice lists the recipients and describes ip_hmac', () => {
     const privacy = read(LEGAL_DOCUMENTS.privacy.file);
     expect(privacy).toMatch(/OpenFreeMap/);
-    expect(privacy).toMatch(/Hosting, e-mail and monitoring providers/);
+    expect(privacy).toMatch(/Hosting, e-mail, payment and monitoring providers/);
+    // Review 2026-11-13 (privacy 3): a basis per use, the copy and the authority to complain to.
+    expect(privacy).toMatch(/Art\. 6\(1\)\(b\)/);
+    expect(privacy).toMatch(/Download my data/);
+    expect(privacy).toMatch(/КЗЛД/);
     expect(privacy).toMatch(/`ip_hmac`/);
     expect(privacy).toMatch(/HMAC-SHA-256/);
   });

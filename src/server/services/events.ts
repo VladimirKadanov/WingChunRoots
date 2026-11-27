@@ -42,7 +42,7 @@ import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { cacheLife } from 'next/cache';
 import * as z from 'zod';
 
-import { formatEventWhen, isTimeZone, monthKey, monthLabel, toWallTime, wallTimeToInstant } from '../../lib/event-time';
+import { canonicalTimeZone, formatEventWhen, isTimeZone, monthKey, monthLabel, toWallTime, wallTimeToInstant } from '../../lib/event-time';
 import { writeAudit } from '../audit';
 import { hasStaff2FA, requireStaff2FA, requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
@@ -106,6 +106,7 @@ import {
 } from './photos';
 import { openPilotRequest, planSummary } from './plans';
 import { withLimitNotice } from './limit-notices';
+import { askerOf, nameInstructors, pendingInstructors, WAITING_LABELS } from './naming';
 import { notify } from './notify';
 
 // --- Limits and words ----------------------------------------------------------------------------
@@ -633,7 +634,7 @@ async function cleanFields(db: Executor, input: z.output<typeof eventFields>, no
   let timezone: string | null = null;
   let placeId: string | null = null;
   if (input.online) {
-    if (isTimeZone(input.timezone)) timezone = input.timezone;
+    if (isTimeZone(input.timezone)) timezone = canonicalTimeZone(input.timezone);
     else fields.timezone = 'Choose the time zone the times are in.';
   } else if (!input.placeId) {
     fields.placeId = 'Choose the city, or mark the event as online.';
@@ -642,10 +643,16 @@ async function cleanFields(db: Executor, input: z.output<typeof eventFields>, no
     if (!city) fields.placeId = 'Choose the city from the list.';
     else {
       placeId = city.id;
-      if (isTimeZone(city.timezone)) timezone = city.timezone;
-      else if (isTimeZone(input.timezone)) timezone = input.timezone;
+      if (isTimeZone(city.timezone)) timezone = canonicalTimeZone(city.timezone);
+      else if (isTimeZone(input.timezone)) timezone = canonicalTimeZone(input.timezone);
       else fields.timezone = 'This city has no time zone on record: choose the one the times are in.';
     }
+  }
+  // Review 2026-11-13 (N1): the database must know the zone too, or `AT TIME ZONE` fails later on
+  // the organizer's quota and on the passport pages of the event's people.
+  if (timezone && !(await databaseKnowsZone(db, timezone))) {
+    fields.timezone = 'Choose another time zone from the list: this one is not supported.';
+    timezone = null;
   }
 
   let startsAt: Date | null = null;
@@ -712,11 +719,6 @@ async function checkOrganizerFields(db: Executor, f: CleanFields, organizer: { u
     if (found.rows.length !== f.instructorIds.length) fields.instructorIds = 'Choose the instructors from the list: people with a public profile.';
   }
   if (Object.keys(fields).length > 0) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
-}
-
-async function writeInstructors(tx: Transaction, eventId: string, ids: readonly string[], now: Date): Promise<void> {
-  await tx.delete(eventInstructor).where(eq(eventInstructor.eventId, eventId));
-  if (ids.length > 0) await tx.insert(eventInstructor).values(ids.map((personId, position) => ({ eventId, personId, position, createdAt: now, updatedAt: now })));
 }
 
 function changed(): void {
@@ -831,7 +833,7 @@ async function publishEvent(principal: Principal | null, raw: z.input<typeof eve
       createdAt: now,
       updatedAt: now,
     });
-    await writeInstructors(tx, id, f.instructorIds, now);
+    await nameInstructors(tx, await askerOf(tx, p), id, f.title, f.instructorIds, meta);
     await writeAudit(tx, {
       action: 'event.create',
       actorUserId: p.user.id,
@@ -916,7 +918,7 @@ async function changeEvent(principal: Principal | null, raw: z.input<typeof even
         updatedAt: now,
       })
       .where(eq(event.id, row.id));
-    await writeInstructors(tx, row.id, f.instructorIds, now);
+    await nameInstructors(tx, await askerOf(tx, p), row.id, f.title, f.instructorIds, meta);
     await writeAudit(tx, {
       action: 'event.update',
       actorUserId: p.user.id,
@@ -1377,7 +1379,7 @@ export interface EventEditor {
   /** Schools the event may name: the account's own listings, and each organization's accepted links. */
   schools: { id: string; name: string; organizationId: string | null }[];
   /** People of the archive the form offers: you, your confirmed students and teachers, your schools' instructors, your organizations' members. */
-  instructorOptions: { id: string; label: string; self: boolean }[];
+  instructorOptions: { id: string; label: string; self: boolean; waiting: string | null }[];
   timezones: string[];
   /** The zone a new event starts with: the organizer's city's, or UTC. */
   defaultTimezone: string;
@@ -1402,12 +1404,27 @@ export const COMMON_TIME_ZONES = [
  * Every zone the platform knows: the organizer's own (their city's) first, then the common ones,
  * then the rest in order (journey review P3-7; before it the list began at Africa/Abidjan).
  */
-function zones(own: string | null): string[] {
-  const list = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
+function zones(own: string | null, databaseZones: ReadonlySet<string>): string[] {
+  // Review 2026-11-13 (N1): current names only (Asia/Kolkata, not Asia/Calcutta), and only the
+  // zones the database knows as well.
+  const intl = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
+  const list = [...new Set(intl.map(canonicalTimeZone))].filter((z) => databaseZones.has(z) && isTimeZone(z)).sort();
   const known = new Set(['UTC', ...list]);
   const first = [...(own && known.has(own) ? [own] : []), ...COMMON_TIME_ZONES.filter((z) => known.has(z))];
   const seen = new Set(first);
   return [...new Set(first), ...['UTC', ...list].filter((z) => !seen.has(z))];
+}
+
+/** Whether PostgreSQL knows the zone (pg_timezone_names), so `AT TIME ZONE` on the event works. */
+async function databaseKnowsZone(db: Executor, zone: string): Promise<boolean> {
+  const r = await db.execute<{ ok: boolean }>(sql`SELECT EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = ${zone}) AS ok`);
+  return r.rows[0]?.ok === true;
+}
+
+/** The zone names PostgreSQL knows. */
+async function databaseZones(db: Executor): Promise<Set<string>> {
+  const r = await db.execute<{ name: string }>(sql`SELECT name FROM pg_timezone_names`);
+  return new Set(r.rows.map((row) => row.name));
 }
 
 /** events.editor: what the event form offers; `id` loads one of the account's events (404 for any other). */
@@ -1417,6 +1434,7 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
   if (!parsed.success) throw notFound();
   const db = getDb();
   let current: EventEditor['event'] = null;
+  let waiting: Awaited<ReturnType<typeof pendingInstructors>> = [];
   if (parsed.data.id) {
     const seen = await ownEvent(db, p.user.id, parsed.data.id);
     const [r] = await db
@@ -1448,9 +1466,13 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
       .from(event)
       .leftJoin(organization, eq(organization.id, event.organizationId))
       .where(eq(event.id, seen.id));
-    const instructors = await db.select({ id: eventInstructor.personId }).from(eventInstructor).where(eq(eventInstructor.eventId, seen.id)).orderBy(asc(eventInstructor.position));
+    const listedInstructors = await db.select({ id: eventInstructor.personId, position: eventInstructor.position }).from(eventInstructor).where(eq(eventInstructor.eventId, seen.id));
+    // Review 2026-11-13 (ADR 0088): the instructors who have not answered yet stay in the form, marked.
+    waiting = await pendingInstructors(db, seen.id);
+    const instructors = [...listedInstructors, ...waiting.map((w) => ({ id: w.personId, position: w.position }))].sort((a, b) => a.position - b.position);
     current = {
       ...r!,
+      timezone: canonicalTimeZone(r!.timezone),
       status: r!.status as 'published' | 'cancelled',
       startsAt: toWallTime(r!.startsAt, r!.timezone),
       endsAt: toWallTime(r!.endsAt, r!.timezone),
@@ -1494,6 +1516,7 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
           WHERE ${orgIds.length > 0 ? sql`m.organization_id = ANY (${SQL_IDS(orgIds)})` : sql`false`}
             AND (m.ends_on IS NULL OR m.ends_on > current_date)
        UNION SELECT ei.person_id FROM event_instructor ei WHERE ei.event_id = ${current?.id ?? null}::uuid
+       UNION SELECT nr.person_id FROM naming_request nr WHERE nr.kind = 'event_instructor' AND nr.event_id = ${current?.id ?? null}::uuid
      )
        AND p.id IS DISTINCT FROM ${own?.id ?? null}::uuid
      ORDER BY p.display_name, p.id
@@ -1505,17 +1528,22 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
     ? (await db.execute<{ value: string | null }>(sql`SELECT (SELECT pn.value FROM person_name pn WHERE pn.person_id = ${own.id}::uuid AND pn.is_primary LIMIT 1) AS value`)).rows[0]?.value
     : null;
   const instructorOptions = [
-    ...(own ? [{ id: own.id, label: `${ownName ?? 'You'} (you)`, self: true }] : []),
-    ...people.rows.map((r) => ({ id: r.id, label: r.display_name, self: false })),
+    ...(own ? [{ id: own.id, label: `${ownName ?? 'You'} (you)`, self: true, waiting: null }] : []),
+    ...people.rows.map((r) => {
+      const w = waiting.find((x) => x.personId === r.id);
+      return { id: r.id, label: r.display_name, self: false, waiting: w ? WAITING_LABELS[w.status] : null };
+    }),
   ];
+  const known = await databaseZones(db);
   return {
     event: current,
     places,
     kinds: EVENT_KINDS.map((key) => ({ key, label: EVENT_KIND_LABELS[key] })),
     schools: [...ownSchools.map((s) => ({ ...s, organizationId: null })), ...orgSchools],
     instructorOptions,
-    timezones: zones(ownZone),
-    defaultTimezone: ownZone ?? 'UTC',
+    timezones: zones(ownZone ? canonicalTimeZone(ownZone) : null, known),
+    // A zone the database does not know is not offered, so the form does not start with it either.
+    defaultTimezone: ownZone && known.has(canonicalTimeZone(ownZone)) ? canonicalTimeZone(ownZone) : 'UTC',
   };
 }
 

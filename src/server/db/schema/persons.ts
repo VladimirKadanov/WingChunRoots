@@ -79,7 +79,7 @@ export const person = pgTable(
     takenDownAt: timestamp('taken_down_at', { withTimezone: true }),
     takenDownReason: text('taken_down_reason'),
     takenDownVisibility: text('taken_down_visibility', { enum: VISIBILITIES }),
-    // ADR 0088 (owner decision 2026-11-27, decision 1): set when a moderator found an impersonation
+    // ADR 0089 (owner decision 2026-11-27, decision 1): set when a moderator found an impersonation
     // report plausible. While it is set the profile says "Identity under review" instead of its
     // instructor badge, and its owner cannot approve students, rename, hide or erase it.
     identityHoldAt: timestamp('identity_hold_at', { withTimezone: true }),

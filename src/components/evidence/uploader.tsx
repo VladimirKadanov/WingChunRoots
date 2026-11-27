@@ -84,7 +84,7 @@ export function EvidenceUploader({
   inputId?: string;
   maxFiles?: number;
   name?: string;
-  /** The types the picker offers and the largest file (ADR 0088: an impersonation report's case also takes a video). */
+  /** The types the picker offers and the largest file (ADR 0089: an impersonation report's case also takes a video). */
   accept?: string;
   maxMb?: number;
 }) {

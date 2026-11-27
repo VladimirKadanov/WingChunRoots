@@ -143,7 +143,7 @@ export async function searchPeople(tx: Executor, forms: readonly QueryForm[], fi
              CASE WHEN p.kind = 'historical' OR p.life_status = 'deceased' THEN 'historical'
                   WHEN p.stewardship = 'self' THEN 'claimed'
                   ELSE 'unclaimed' END AS record,
-             -- ADR 0088: a profile on hold shows no instructor mark.
+             -- ADR 0089: a profile on hold shows no instructor mark.
              COALESCE(p.instructor_status = 'verified' AND NOT p.identity_hold, false) AS verified_instructor,
              h.score + CASE WHEN n.is_primary THEN ${num(RANK.primary)} ELSE 0 END AS score
         FROM hits h

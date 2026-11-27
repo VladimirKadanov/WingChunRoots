@@ -1,4 +1,4 @@
-// Impersonation reports (owner decisions 2026-11-27; docs/adr/0088-impersonation-reports.md;
+// Impersonation reports (owner decisions 2026-11-27; docs/adr/0089-impersonation-reports.md;
 // specification §16.1): "This account is pretending to be me". No identity documents in Phase 1
 // (decision 2): the proof is vouching, the person's own channel, or a short private video.
 //

@@ -279,7 +279,7 @@ export async function nominateSuccessor(principal: Principal | null, raw: z.inpu
       await lockAccountCases(tx, p.user.id);
       const own = await ownPerson(tx, p.user.id);
       if (!own) throw new ServiceError('CONFLICT', 'Set up your profile first: a successor is chosen among your verified students.');
-      // ADR 0088: nothing is handed over while an impersonation report holds the profile.
+      // ADR 0089: nothing is handed over while an impersonation report holds the profile.
       await refuseWhileHeld(tx, own);
       if (!(await maySucceed(tx, p.user.id))) {
         throw new ServiceError('ENTITLEMENT_REQUIRED', 'A digital successor comes with Professional Sifu, or with an organization you own that holds Federation.', {}, {

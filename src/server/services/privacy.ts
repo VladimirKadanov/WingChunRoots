@@ -150,7 +150,7 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
       // Hides the profile (its consent is withdrawn above). A profile staff hold is hidden already: the
       // withdrawal is recorded for the restore (taken_down_visibility) and nothing public changes.
       if (own && own.stewardship === 'self') {
-        // ADR 0088: a profile on hold cannot be hidden while the administrators decide.
+        // ADR 0089: a profile on hold cannot be hidden while the administrators decide.
         await refuseWhileHeld(tx, own.id);
         profileHidden = await setOwnVisibility(tx, p, own, false, meta);
         profileHeld = own.takenDownAt != null;
@@ -207,7 +207,7 @@ export async function requestAccountDeletion(principal: Principal | null, raw: u
     const existing = await openDeletionRequest(tx, p.user.id);
     if (existing) return { request: existing, created: false };
     const [own] = await tx.select({ id: person.id }).from(person).where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)));
-    // ADR 0088: an account whose profile an impersonation report holds asks for deletion after the decision.
+    // ADR 0089: an account whose profile an impersonation report holds asks for deletion after the decision.
     await refuseWhileHeld(tx, own?.id);
     const [created] = await tx
       .insert(reviewCase)

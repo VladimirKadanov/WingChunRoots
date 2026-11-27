@@ -64,7 +64,7 @@ export const EMAIL_TEMPLATES = {
   'relationship-arbitration': relationshipArbitration,
   // M18: the e-mail of a notice without a dedicated e-mail (src/server/templates/catalog.ts).
   notice,
-  // ADR 0088: the one-time code of an impersonation report's own-channel proof.
+  // ADR 0089: the one-time code of an impersonation report's own-channel proof.
   'identity-code': identityCode,
 } as const;
 

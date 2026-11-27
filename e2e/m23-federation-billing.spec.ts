@@ -115,6 +115,19 @@ async function organizationSubscriptionOf(organizationId: string, live = true): 
   return rows.rows[0]!.id;
 }
 
+
+/** Review 2026-11-13 (ADR 0088): the signed-in account accepts every request to name it, through the API. */
+async function acceptNaming(page: Page): Promise<void> {
+  const mine = await page.request.get('/api/v1/naming/mine');
+  expect(mine.status(), await mine.text()).toBe(200);
+  const { requests } = (await mine.json()) as { requests: { id: string }[] };
+  expect(requests.length).toBeGreaterThan(0);
+  for (const r of requests) {
+    const answered = await apiPost(page, '/naming/answer', { id: r.id, accept: true });
+    expect(answered.status(), await answered.text()).toBe(200);
+  }
+}
+
 test('@M23 an administrator starts a trial without a card; the owner continues yearly and nothing is charged before it ends', async ({ page, browser }) => {
   test.setTimeout(180_000);
   const { owner, organizationId, billing } = await approvedFederation(page, browser, 'Demo Trial Federation Owner');
@@ -222,6 +235,8 @@ test('@M23 monthly to yearly now, monthly again at the period end and taken back
     const coAdmin = await freshAccount(co.page, { name: 'Demo Federation Co Admin' });
     const added = await apiPost(page, '/organizations/admins/add', { organizationId, email: coAdmin.email });
     expect(added.status(), await added.text()).toBe(200);
+    // Review 2026-11-13 (ADR 0088): an invitation, which the co-admin accepts.
+    await acceptNaming(co.page);
     await co.page.goto(billing);
     await expect(visible(co.page.getByTestId('organization-billing-plan'))).toHaveAttribute('data-plan', 'federation');
     await expect(visible(co.page.getByTestId('organization-billing-page'))).toContainText('Only an owner can choose or change the plan.');
@@ -266,6 +281,7 @@ test('@M23 downstream independence: a member student keeps Premium Student when 
       const [person] = (await getDb().execute<{ slug: string }>(sql`UPDATE person SET visibility = 'public' WHERE claimed_by_user_id = ${student.userId}::uuid RETURNING slug`)).rows;
       const memberAdded = await apiPost(page, '/organizations/members/add', { organizationId, personSlug: person!.slug });
       expect(memberAdded.status(), await memberAdded.text()).toBe(200);
+      await acceptNaming(s.page);
 
       // The administrator ends the trial early on its page: the federation has no plan; the student's stays.
       await admin.page.goto(`/admin/organizations/${organizationId}`);

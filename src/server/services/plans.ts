@@ -151,7 +151,7 @@ export async function instructorStatus(db: Executor, userId: string, accountType
         eq(reviewCase.kind, 'instructor_verification'),
         eq(reviewCase.status, 'resolved'),
         eq(reviewCase.resolution, 'approved'),
-        // ADR 0088: a verification belongs to the account that asked for it (never a moved profile's).
+        // ADR 0089: a verification belongs to the account that asked for it (never a moved profile's).
         or(isNull(reviewCase.openedByUserId), eq(reviewCase.openedByUserId, userId)),
       ),
     );

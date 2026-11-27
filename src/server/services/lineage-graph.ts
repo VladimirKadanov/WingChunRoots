@@ -978,7 +978,7 @@ export interface ProfileRow {
   instructor_status: 'verified' | 'unverified' | null;
   /** Journey review 2026-11-26 (P1-3): the era of a historical record. */
   era_text: string | null;
-  /** ADR 0088: an impersonation report holds the profile while the administrators decide. */
+  /** ADR 0089: an impersonation report holds the profile while the administrators decide. */
   identity_hold: boolean;
 }
 

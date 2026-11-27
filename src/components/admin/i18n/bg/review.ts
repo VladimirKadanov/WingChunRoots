@@ -574,7 +574,7 @@ export const BG_REVIEW: AdminDict = {
   'That is not a verified teacher of the record with an account.': 'Това не е потвърден учител на записа с акаунт.',
   'Choose a teacher of the record.': 'Изберете учител на записа.',
   'That teacher has no account.': 'Този учител няма акаунт.',
-  // ADR 0088: impersonation reports, the case card.
+  // ADR 0089: impersonation reports, the case card.
   'The profile is held. Both sides were told and have 14 days to bring proof; an administrator decides.': 'Профилът е задържан. Двете страни са уведомени и имат 14 дни да представят доказателства; решава администратор.',
   'The report is closed. The reporter was sent your reason; nothing changed for the profile.': 'Сигналът е закрит. Подателят получи причината ви; за профила нищо не се промени.',
   'The code is confirmed as seen on the page.': 'Кодът е потвърден като видян на страницата.',
@@ -615,7 +615,7 @@ export const BG_REVIEW: AdminDict = {
   'Confirmed': 'Потвърдено',
   'Not confirmed yet · valid until {day}': 'Още не е потвърдено · валидно до {day}',
   'Enough vouching is one verified teacher, or two verified members who share no teacher. A video is deleted 30 days after the decision. We never ask for identity documents.': 'Достатъчно поръчителство е един потвърден учител или двама потвърдени членове без общ учител. Видеото се изтрива 30 дни след решението. Никога не искаме документи за самоличност.',
-  // ADR 0088: the text the services send (kind, statuses, routes, answers, decisions).
+  // ADR 0089: the text the services send (kind, statuses, routes, answers, decisions).
   'Impersonation report': 'Сигнал за представяне за друг',
   'The profile reported': 'Профилът, за който е сигналът',
   'Impostor': 'Самозванец',
@@ -646,7 +646,7 @@ export const BG_REVIEW: AdminDict = {
   'Required. Both sides read it on their case page and can add proof.': 'Задължително. Двете страни го четат на страницата на случая си и могат да добавят доказателства.',
   'Your question was sent to both sides. The case waits for their answers.': 'Въпросът ви е изпратен на двете страни. Случаят чака отговорите им.',
   'An administrator decides an impersonation report. A moderator or an administrator makes the first check. You can add notes.': 'Администратор решава сигнал за представяне за друг. Първата проверка прави модератор или администратор. Можете да добавяте бележки.',
-  // ADR 0088: impersonation reports, the words the case card sends to its client forms.
+  // ADR 0089: impersonation reports, the words the case card sends to its client forms.
   'Also suspend the account that held the profile': 'Спри също акаунта, който държеше профила',
   'Suggested. Untick it when the account looks like a mistake rather than an impostor. You can lift a suspension from the account page.': 'Препоръчително. Махнете отметката, ако акаунтът изглежда като грешка, а не самозванец. Спирането може да се отмени от страницата на акаунта.',
   'The proof could not settle it either way': 'Доказателствата не решават въпроса нито в едната, нито в другата посока',

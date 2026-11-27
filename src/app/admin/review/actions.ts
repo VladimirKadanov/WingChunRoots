@@ -107,7 +107,7 @@ export async function decideCaseAction(_previous: FormState, form: FormData): Pr
   // status asks for ("established" or "not_established"); empty for every other decision.
   const deceasedSent = textValue(form, 'deceased', 20);
   const deceased = deceasedSent === 'established' || deceasedSent === 'not_established' ? deceasedSent : null;
-  // ADR 0088 (an impersonation report): suspend the account that held the profile, on an upheld
+  // ADR 0089 (an impersonation report): suspend the account that held the profile, on an upheld
   // report (decision 5, the box is ticked in advance); "could not be settled", on one not upheld.
   const suspend = decision === 'verify' && textValue(form, 'suspend', 4) === 'on';
   const unsettled = decision === 'reject' && textValue(form, 'unsettled', 4) === 'on';
@@ -169,7 +169,7 @@ export async function askTeacherAction(_previous: FormState, form: FormData): Pr
 }
 
 /**
- * ADR 0088: the moderators' first check of an impersonation report (identity.triage): "Hold the
+ * ADR 0089: the moderators' first check of an impersonation report (identity.triage): "Hold the
  * profile" (the report is credible) or "Close the report" with the reason the reporter reads.
  */
 export async function triageIdentityAction(_previous: FormState, form: FormData): Promise<FormState> {
@@ -189,7 +189,7 @@ export async function triageIdentityAction(_previous: FormState, form: FormData)
   redirect(doneAt(page, outcome === 'hold' ? 'identity-held' : 'identity-closed'));
 }
 
-/** ADR 0088: "I saw the code on the page" (identity.checkCode; an administrator). */
+/** ADR 0089: "I saw the code on the page" (identity.checkCode; an administrator). */
 export async function checkIdentityCodeAction(_previous: FormState, form: FormData): Promise<FormState> {
   const caseId = textValue(form, 'caseId', 40);
   const codeId = textValue(form, 'codeId', 40);

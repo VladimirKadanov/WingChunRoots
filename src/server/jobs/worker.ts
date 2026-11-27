@@ -13,12 +13,13 @@ import { describeError, MailBusyError, MailInputError } from '../mail/mailer';
 import { SealError } from '../mail/seal';
 import type { Mailer } from '../mail/types';
 import { rebuildAllKeys } from '../search/store';
-import { expireOrganizationImports, purgeExpiredEmailAddresses, purgeExpiredSessions, purgeOldNotifications, purgeOldTrialData, purgeUnconfirmedAccounts } from '../services/retention';
+import { expireOrganizationImports, purgeExpiredEmailAddresses, purgeExpiredNamingInvites, purgeExpiredSessions, purgeOldNotifications, purgeOldTrialData, purgeUnconfirmedAccounts } from '../services/retention';
 import { closeStaleTrialInquiries, nullOldIpHmacs, purgeEndedClaimData, purgeThirdPartyRecords, redactOldRevisions } from '../services/retention-records';
 import { logger } from '../log';
 import { TemplateDataError } from '../templates/email';
 import { eventsNotifyHandler } from './event-notify';
 import { lineageRecomputeHandler, postRevalidate } from './lineage-recompute';
+import { startHeartbeat } from './heartbeat';
 import { purgeIdentityVideos, sweepIdentityReports } from '../services/identity-reports';
 import { billingEventHandler, billingGraceHandler } from './billing';
 import { planExpiryHandler } from './plan-expiry';
@@ -39,6 +40,8 @@ export interface WorkerOptions {
   pollingIntervalSeconds?: number;
   /** Register the recurring jobs (default true). */
   schedules?: boolean;
+  /** Write the worker's heartbeat (system_heartbeat; review 2026-11-13). Default true. */
+  heartbeat?: boolean;
   log?: (line: string) => void;
 }
 
@@ -168,6 +171,11 @@ export function retentionPurgeHandler(db: Database, log: (line: string) => void)
         const imports = await expireOrganizationImports(db);
         return `ended ${imports.imports} expired organization import preview(s)`;
       });
+      // Review 2026-11-13 (ADR 0088): administrator invitations past their 14 days.
+      await step('administrator invitations', async () => {
+        const n = await purgeExpiredNamingInvites(db);
+        return `deleted ${n} expired administrator invitation(s)`;
+      });
       // Review 2026-11: third-party records, ended claims, revisions, ip_hmac and unanswered trial requests.
       await step('third-party records', async () => {
         const r = await purgeThirdPartyRecords(db);
@@ -185,7 +193,7 @@ export function retentionPurgeHandler(db: Database, log: (line: string) => void)
         const r = await nullOldIpHmacs(db);
         return `removed ${r.audit} old audit ip_hmac value(s), ${r.sessions} old session value(s)`;
       });
-      // ADR 0088: impersonation reports whose proof is overdue, holds past 30 days, videos past theirs.
+      // ADR 0089: impersonation reports whose proof is overdue, holds past 30 days, videos past theirs.
       await step('impersonation reports', async () => {
         const swept = await sweepIdentityReports(db);
         const videos = await purgeIdentityVideos(db);
@@ -231,7 +239,7 @@ export function searchKeysRebuildHandler(db: Database, log: (line: string) => vo
 
 /** Starts pg-boss, the queues, the handlers and the schedules. */
 export async function startWorker(options: WorkerOptions): Promise<RunningWorker> {
-  const { boss, db, mailer, queueOptions, pollingIntervalSeconds = 2, schedules = true } = options;
+  const { boss, db, mailer, queueOptions, pollingIntervalSeconds = 2, schedules = true, heartbeat = true } = options;
   const log = options.log ?? ((line: string) => logger().info(line));
 
   await boss.start();
@@ -260,9 +268,13 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
     for (const { queue, cron } of SCHEDULES) await boss.schedule(queue, cron, null, { tz: 'UTC', missed: 'once' });
   }
 
+  // Review 2026-11-13 (ops M3): /healthz/deep and /admin/system notice a stopped worker by its beat.
+  const stopBeat = heartbeat ? startHeartbeat(db) : () => undefined;
+
   return {
     boss,
     async stop() {
+      stopBeat();
       await boss.stop({ graceful: true, timeout: 30_000 });
     },
   };

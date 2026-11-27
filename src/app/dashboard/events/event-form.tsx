@@ -330,7 +330,10 @@ export function EventForm({ editor, publishAs, cityQuery, initial }: EventFormPr
           {LABELS.instructorIds}
           <span className="font-normal text-fg-muted"> (optional, at most 5)</span>
         </legend>
-        <p className="text-sm text-fg-muted">People of the archive with a public profile: you, your confirmed teachers and students, your schools’ instructors.</p>
+        <p className="text-sm text-fg-muted">
+          People of the archive with a public profile: you, your confirmed teachers and students, your schools’ instructors. Anyone but you is listed once they accept; a record
+          without an account, once the archive team agrees.
+        </p>
         <FieldError id={`${fieldId(form, 'instructorIds')}-error`} error={error('instructorIds')} />
         {editor.instructorOptions.length > 0 ? (
           <div className="grid sm:grid-cols-2">
@@ -347,7 +350,10 @@ export function EventForm({ editor, publishAs, cityQuery, initial }: EventFormPr
                   />
                   <CheckIcon size={18} className="pointer-events-none absolute hidden text-fg-inverse peer-checked:block forced-colors:peer-checked:hidden" />
                 </span>
-                <span className="min-w-0 pt-px">{o.label}</span>
+                <span className="min-w-0 pt-px">
+                  {o.label}
+                  {o.waiting ? <span className="block text-sm text-fg-muted">{o.waiting}</span> : null}
+                </span>
               </label>
             ))}
           </div>

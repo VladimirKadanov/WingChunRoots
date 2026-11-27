@@ -1,6 +1,6 @@
 'use client';
 
-// "This account is pretending to be me" (ADR 0088): for an impostor report the proof route
+// "This account is pretending to be me" (ADR 0089): for an impostor report the proof route
 // (vouching, own channel, private video), and the reporter's reason, posted to a thin Server Action
 // over identity.report with an idempotency key the page made for it. Works without JavaScript.
 

@@ -1,4 +1,4 @@
-// Impersonation reports (ADR 0088), against a migrated throwaway database:
+// Impersonation reports (ADR 0089), against a migrated throwaway database:
 //   - a report changes nothing until a moderator's check; the reported account learns nothing then;
 //   - the hold: the profile says "Identity under review", refuses renames and a teacher's approval,
 //     and the reported side becomes a party who sees nothing of the reporter;

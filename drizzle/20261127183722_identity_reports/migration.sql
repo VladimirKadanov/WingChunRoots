@@ -1,4 +1,4 @@
--- Generated migration with custom SQL (owner decisions 2026-11-27; docs/adr/0088-impersonation-reports.md):
+-- Generated migration with custom SQL (owner decisions 2026-11-27; docs/adr/0089-impersonation-reports.md):
 -- - identity_report, identity_vouch, identity_code: "This account is pretending to be me", its
 --   vouches and its own-channel codes; person.identity_hold_at (the moderators' hold, decision 1);
 --   evidence_file.purge_after and the two video types (decisions 2 and 7).
@@ -106,7 +106,7 @@ ALTER TABLE "evidence_file" DROP CONSTRAINT "evidence_file_mime_check", ADD CONS
 ALTER TABLE "evidence_file" DROP CONSTRAINT "evidence_file_size_check", ADD CONSTRAINT "evidence_file_size_check" CHECK ("size_bytes" > 0 AND "size_bytes" <= CASE WHEN "mime" LIKE 'video/%' THEN 52428800 ELSE 20971520 END);--> statement-breakpoint
 ALTER TABLE "review_case" DROP CONSTRAINT "review_case_kind_check", ADD CONSTRAINT "review_case_kind_check" CHECK ("kind" IN ('historical_claim', 'person_claim', 'instructor_verification', 'relationship_dispute', 'profile_report', 'school_listing', 'deletion_request', 'organization_application', 'succession_request', 'lineage_report', 'decision_appeal', 'record_proposal', 'identity_report'));--> statement-breakpoint
 ALTER TABLE "review_event" DROP CONSTRAINT "review_event_action_check", ADD CONSTRAINT "review_event_action_check" CHECK ("action" IN ('open', 'assign', 'unassign', 'needs_info', 'evidence', 'approve', 'reject', 'dismiss', 'withdraw', 'reopen', 'hold', 'release'));--> statement-breakpoint
--- ADR 0088: the app reads and writes the reports, vouches and codes; the public role never.
+-- ADR 0089: the app reads and writes the reports, vouches and codes; the public role never.
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "identity_report" TO app_rw;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "identity_vouch" TO app_rw;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "identity_code" TO app_rw;--> statement-breakpoint
@@ -147,7 +147,7 @@ SELECT
              SELECT 1 FROM "review_case" c
               WHERE c."person_id" = p."id" AND c."kind" = 'instructor_verification'
                 AND c."status" = 'resolved' AND c."resolution" = 'approved'
-                -- ADR 0088: a verification belongs to the account that asked for it, so it does not
+                -- ADR 0089: a verification belongs to the account that asked for it, so it does not
                 -- pass to the real person when an impersonated profile is moved to them.
                 AND (c."opened_by_user_id" IS NULL OR c."opened_by_user_id" = p."claimed_by_user_id"))
            THEN 'verified'
@@ -161,7 +161,7 @@ SELECT
     WHERE ph."id" = p."photo_id" AND ph."person_id" = p."id" AND ph."status" = 'active') AS "photo_sha256",
   -- Journey review 2026-11-26 (P1-3): the era of a historical record, as the archive words it.
   p."era_text",
-  -- ADR 0088 (decision 1): a moderator found an impersonation report about this profile plausible;
+  -- ADR 0089 (decision 1): a moderator found an impersonation report about this profile plausible;
   -- the profile says "Identity under review" instead of its instructor badge.
   (p."identity_hold_at" IS NOT NULL) AS "identity_hold"
 FROM "person" p

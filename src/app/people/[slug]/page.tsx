@@ -659,7 +659,7 @@ export default async function PersonPage({ params, searchParams }: Props) {
                 Report profile
               </Link>
             </li>
-            {/* ADR 0088: a profile another account runs, which the viewer says is theirs (a living member's profile only). */}
+            {/* ADR 0089: a profile another account runs, which the viewer says is theirs (a living member's profile only). */}
             {profile.claimState === 'claimed' && profile.kind === 'living' ? (
               <li>
                 <Link href={`${here}/identity`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="report-identity">

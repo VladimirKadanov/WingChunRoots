@@ -59,6 +59,7 @@ import {
   lineage,
   lineageMembership,
   lineageReport,
+  namingRequest,
   notification,
   notificationPreference,
   organization,
@@ -103,6 +104,7 @@ import {
   schoolStatDay,
   successionNomination,
   successionRequest,
+  systemHeartbeat,
   teachingRelationship,
   trainingPeriod,
   federationTrial,
@@ -126,7 +128,7 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   billingTestSubscription,
   // ADR 0067: a reviewer's questions to a teacher about a claim (no demo rows).
   claimConfirmation,
-  // ADR 0088: impersonation reports, their vouches and codes (no demo rows).
+  // ADR 0089: impersonation reports, their vouches and codes (no demo rows).
   identityReport,
   identityVouch,
   identityCode,
@@ -146,6 +148,7 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   lineage,
   lineageMembership,
   lineageReport,
+  namingRequest,
   notification,
   notificationPreference,
   organization,
@@ -199,6 +202,7 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   schoolStatDay,
   successionNomination,
   successionRequest,
+  systemHeartbeat,
   teachingRelationship,
   trainingPeriod,
   trialInquiry,

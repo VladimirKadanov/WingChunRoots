@@ -158,6 +158,11 @@ export default async function StudentPassportPage({ params, searchParams }: Prop
                           <span className="font-semibold">The student proposes a correction:</span> “{entry.correction.note}”
                         </p>
                       ) : null}
+                      {entry.waitingForNaming ? (
+                        <p className="text-sm text-fg-muted" data-testid="student-entry-naming-waiting">
+                          The organization or examiner you named is shown once they agree.
+                        </p>
+                      ) : null}
                     </EntryLine>
                     {entry.canChange && (entry.kind === 'rank' || entry.kind === 'exam' || entry.kind === 'skill') && editing === entry.id ? (
                       <EditEntryForm

@@ -14,7 +14,7 @@
 // reads the reviewers' words and their own, never the other party's replies or files (DEFAULT D19).
 // Files are added with the evidence field (POST /api/evidence/upload?case=<id>, evidence.ts).
 //
-// ADR 0088: an impersonation report has two sides, the reporter and, once a moderator put the
+// ADR 0089: an impersonation report has two sides, the reporter and, once a moderator put the
 // profile on hold, the account that holds it. Each reads the reviewers' words and its own part only
 // (identity-reports.ts identityPartyView): never the other side's name, replies, files or vouches.
 
@@ -81,7 +81,7 @@ export interface PartyCaseView extends PartyCaseRow {
   canAddFiles: boolean;
   /** M25: whether this decision can be appealed by this party, and the appeal of it. */
   appeal: AppealState | null;
-  /** ADR 0088: this side's own part of an impersonation report. */
+  /** ADR 0089: this side's own part of an impersonation report. */
   identity: IdentityPartyView | null;
 }
 
@@ -123,7 +123,7 @@ function partyCases(db: Executor, userId: string, ownId: string | null) {
   return or(
     and(inArray(reviewCase.kind, [...OPENED_KINDS, 'identity_report']), eq(reviewCase.openedByUserId, userId)),
     disputed ? and(eq(reviewCase.kind, 'relationship_dispute'), inArray(reviewCase.relationshipId, disputed)) : sql`false`,
-    // ADR 0088: a report about the account's profile, once a moderator put it on hold.
+    // ADR 0089: a report about the account's profile, once a moderator put it on hold.
     and(
       eq(reviewCase.kind, 'identity_report'),
       inArray(

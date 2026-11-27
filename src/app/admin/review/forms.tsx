@@ -129,7 +129,7 @@ const decisionWords = (t: AdminT) =>
     },
   }) as const satisfies Record<Decision, DecideText & { variant: 'primary' | 'danger' | 'secondary' }>;
 
-/** ADR 0088: the box of an impersonation report's decision, in the page's language. */
+/** ADR 0089: the box of an impersonation report's decision, in the page's language. */
 export interface IdentityOptionText {
   name: 'suspend' | 'unsettled';
   label: string;
@@ -177,7 +177,7 @@ export function DecideForm({
    */
   lifeStatusChoice?: LifeStatusChoiceText;
   /**
-   * ADR 0088 (an impersonation report): on "Uphold", suspend the account that held the profile
+   * ADR 0089 (an impersonation report): on "Uphold", suspend the account that held the profile
    * (decision 5: the administrator chooses, the box is ticked in advance); on "Do not uphold",
    * "could not be settled" in place of "not upheld". The words come from the server page, so that
    * they travel in the page, not in the control panel's client dictionary of every /admin route.
@@ -579,11 +579,11 @@ export function TakeDownForm({
 }
 
 /**
- * ADR 0088 (decision 1): the moderators' first check of an impersonation report. "Hold the
+ * ADR 0089 (decision 1): the moderators' first check of an impersonation report. "Hold the
  * profile" when the report is credible (its account is told what is claimed, never who reported);
  * "Close the report" when it is not, with the reason the reporter reads.
  */
-/** ADR 0088: the words of a first-check form, translated by the server page (see IdentityOptionText). */
+/** ADR 0089: the words of a first-check form, translated by the server page (see IdentityOptionText). */
 export interface TriageText {
   label: string;
   reason: string;
@@ -617,7 +617,7 @@ export function TriageForm({ caseId, outcome, idempotencyKey, text, initial }: {
   );
 }
 
-/** ADR 0088: "I saw the code on the page" of a code a side posted on its school's page (an administrator). */
+/** ADR 0089: "I saw the code on the page" of a code a side posted on its school's page (an administrator). */
 export function CheckCodeForm({ caseId, codeId, label, initial }: { caseId: string; codeId: string; label: string; initial?: FormState | null }) {
   const t = useAdminT();
   const [state, action, pending] = useActionState(checkIdentityCodeAction, initial ?? IDLE);

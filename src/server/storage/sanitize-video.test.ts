@@ -1,4 +1,4 @@
-// ADR 0088: which uploads count as a video (sniffVideo): an MP4 with a video brand, a WebM with its
+// ADR 0089: which uploads count as a video (sniffVideo): an MP4 with a video brand, a WebM with its
 // DocType; never an HEIC or AVIF image in the same box format, or a Matroska file.
 
 import { describe, expect, it } from 'vitest';

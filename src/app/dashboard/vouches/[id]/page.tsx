@@ -1,4 +1,4 @@
-// /dashboard/vouches/<id> (ADR 0088, decision 6): a member who says a profile is theirs asks a
+// /dashboard/vouches/<id> (ADR 0089, decision 6): a member who says a profile is theirs asks a
 // verified teacher or a verified member to confirm who they are, for the administrators who decide
 // an impersonation report. The asked person reads the profile and the asking member's message, and
 // answers once. Anyone else gets "No such question". The data comes from identityVouches.get. Reads

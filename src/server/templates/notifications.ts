@@ -631,7 +631,7 @@ const OPENED_KINDS = {
   lineage_report: { title: 'New lineage dispute report', body: 'A member reported a teaching relationship, with evidence. Nothing changed yet; it waits in the review queue.' },
   decision_appeal: { title: 'New appeal', body: 'A party appealed a decision. Another member of staff than the one who decided reviews it.' },
   record_proposal: { title: 'New archival record proposal', body: 'A member proposed a change to a shared archival record. It waits in the review queue.' },
-  // ADR 0088: to the moderators and administrators, who make the first check.
+  // ADR 0089: to the moderators and administrators, who make the first check.
   identity_report: { title: 'New impersonation report', body: 'A member says a profile is theirs and another account holds it. Nothing changed yet; a moderator checks it first.' },
 } as const;
 type OpenedKind = keyof typeof OPENED_KINDS;
@@ -665,7 +665,7 @@ const reviewOpened: NotificationTemplate<{ caseId: string; kind: OpenedKind }> =
 type ReviewChange = 'evidence' | 'withdrawn' | 'confirmation' | 'vouch' | 'hold_lifted';
 const REVIEW_CHANGES: readonly ReviewChange[] = ['evidence', 'withdrawn', 'confirmation', 'vouch', 'hold_lifted'];
 
-/** ADR 0088: `vouch` (a voucher answered on an impersonation report), `hold_lifted` (its hold ran out). */
+/** ADR 0089: `vouch` (a voucher answered on an impersonation report), `hold_lifted` (its hold ran out). */
 const reviewUpdated: NotificationTemplate<{ caseId: string; change: ReviewChange }> = {
   name: 'review.updated',
   parse(payload) {
@@ -1754,6 +1754,29 @@ const schoolInstructorInvited: NotificationTemplate<{ schoolId: string; name: st
   sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000d1', name: 'Demo Wing Chun Hall' },
 };
 
+/** "naming.requested" (review 2026-11-13, ADR 0088): someone names you (or your organization) on their content; you accept or decline. */
+const NAMING_TEXT: Record<string, (context: string) => { title: string; text: string }> = {
+  organization_member: (c) => ({ title: 'An organization asks to list you as a member', text: `“${c}” asks to list you as one of its members. You are shown as a member only once you accept.` }),
+  event_instructor: (c) => ({ title: 'An event names you as an instructor', text: `The event “${c}” names you as one of its instructors. You are shown on it only once you accept.` }),
+  exam_examiner: (c) => ({ title: 'A passport names you as an examiner', text: `The training passport of ${c} names you as the examiner of an examination. Your name is shown on it only once you accept.` }),
+  entry_issuer: (c) => ({ title: 'A passport names your organization', text: `A teacher names “${c}” as the issuer of an entry in a student's training passport. The organization is shown on it only once an administrator accepts.` }),
+  organization_admin: (c) => ({ title: 'You are invited to help run an organization', text: `You are invited to be an administrator of “${c}”. You get its rights only once you accept.` }),
+};
+const namingRequested: NotificationTemplate<{ kind: string; context: string }> = {
+  name: 'naming.requested',
+  parse(payload) {
+    const data = payloadObject('naming.requested', payload);
+    if (typeof data.kind !== 'string' || !Object.hasOwn(NAMING_TEXT, data.kind)) throw new NotificationDataError('naming.requested', 'kind must be a naming kind');
+    if (typeof data.context !== 'string' || data.context.trim() === '' || data.context.length > 200) throw new NotificationDataError('naming.requested', 'context must be a short text');
+    return { kind: data.kind, context: data.context.trim() };
+  },
+  render: ({ kind, context }) => {
+    const words = NAMING_TEXT[kind]!(context);
+    return { title: words.title, body: [{ text: words.text }], action: { label: 'Accept or decline', href: '/dashboard/naming' } };
+  },
+  sample: { kind: 'organization_member', context: 'Demo Wing Chun Association' },
+};
+
 // --- Billing (M22; docs/adr/0025-billing.md) ------------------------------------------------------
 // Test mode only: every text says so. The date and what happens, never a countdown (CLAUDE.md §11).
 
@@ -2186,7 +2209,7 @@ const claimConfirmationAsked: NotificationTemplate<{ confirmationId: string }> =
   sample: { confirmationId: '0190a5c0-0000-7000-8000-0000000000f1' },
 };
 
-// --- Impersonation reports (ADR 0088) ------------------------------------------------------------
+// --- Impersonation reports (ADR 0089) ------------------------------------------------------------
 
 type IdentityStage = 'held' | 'closed' | 'upheld' | 'dismissed' | 'unsettled' | 'hold_lifted';
 type IdentitySide = 'reporter' | 'reported';
@@ -2219,7 +2242,7 @@ const IDENTITY_TEXT: Record<IdentitySide, Partial<Record<IdentityStage, { title:
 };
 
 /**
- * "identity.notice" (ADR 0088): to the reporter and, once a moderator put the profile on hold, to the
+ * "identity.notice" (ADR 0089): to the reporter and, once a moderator put the profile on hold, to the
  * account that holds it, at each stage of an impersonation report. No name and nothing of the other
  * side: the case page shows each side its own part.
  */
@@ -2242,7 +2265,7 @@ const identityNotice: NotificationTemplate<{ caseId: string; stage: IdentityStag
 };
 
 /**
- * "identity.vouch_asked" (ADR 0088, decision 6): to a verified teacher or a verified member asked to
+ * "identity.vouch_asked" (ADR 0089, decision 6): to a verified teacher or a verified member asked to
  * vouch for one side of an impersonation report. No name: the answer page shows the profile and the
  * message of the side that asked.
  */
@@ -2319,6 +2342,7 @@ export const NOTIFICATION_TEMPLATES = {
   'school.trial-answered': schoolTrialAnswered,
   'school.trial-declined': schoolTrialDeclined,
   'school.instructor-invited': schoolInstructorInvited,
+  'naming.requested': namingRequested,
   // M22.
   'billing.started': billingStarted,
   'billing.cancel-scheduled': billingCancelScheduled,
@@ -2344,7 +2368,7 @@ export const NOTIFICATION_TEMPLATES = {
   'case.question': caseQuestion,
   // ADR 0067.
   'claim.confirmation_asked': claimConfirmationAsked,
-  // ADR 0088.
+  // ADR 0089.
   'identity.notice': identityNotice,
   'identity.vouch_asked': identityVouchAsked,
   // ADR 0048.

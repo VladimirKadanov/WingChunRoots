@@ -1,4 +1,4 @@
-// The impersonation report on the case card (ADR 0088; specification §16.1): what kind of report it
+// The impersonation report on the case card (ADR 0089; specification §16.1): what kind of report it
 // is, the proof route the reporter chose, the hold and its dates, and the proof each side brought:
 // who was asked to vouch and how they answered (with their note), and the codes sent to a school's
 // own e-mail or posted on its page. An administrator confirms seeing a posted code here

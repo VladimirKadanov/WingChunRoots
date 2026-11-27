@@ -1298,7 +1298,7 @@ export async function approveRelationship(principal: Principal | null, raw: z.in
         .from(person)
         .where(and(inArray(person.id, [row.teacherPersonId, row.studentPersonId]), isNotNull(person.deletedAt)));
       if (removed) throw new ServiceError('CONFLICT', 'This request can no longer be answered: the profile was removed.');
-      // ADR 0088: requests to a teacher profile on hold wait until the administrators decide.
+      // ADR 0089: requests to a teacher profile on hold wait until the administrators decide.
       await refuseWhileHeld(tx, row.teacherPersonId);
       // Flows-core L3 (review 2026-11): the request of an erased account is withdrawn by the erasure
       // (account-erasure.ts), which holds this same global lock, so it is no longer pending here.

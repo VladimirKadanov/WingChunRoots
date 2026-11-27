@@ -75,7 +75,7 @@ const doneText = (t: AdminT): Record<string, string> => ({
   // Review 2026-11: moderation.takeDown and moderation.restore from the case of a reported profile.
   'taken-down': t('The record is off the public pages. Your reason is in the audit log and on this case, and the owner, if there is one, was sent it.'),
   restored: t('The record is back. The change and your reason are in the audit log and on this case, and the owner, if there is one, was told.'),
-  // ADR 0088: an impersonation report's first check (identity.triage) and a code seen (identity.checkCode).
+  // ADR 0089: an impersonation report's first check (identity.triage) and a code seen (identity.checkCode).
   'identity-held': t('The profile is held. Both sides were told and have 14 days to bring proof; an administrator decides.'),
   'identity-closed': t('The report is closed. The reporter was sent your reason; nothing changed for the profile.'),
   'identity-code-checked': t('The code is confirmed as seen on the page.'),
@@ -180,7 +180,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     const state = await readFormResult(askTeacherForm(c.relationshipId), query.outcome);
     if (state) askTeacherResults.set(c.relationshipId, translateState(t, state));
   }
-  // ADR 0088: a refused "I saw the code on the page" comes back to that code's form.
+  // ADR 0089: a refused "I saw the code on the page" comes back to that code's form.
   const codeResults = new Map<string, NonNullable<typeof assignResult>>();
   for (const side of view.identity ? [view.identity.sides.reporter, view.identity.sides.reported] : []) {
     for (const code of side.codes) {

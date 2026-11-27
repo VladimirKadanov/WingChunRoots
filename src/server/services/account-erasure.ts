@@ -184,7 +184,9 @@ export const USER_REFERENCES: readonly UserReference[] = [
   // ADR 0067: a reviewer's question to a teacher about a claim: the teacher's asks go, the reviewer's stay without them.
   { table: 'claim_confirmation', column: 'teacher_user_id', action: 'delete', why: 'questions to the account as a teacher, and its answers' },
   { table: 'claim_confirmation', column: 'asked_by_user_id', action: 'clear', why: 'questions the account asked as a reviewer' },
-  // ADR 0088: impersonation reports stay with the profile they are about; the account's part goes.
+  // Review 2026-11-13 (ADR 0088): the requests the account made to name someone wait no longer.
+  { table: 'naming_request', column: 'asked_by_user_id', action: 'delete', why: 'requests the account made to name a person, an organization or an admin' },
+  // ADR 0089: impersonation reports stay with the profile they are about; the account's part goes.
   { table: 'identity_report', column: 'reporter_user_id', action: 'clear', why: 'a report the account sent stays with the profile, without the reporter' },
   { table: 'identity_report', column: 'reported_user_id', action: 'clear', why: 'a report about the profile the account held stays with the profile' },
   { table: 'identity_report', column: 'held_by_user_id', action: 'clear', why: 'a hold the account set as a moderator' },
@@ -850,6 +852,8 @@ async function eraseInTransaction(tx: Transaction, request: ErasureRequest, file
   // The short-lived values of the account (reset tokens, the second-factor challenge, trusted devices) hold
   // its id as their value, the way the auth_user_end_sessions trigger finds them; the identifier is hashed.
   await tx.execute(sql`DELETE FROM auth_verification WHERE value = ${userId}`);
+  // ADR 0088: an administrator invitation names an address; the account's own address goes with it.
+  await tx.execute(sql`DELETE FROM naming_request WHERE kind = 'organization_admin' AND email = ${email}`);
 
   // 4. The deletion request is closed; the audit row; then every reference of the catalogue.
   if (deletionCaseId) {

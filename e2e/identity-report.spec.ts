@@ -1,5 +1,5 @@
 /**
- * "This account is pretending to be me" (ADR 0088): a member without a profile reports a public
+ * "This account is pretending to be me" (ADR 0089): a member without a profile reports a public
  * profile that another account runs. Nothing changes for the profile until a moderator's check; the
  * hold then shows "Identity under review" on the public page and tells the account that holds it.
  * The reporter asks the profile's verified teacher to vouch, the teacher answers on their own page,

@@ -54,7 +54,7 @@ export const DECIDERS: Readonly<Record<Exclude<ReviewCaseKind, 'deletion_request
   lineage_report: ['moderator', 'admin'],
   decision_appeal: ['moderator', 'archivist', 'admin'],
   record_proposal: ['archivist'],
-  // ADR 0088 (owner decision 3, 2026-11-27): an administrator with the second factor decides an
+  // ADR 0089 (owner decision 3, 2026-11-27): an administrator with the second factor decides an
   // impersonation report and moves the profile, alone. A moderator or an administrator makes the
   // first check that puts the profile on hold (identity-reports.ts triage), which is no decision.
   identity_report: ['admin'],
@@ -141,7 +141,7 @@ export async function partiesOf(
     const [named] = await db.select({ userId: person.claimedByUserId }).from(person).where(eq(person.id, c.personId));
     if (named?.userId) out.add(named.userId);
   }
-  // ADR 0088: the account that held the reported profile stays a party after the profile moves.
+  // ADR 0089: the account that held the reported profile stays a party after the profile moves.
   if (c.kind === 'identity_report' && c.id) {
     const [report] = await db.select({ reported: identityReport.reportedUserId }).from(identityReport).where(eq(identityReport.reviewCaseId, c.id));
     if (report?.reported) out.add(report.reported);

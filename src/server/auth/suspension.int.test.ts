@@ -15,6 +15,7 @@ import { auditLog, authSession, authUser, emailDelivery, notification } from '..
 import type { TestDatabase } from '../db/testing';
 import { handleApiRequest } from '../rpc/handler';
 import { notify } from '../services/notify';
+import { setUserRole } from '../services/roles';
 import { listSuspended, suspendAccount, unsuspendAccount } from '../services/suspension';
 import { sendPasswordResetEmail } from './emails';
 import { accountSuspended } from './suspension';
@@ -245,6 +246,24 @@ describe('who may suspend whom', () => {
     expect(settled.filter((s) => s.status === 'fulfilled')).toHaveLength(1);
     const active = await getDb().select({ id: authUser.id, banned: authUser.banned }).from(authUser).where(inArray(authUser.id, [first.account.id, second.account.id]));
     expect(active.filter((a) => !a.banned)).toHaveLength(1);
+  });
+
+  it('role changes share the lock: two administrators demoting each other leave one administrator (review 2026-11-13)', async () => {
+    const first = await admin('demote-first');
+    const second = await admin('demote-second');
+    const settled = await Promise.allSettled([
+      setUserRole(first.principal, { userId: second.account.id, role: 'user' }, META),
+      setUserRole(second.principal, { userId: first.account.id, role: 'user' }, META),
+    ]);
+    expect(settled.filter((s) => s.status === 'fulfilled')).toHaveLength(1);
+    expect(settled.find((s) => s.status === 'rejected')).toMatchObject({ reason: { code: 'UNAUTHORIZED' } });
+    const roles = await getDb().select({ role: authUser.role }).from(authUser).where(inArray(authUser.id, [first.account.id, second.account.id]));
+    expect(roles.filter((r) => r.role === 'admin')).toHaveLength(1);
+    // A suspended administrator's stale session cannot change roles either.
+    const third = await admin('demote-third');
+    const winner = (await getDb().select({ role: authUser.role }).from(authUser).where(eq(authUser.id, first.account.id)))[0]!.role === 'admin' ? first : second;
+    await suspendAccount(winner.principal, { userId: third.account.id, reason: REASON }, META);
+    await expect(setUserRole(third.principal, { userId: winner.account.id, role: 'user' }, META)).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
   });
 
   it('is audited with ids and shapes, never an address; an erased account cannot be suspended or lifted', async () => {

@@ -47,7 +47,7 @@ export const evidenceFile = pgTable(
     originalName: text('original_name'),
     scanStatus: text('scan_status', { enum: SCAN_STATUSES }).notNull().default('pending'),
     retentionUntil: timestamp('retention_until', { withTimezone: true }),
-    // ADR 0088 (decision 7): when retention.purge deletes the file (an impersonation report's video,
+    // ADR 0089 (decision 7): when retention.purge deletes the file (an impersonation report's video,
     // IDENTITY_VIDEO_KEEP_DAYS after the decision). Null: kept with its case.
     purgeAfter: timestamp('purge_after', { withTimezone: true }),
     uploadedByUserId: uuid('uploaded_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
@@ -64,7 +64,7 @@ export const evidenceFile = pgTable(
     // M10a: only the four types the upload accepts, by their magic bytes (plan §6.4).
     check('evidence_file_mime_check', inList(t.mime.name, EVIDENCE_MIME_TYPES)),
     check('evidence_file_original_name_length', sql`${t.originalName} IS NULL OR char_length(${t.originalName}) BETWEEN 1 AND ${sql.raw(String(EVIDENCE_NAME_MAX))}`),
-    // DEFAULT D25: at most 20 MB per file; ADR 0088: a proof video at most 50 MB.
+    // DEFAULT D25: at most 20 MB per file; ADR 0089: a proof video at most 50 MB.
     check(
       'evidence_file_size_check',
       sql`${t.sizeBytes} > 0 AND ${t.sizeBytes} <= CASE WHEN ${t.mime} LIKE 'video/%' THEN ${sql.raw(String(EVIDENCE_VIDEO_MAX_BYTES))} ELSE ${sql.raw(String(EVIDENCE_MAX_BYTES))} END`,

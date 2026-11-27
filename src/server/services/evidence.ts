@@ -21,7 +21,7 @@
 //      transaction, which checks the room again under a lock. If the transaction fails, the object
 //      is removed again.
 //
-// ADR 0088 (impersonation reports): either side of an identity report adds files to its case, each
+// ADR 0089 (impersonation reports): either side of an identity report adds files to its case, each
 // side 20 of its own, as in a dispute, and only there a short private video (MP4 or WebM, up to
 // 50 MB, stored as uploaded). A video is never an unattached file. It opens for its uploader and the
 // administrators only (the case is assigned to administrators only, review-core.ts), and is purged
@@ -74,7 +74,7 @@ export const EVIDENCE_MAX_MB = EVIDENCE_MAX_BYTES / (1024 * 1024);
 
 export const TOO_LARGE_MESSAGE = `This file is larger than ${EVIDENCE_MAX_MB} MB. Upload a smaller copy, or split the document.`;
 export const EVIDENCE_VIDEO_MAX_MB = EVIDENCE_VIDEO_MAX_BYTES / (1024 * 1024);
-/** ADR 0088: the size refusal of a file sent to an identity report's case. */
+/** ADR 0089: the size refusal of a file sent to an identity report's case. */
 export const VIDEO_TOO_LARGE_MESSAGE = `This video is larger than ${EVIDENCE_VIDEO_MAX_MB} MB. Record a shorter one (half a minute is enough).`;
 export const WRONG_TYPE_MESSAGE = 'The contents of this file are not a JPEG, PNG or WebP image or a PDF, whatever its name.';
 export const VIDEO_WRONG_TYPE_MESSAGE = 'The contents of this file are not a JPEG, PNG or WebP image, a PDF, or an MP4 or WebM video, whatever its name.';
@@ -309,7 +309,7 @@ async function ownOpenCase(db: Executor, userId: string, caseId: string, lock = 
       assignedToUserId: reviewCase.assignedToUserId,
       party: sql<boolean>`EXISTS (SELECT 1 FROM teaching_relationship r JOIN person x ON x.id IN (r.teacher_person_id, r.student_person_id) AND x.deleted_at IS NULL
                 WHERE r.id = review_case.relationship_id AND x.claimed_by_user_id = ${userId}::uuid)`,
-      // ADR 0088: the account an identity report is about is its other side, once the profile is held.
+      // ADR 0089: the account an identity report is about is its other side, once the profile is held.
       reported: sql<boolean>`EXISTS (SELECT 1 FROM identity_report ir WHERE ir.review_case_id = review_case.id AND ir.reported_user_id = ${userId}::uuid AND ir.held_at IS NOT NULL)`,
     })
     .from(reviewCase)
@@ -344,7 +344,7 @@ const PER_PARTY_KINDS: readonly string[] = ['relationship_dispute', 'identity_re
  * Whether `userId` may add one more file to the open case. DEFAULT D25: at most 20 files in a case;
  * in a relationship dispute each party has 20 of its own (M10b review, security-2), counted
  * without the other party's files, which the party never learns about (DEFAULT D19). The same for
- * the two sides of an identity report (ADR 0088).
+ * the two sides of an identity report (ADR 0089).
  */
 export async function caseHasRoom(db: Executor, c: { id: string; kind: string }, userId: string): Promise<boolean> {
   const n = await filesInCase(db, c.id, PER_PARTY_KINDS.includes(c.kind) ? userId : undefined);
@@ -380,7 +380,7 @@ async function checkRoom(db: Executor, userId: string, caseId: string | null, lo
 /** What is stored of an upload: the bytes, their type and both hashes. */
 async function prepare(bytes: Uint8Array, videoAllowed = false): Promise<{ mime: EvidenceMime; stored: Uint8Array; sha256: string; originalSha256: string | null }> {
   const video = videoAllowed ? sniffVideo(bytes) : null;
-  // ADR 0088: a video is stored as uploaded; any other file keeps the 20 MB limit.
+  // ADR 0089: a video is stored as uploaded; any other file keeps the 20 MB limit.
   if (video) return { mime: video, stored: bytes, sha256: sha256(bytes), originalSha256: null };
   if (bytes.byteLength > EVIDENCE_MAX_BYTES) throw new ServiceError('PAYLOAD_TOO_LARGE', TOO_LARGE_MESSAGE);
   const mime = sniffMime(bytes);
@@ -414,7 +414,7 @@ export async function uploadEvidence(principal: Principal | null, input: UploadI
   if (input.declaredLength === null || !Number.isSafeInteger(input.declaredLength) || input.declaredLength < 0) {
     throw new ServiceError('LENGTH_REQUIRED', 'Send the file with its size (Content-Length).');
   }
-  // ADR 0088: only a file sent to an identity report's case may be larger (a video, up to 50 MB).
+  // ADR 0089: only a file sent to an identity report's case may be larger (a video, up to 50 MB).
   const max = input.caseId ? EVIDENCE_VIDEO_MAX_BYTES : EVIDENCE_MAX_BYTES;
   if (input.declaredLength > max) throw new ServiceError('PAYLOAD_TOO_LARGE', input.caseId ? VIDEO_TOO_LARGE_MESSAGE : TOO_LARGE_MESSAGE);
   if (input.declaredLength === 0 || !input.body) throw new ServiceError('BAD_REQUEST', 'This file is empty.');

@@ -4,7 +4,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  canonicalTimeZone,
   formatEventWhen,
+  LEGACY_TIME_ZONES,
   isoInZone,
   isTimeZone,
   monthKey,
@@ -26,6 +28,15 @@ const instant = (value: string, zone: string) => {
   if (!r.ok) throw new Error(`${value} in ${zone}: ${r.reason}`);
   return r.instant.toISOString();
 };
+
+describe('canonicalTimeZone (review 2026-11-13)', () => {
+  it('turns the old names into the current IANA names, which the platform knows, and leaves the rest', () => {
+    expect(canonicalTimeZone('Asia/Calcutta')).toBe('Asia/Kolkata');
+    expect(canonicalTimeZone('Europe/Kiev')).toBe('Europe/Kyiv');
+    expect(canonicalTimeZone('Europe/Sofia')).toBe('Europe/Sofia');
+    for (const [, current] of Object.entries(LEGACY_TIME_ZONES)) expect(isTimeZone(current)).toBe(true);
+  });
+});
 
 describe('isTimeZone', () => {
   it('accepts IANA zones and UTC, refuses anything else', () => {

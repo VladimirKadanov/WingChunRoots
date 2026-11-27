@@ -215,9 +215,9 @@ export const reviewDecideInput = z
      * DEFAULT review-2026-11, "Uphold the report" still only closes the case.
      */
     takeDown: z.boolean().nullish().transform((v) => v === true),
-    /** ADR 0088 (identity_report, verify only): also suspend the account that held the profile (decision 5). */
+    /** ADR 0089 (identity_report, verify only): also suspend the account that held the profile (decision 5). */
     suspend: z.boolean().nullish().transform((v) => v === true),
-    /** ADR 0088 (identity_report, reject only): "could not be settled" rather than "not upheld". */
+    /** ADR 0089 (identity_report, reject only): "could not be settled" rather than "not upheld". */
     unsettled: z.boolean().nullish().transform((v) => v === true),
     /**
      * Review 2026-11-14 (historical_claim, verify only, and only while the teacher's life status is
@@ -503,7 +503,7 @@ export const DECISION_TEXT: Record<Exclude<ReviewCaseKind, 'deletion_request'>, 
     },
     needs_info: { ...ASK, reason: 'Question for the proposer', hint: 'Required. The proposer reads it on their case page and can add evidence.', done: 'Your question was sent to the proposer.' },
   },
-  // ADR 0088: an impersonation report, decided by an administrator alone (decision 3).
+  // ADR 0089: an impersonation report, decided by an administrator alone (decision 3).
   identity_report: {
     verify: {
       label: 'Uphold the report',
@@ -636,7 +636,7 @@ export interface ReviewCaseView {
    * have an account, and what each was asked and answered. Empty for a party and for other kinds.
    */
   confirmations: CaseConfirmation[];
-  /** ADR 0088: an impersonation report's type, hold, vouches, codes and proof per side; null for other kinds and for a side. */
+  /** ADR 0089: an impersonation report's type, hold, vouches, codes and proof per side; null for other kinds and for a side. */
   identity: IdentityCaseView | null;
   /** Why this reviewer may not decide, when they may not (shown on the card). */
   decideNote: string | null;
@@ -781,7 +781,7 @@ const DECIDABLE_IN: Partial<Record<ReviewCaseKind, string>> = {
   historical_claim: 'under_review',
   person_claim: 'awaiting_claim',
   relationship_dispute: 'in_arbitration',
-  // ADR 0088: after the moderators' check put the profile on hold (identity_report.status).
+  // ADR 0089: after the moderators' check put the profile on hold (identity_report.status).
   identity_report: 'held',
 };
 
@@ -1417,7 +1417,7 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
       return { replayed: false, tags: await publicTags(tx, row) };
     });
     if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');
-    // ADR 0088: the photos an impostor added, once the decision that removed them committed.
+    // ADR 0089: the photos an impostor added, once the decision that removed them committed.
     if ('photos' in outcome && outcome.photos && outcome.photos.length > 0) await deletePhotoFiles(outcome.photos);
     return { case: await getReviewCase(p, { id: input.caseId }), replayed: outcome.replayed };
   } catch (error) {

@@ -7,7 +7,7 @@
 //     their EXIF orientation first) and drops every metadata block: EXIF with its GPS position,
 //     XMP, IPTC and the comments. A file sharp cannot decode is refused;
 //   - a PDF is stored as uploaded, byte for byte (its SHA-256 equals the client's);
-//   - ADR 0088 (impersonation reports): a short private video, MP4 (an ISO BMFF `ftyp` box at byte
+//   - ADR 0089 (impersonation reports): a short private video, MP4 (an ISO BMFF `ftyp` box at byte
 //     4 with a video brand, not an HEIC or AVIF image's) or WebM (EBML 1A 45 DF A3 with the DocType
 //     "webm"), is also stored as uploaded. sniffMime never returns one: only
 //     sniffVideo does, and only an identity report's case takes it (evidence.ts).
@@ -44,7 +44,7 @@ export function sniffMime(head: Uint8Array): EvidenceMime | null {
   return null;
 }
 
-/** ADR 0088: the video type of a file by its first bytes (MP4 or WebM), or null. */
+/** ADR 0089: the video type of a file by its first bytes (MP4 or WebM), or null. */
 export function sniffVideo(head: Uint8Array): EvidenceVideoMime | null {
   // MP4: `ftyp` and a video major brand. HEIC and AVIF images share the box, so a brand outside the
   // list (heic, mif1, avif…) is no video. QuickTime (`qt  `) is what an iPhone records; it plays as MP4.

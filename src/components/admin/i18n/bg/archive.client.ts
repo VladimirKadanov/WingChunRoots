@@ -83,4 +83,8 @@ export const BG_ARCHIVE_CLIENT: AdminDict = {
   // Journey review P2-10 (ADR 0086): merging duplicates and the common roots.
   'This lineage holds the common roots': 'Тази линия съдържа общите корени',
   'The teachers every branch shares, before the branches split, kept once here. A link kept here is not recorded again in another lineage. One lineage at a time.': 'Учителите, общи за всички клонове преди разделянето им, записани веднъж тук. Връзка, записана тук, не се записва отново в друга линия. Само една линия наведнъж.',
+  // Review 2026-11-13 (ADR 0088): the review of a naming request.
+  'Reason (optional, kept in the audit log)': 'Причина (по избор, пази се в одитния дневник)',
+  Approve: 'Одобри',
+  Decline: 'Откажи',
 };

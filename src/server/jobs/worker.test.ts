@@ -34,12 +34,13 @@ describe('retentionPurgeHandler', () => {
       'retention.purge: deleted 0 closed trial lesson request(s), 0 old school counter(s)',
       // M24: organization import previews past their 24 hours.
       'retention.purge: ended 0 expired organization import preview(s)',
+      'retention.purge: deleted 0 expired administrator invitation(s)',
       // Review 2026-11: third-party records, ended claims, revisions, ip_hmac and unanswered trial requests.
       'retention.purge: deleted 0 and removed 0 third-party record(s), withdrew 0 request(s) waiting for them',
       'retention.purge: set the retention of 0 evidence file(s), deleted 0 (0 not deleted), removed the text of 0 review note(s)',
       'retention.purge: redacted the text of 0 old record revision(s)',
       'retention.purge: removed 0 old audit ip_hmac value(s), 0 old session value(s)',
-      // ADR 0088: impersonation reports past their proof or hold, and their videos past 30 days.
+      // ADR 0089: impersonation reports past their proof or hold, and their videos past 30 days.
       'retention.purge: closed 0 impersonation report(s) without proof, lifted 0 hold(s), deleted 0 video(s) (0 not deleted)',
       'retention.purge: closed and scrubbed 0 unanswered and 0 orphaned trial lesson request(s)',
     ]);

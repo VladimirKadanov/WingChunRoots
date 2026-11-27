@@ -1,6 +1,6 @@
 'use server';
 
-// The Server Action of /people/<slug>/identity (ADR 0088): a thin wrapper over identity.report
+// The Server Action of /people/<slug>/identity (ADR 0089): a thin wrapper over identity.report
 // (src/server/rpc/parity.ts), called in-process with this request's session.
 
 import { headers } from 'next/headers';

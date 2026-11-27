@@ -101,7 +101,7 @@ export const REVIEW_CASE_KINDS = [
   'lineage_report',
   'decision_appeal',
   'record_proposal',
-  // Owner decisions 2026-11-27 (docs/adr/0088-impersonation-reports.md): "This account is
+  // Owner decisions 2026-11-27 (docs/adr/0089-impersonation-reports.md): "This account is
   // pretending to be me" (identity-reports.ts).
   'identity_report',
 ] as const;
@@ -126,7 +126,7 @@ export const EVIDENCE_MAX_FILES_PER_CASE = 20;
 /** M10a: the only types an evidence file can have, recognised by their magic bytes (plan §6.4). */
 export const EVIDENCE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'video/mp4', 'video/webm'] as const;
 /**
- * ADR 0088 (owner decision 2026-11-27, decision 2): a short video is a proof of an impersonation
+ * ADR 0089 (owner decision 2026-11-27, decision 2): a short video is a proof of an impersonation
  * report only. It is uploaded to that case alone, opens for its uploader and the administrators,
  * and is purged IDENTITY_VIDEO_KEEP_DAYS after the decision (decision 7).
  */
@@ -375,7 +375,7 @@ export const LINEAGE_REPORT_GROUNDS = ['never_trained', 'wrong_teacher', 'wrong_
 /** M25: an appeal waits (`pending`), is upheld (the decision is reopened) or rejected (it stands). */
 export const APPEAL_STATUSES = ['pending', 'upheld', 'rejected'] as const;
 /** M25: the decisions that can be appealed, once each, by their parties. */
-// --- Impersonation reports (docs/adr/0088-impersonation-reports.md) -------------------------------
+// --- Impersonation reports (docs/adr/0089-impersonation-reports.md) -------------------------------
 /**
  * Owner decisions 2026-11-27. `impostor`: the reporter has no profile of their own and asks for the
  * profile; `duplicate`: the reporter's own profile is copied by another account (no proof route:

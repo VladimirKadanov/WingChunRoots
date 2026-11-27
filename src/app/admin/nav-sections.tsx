@@ -41,6 +41,7 @@ export const SECTIONS: readonly { label: string; sections: readonly Section[] }[
       { href: '/admin/archive', label: 'Lineages' },
       { href: '/admin/archive/people', label: 'People & records' },
       { href: '/admin/review/records', label: 'Shared records' },
+      { href: '/admin/archive/naming', label: 'Naming requests' },
     ],
   },
   {
@@ -71,6 +72,7 @@ function label(t: AdminT, text: string): string {
     case 'Lineages': return t('Lineages');
     case 'People & records': return t('People & records');
     case 'Shared records': return t('Shared records');
+    case 'Naming requests': return t('Naming requests');
     case 'Money': return t('Money');
     case 'Billing': return t('Billing');
     case 'Plan grants': return t('Plan grants');

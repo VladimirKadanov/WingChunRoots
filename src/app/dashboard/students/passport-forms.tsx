@@ -98,7 +98,7 @@ export function ExamForm({
         optional
         autoComplete="off"
         defaultValue={state.values?.examinerPersonId ?? ''}
-        hint="You, your teachers or the student’s other teachers. The profile names the examiner only while their own profile is public."
+        hint="You, your teachers or the student’s other teachers. Anyone but you is named once they accept, and the profile names the examiner only while their own profile is public."
       >
         <option value="">Not recorded</option>
         {examiners.map((e) => (

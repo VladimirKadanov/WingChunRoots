@@ -1,4 +1,4 @@
-// /people/<slug>/identity (ADR 0088; specification §16.1): "This account is pretending to be me".
+// /people/<slug>/identity (ADR 0089; specification §16.1): "This account is pretending to be me".
 // A signed-in account reports a public profile that another account runs: an impostor report when
 // the reporter has no profile (they say this one is theirs, and choose how to prove it), a
 // duplicate when they have one (their own profile is the proof). Nothing changes for the profile

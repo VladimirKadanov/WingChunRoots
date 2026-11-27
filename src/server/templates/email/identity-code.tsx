@@ -1,4 +1,4 @@
-// "identity-code" (ADR 0088, impersonation reports): the one-time code sent to an address at a
+// "identity-code" (ADR 0089, impersonation reports): the one-time code sent to an address at a
 // school's own domain, which one side of an impersonation report types back on its case page to show
 // that it reads the school's mail. The code is the only secret: the outbox stores it sealed
 // (secretFields). It names the public profile the report is about (its names are on the public

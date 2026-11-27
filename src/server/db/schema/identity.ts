@@ -1,4 +1,4 @@
-// Impersonation reports (owner decisions 2026-11-27; docs/adr/0088-impersonation-reports.md;
+// Impersonation reports (owner decisions 2026-11-27; docs/adr/0089-impersonation-reports.md;
 // specification §16.1): "This account is pretending to be me". Every report is a review_case of kind
 // identity_report; these tables hold what the case is about and the proofs gathered for it. The
 // public role has no access to any of them (plan §6.4).
