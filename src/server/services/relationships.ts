@@ -83,6 +83,7 @@ import { QUEUE } from '../jobs/queues';
 import type { NameData } from '../templates/email/types';
 import { REJECTION_REASON_CODES, type RejectionReason, rejectionReasonText, isRejectionReason } from '../templates/relationships';
 import { CLAIM_REFUSED_TEXT, CLAIM_STATUS_LABELS, type ReviewCaseStatus } from '../templates/review';
+import { refuseWhileHeld } from './identity-hold';
 import type { RequestMeta } from './context';
 import { approvalOffer, peopleRefs, type PersonRef, type UpgradeOffer, waitingRequests } from './dashboard';
 import { notify } from './notify';
@@ -510,7 +511,8 @@ SELECT tr.id::text AS id,
        (tr.verification_path = 'teacher_approval' AND tr.status IN ('verified', 'in_arbitration')
          AND tr.confirmed_by_user_id IS NOT NULL AND tr.confirmed_by_user_id = t.claimed_by_user_id
          AND NOT EXISTS (SELECT 1 FROM review_case v WHERE v.person_id = t.id AND v.kind = 'instructor_verification'
-                          AND v.status = 'resolved' AND v.resolution = 'approved')) AS unverified,
+                          AND v.status = 'resolved' AND v.resolution = 'approved'
+                          AND (v.opened_by_user_id IS NULL OR v.opened_by_user_id = t.claimed_by_user_id))) AS unverified,
        (tr.status IN ('verified', 'in_arbitration') AND tr.visibility = 'public'
          AND t.visibility = 'public' AND t.deleted_at IS NULL AND s.visibility = 'public' AND s.deleted_at IS NULL) AS shown,
        (t.visibility = 'public') AS teacher_public, (s.visibility = 'public') AS student_public,
@@ -1296,6 +1298,8 @@ export async function approveRelationship(principal: Principal | null, raw: z.in
         .from(person)
         .where(and(inArray(person.id, [row.teacherPersonId, row.studentPersonId]), isNotNull(person.deletedAt)));
       if (removed) throw new ServiceError('CONFLICT', 'This request can no longer be answered: the profile was removed.');
+      // ADR 0089: requests to a teacher profile on hold wait until the administrators decide.
+      await refuseWhileHeld(tx, row.teacherPersonId);
       // Flows-core L3 (review 2026-11): the request of an erased account is withdrawn by the erasure
       // (account-erasure.ts), which holds this same global lock, so it is no longer pending here.
 

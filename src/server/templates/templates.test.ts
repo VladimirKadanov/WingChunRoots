@@ -320,8 +320,9 @@ describe('secret fields (M02 fix round 1)', () => {
   it('every template whose data carries a token declares it secret, so the outbox seals it', () => {
     for (const [name, template] of Object.entries(EMAIL_TEMPLATES) as [string, EmailTemplate<unknown>][]) {
       const tokenFields = Object.entries(template.sample as Record<string, unknown>)
-        // A token in the query (M02) or in the path of an invitation link (M10b: /invite/<token>).
-        .filter(([, value]) => typeof value === 'string' && (/[?&]token=/.test(value) || /\/invite\/[A-Za-z0-9_-]+$/.test(value)))
+        // A token in the query (M02) or in the path of an invitation link (M10b: /invite/<token>), or a
+        // one-time code to type back (ADR 0089: `code`, six digits).
+        .filter(([field, value]) => typeof value === 'string' && (/[?&]token=/.test(value) || /\/invite\/[A-Za-z0-9_-]+$/.test(value) || (field === 'code' && /^[0-9]{6}$/.test(value))))
         .map(([field]) => field);
       expect(template.secretFields ?? [], name).toEqual(tokenFields);
     }

@@ -186,6 +186,14 @@ export const USER_REFERENCES: readonly UserReference[] = [
   { table: 'claim_confirmation', column: 'asked_by_user_id', action: 'clear', why: 'questions the account asked as a reviewer' },
   // Review 2026-11-13 (ADR 0088): the requests the account made to name someone wait no longer.
   { table: 'naming_request', column: 'asked_by_user_id', action: 'delete', why: 'requests the account made to name a person, an organization or an admin' },
+  // ADR 0089: impersonation reports stay with the profile they are about; the account's part goes.
+  { table: 'identity_report', column: 'reporter_user_id', action: 'clear', why: 'a report the account sent stays with the profile, without the reporter' },
+  { table: 'identity_report', column: 'reported_user_id', action: 'clear', why: 'a report about the profile the account held stays with the profile' },
+  { table: 'identity_report', column: 'held_by_user_id', action: 'clear', why: 'a hold the account set as a moderator' },
+  { table: 'identity_vouch', column: 'voucher_user_id', action: 'delete', why: 'questions to the account as a voucher, and its answers' },
+  { table: 'identity_vouch', column: 'requested_by_user_id', action: 'clear', why: 'questions the account asked as a side of a report' },
+  { table: 'identity_code', column: 'requested_by_user_id', action: 'clear', why: 'codes the account asked for as a side of a report' },
+  { table: 'identity_code', column: 'confirmed_by_user_id', action: 'clear', why: 'codes the account confirmed as an administrator' },
   { table: 'evidence_file', column: 'uploaded_by_user_id', action: 'clear', why: 'files the account uploaded: names and hashes cleared, unused ones deleted first' },
   { table: 'evidence_link', column: 'created_by_user_id', action: 'clear', why: 'links the account made: their notes are cleared first' },
   { table: 'invitation', column: 'invited_by_user_id', action: 'clear', why: 'invitations the account sent are revoked first' },

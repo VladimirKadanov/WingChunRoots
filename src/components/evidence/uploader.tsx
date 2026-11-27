@@ -32,7 +32,6 @@ import { formatSize } from '@/lib/file-size';
 
 export const EVIDENCE_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
 const MAX_MB = 20;
-const MAX_BYTES = MAX_MB * 1024 * 1024;
 
 export interface UploadedEvidenceItem {
   id: string;
@@ -66,6 +65,8 @@ export function EvidenceUploader({
   inputId: givenInputId,
   maxFiles = 20,
   name = 'evidenceIds',
+  accept = EVIDENCE_ACCEPT,
+  maxMb = MAX_MB,
 }: {
   label: string;
   hint: string;
@@ -83,6 +84,9 @@ export function EvidenceUploader({
   inputId?: string;
   maxFiles?: number;
   name?: string;
+  /** The types the picker offers and the largest file (ADR 0089: an impersonation report's case also takes a video). */
+  accept?: string;
+  maxMb?: number;
 }) {
   const id = useId();
   const inputId = givenInputId ?? `${id}-file`;
@@ -116,7 +120,7 @@ export function EvidenceUploader({
       say(`${file.name}: not uploaded. ${message}`);
       return false;
     };
-    if (file.size > MAX_BYTES) return refuse(`Larger than ${MAX_MB} MB. Upload a smaller copy, or split the document.`);
+    if (file.size > maxMb * 1024 * 1024) return refuse(`Larger than ${maxMb} MB. Upload a smaller copy, or split the document.`);
     try {
       const response = await fetch(`/api/evidence/upload${caseId ? `?case=${encodeURIComponent(caseId)}` : ''}`, {
         method: 'POST',
@@ -222,7 +226,7 @@ export function EvidenceUploader({
           id={inputId}
           type="file"
           multiple
-          accept={EVIDENCE_ACCEPT}
+          accept={accept}
           aria-disabled={busy || undefined}
           onClick={onPick}
           onChange={(event) => void take(event.currentTarget.files ?? [])}

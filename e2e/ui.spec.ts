@@ -850,7 +850,10 @@ test('@M00b the headline never puts a word on a line of its own, from 320 to 192
     const headline = page.locator('main h1').filter({ visible: true });
     await expect(headline).toHaveCount(1);
     await expect(page.locator('main h1')).toHaveCount(1);
-    const lines = await headline.evaluate((h1) => {
+    // The hero streams over its fallback: a heading swapped out mid-measure has words without a box,
+    // so measure again until one heading is measured whole.
+    const measure = () =>
+      headline.evaluate((h1) => {
       const byTop = new Map<number, string[]>();
       const walker = document.createTreeWalker(h1, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -858,13 +861,17 @@ test('@M00b the headline never puts a word on a line of its own, from 320 to 192
           const range = document.createRange();
           range.setStart(node, match.index);
           range.setEnd(node, match.index + match[0].length);
-          const top = Math.round(range.getClientRects()[0]!.top);
+          const rect = range.getClientRects()[0];
+          if (!rect) return null;
+          const top = Math.round(rect.top);
           byTop.set(top, [...(byTop.get(top) ?? []), match[0]]);
         }
       }
       return [...byTop.values()];
     });
-    for (const words of lines) expect(words.length, `${width} px: "${words.join(' ')}" in ${JSON.stringify(lines)}`).toBeGreaterThan(1);
+    let lines: string[][] | null = null;
+    await expect.poll(async () => (lines = await measure()), { message: `${width} px: the headline has a box for every word` }).not.toBeNull();
+    for (const words of lines!) expect(words.length, `${width} px: "${words.join(' ')}" in ${JSON.stringify(lines)}`).toBeGreaterThan(1);
   }
 });
 

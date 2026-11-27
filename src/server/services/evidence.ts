@@ -21,6 +21,12 @@
 //      transaction, which checks the room again under a lock. If the transaction fails, the object
 //      is removed again.
 //
+// ADR 0089 (impersonation reports): either side of an identity report adds files to its case, each
+// side 20 of its own, as in a dispute, and only there a short private video (MP4 or WebM, up to
+// 50 MB, stored as uploaded). A video is never an unattached file. It opens for its uploader and the
+// administrators only (the case is assigned to administrators only, review-core.ts), and is purged
+// 30 days after the decision (evidence_file.purge_after, the daily retention job).
+//
 // The download (GET /api/evidence/<id>) streams the object through the app after the check, to
 // exactly the people of the milestone's In scope 3: the uploader, the teacher a linked request is
 // about (their own request), the reviewers assigned to a linked case and the administrators (both
@@ -50,12 +56,12 @@ import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
 import { evidenceFile, evidenceLink, reviewCase, reviewEvent } from '../db/schema';
-import { EVIDENCE_MAX_BYTES, EVIDENCE_MAX_FILES_PER_CASE, EVIDENCE_NAME_MAX, OPEN_REVIEW_CASE_STATUSES } from '../db/schema/common';
+import { EVIDENCE_MAX_BYTES, EVIDENCE_MAX_FILES_PER_CASE, EVIDENCE_NAME_MAX, EVIDENCE_VIDEO_MAX_BYTES, OPEN_REVIEW_CASE_STATUSES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import type { Transaction } from '../jobs/outbox';
 import { logger } from '../log';
 import { getEvidenceStore, newStorageKey, type ObjectStore } from '../storage';
-import { type EvidenceMime, EXTENSION, ImageRefused, isImage, MAX_IMAGE_PIXELS, reencodeImage, sniffMime } from '../storage/sanitize';
+import { type EvidenceMime, EXTENSION, ImageRefused, isImage, MAX_IMAGE_PIXELS, reencodeImage, sniffMime, sniffVideo } from '../storage/sanitize';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 import { notify } from './notify';
@@ -67,7 +73,11 @@ export const UNATTACHED_WINDOW_HOURS = 24;
 export const EVIDENCE_MAX_MB = EVIDENCE_MAX_BYTES / (1024 * 1024);
 
 export const TOO_LARGE_MESSAGE = `This file is larger than ${EVIDENCE_MAX_MB} MB. Upload a smaller copy, or split the document.`;
+export const EVIDENCE_VIDEO_MAX_MB = EVIDENCE_VIDEO_MAX_BYTES / (1024 * 1024);
+/** ADR 0089: the size refusal of a file sent to an identity report's case. */
+export const VIDEO_TOO_LARGE_MESSAGE = `This video is larger than ${EVIDENCE_VIDEO_MAX_MB} MB. Record a shorter one (half a minute is enough).`;
 export const WRONG_TYPE_MESSAGE = 'The contents of this file are not a JPEG, PNG or WebP image or a PDF, whatever its name.';
+export const VIDEO_WRONG_TYPE_MESSAGE = 'The contents of this file are not a JPEG, PNG or WebP image, a PDF, or an MP4 or WebM video, whatever its name.';
 export const CASE_FULL_MESSAGE = `This claim already holds ${EVIDENCE_MAX_FILES_PER_CASE} files, the most a claim can have, so no more can be added to it.`;
 /** A party's own files in a dispute; never a word about the other party's (DEFAULT D19). */
 export const PARTY_FULL_MESSAGE = `You have added ${EVIDENCE_MAX_FILES_PER_CASE} files to this case, the most each party can add, so you cannot add more.`;
@@ -109,6 +119,8 @@ const KIND_LABELS: Record<EvidenceMime, string> = {
   'image/png': 'PNG image',
   'image/webp': 'WebP image',
   'application/pdf': 'PDF',
+  'video/mp4': 'MP4 video',
+  'video/webm': 'WebM video',
 };
 
 export const evidenceHref = (id: string) => `/api/evidence/${id}`;
@@ -237,8 +249,8 @@ export interface UploadInput {
  * The body, read to the end: refused when it grows past the declared length or 20 MB (413), or
  * ends before the declared length (400). The reader is cancelled on refusal.
  */
-export async function readBody(body: ReadableStream<Uint8Array>, declared: number): Promise<Uint8Array> {
-  const limit = Math.min(declared, EVIDENCE_MAX_BYTES);
+export async function readBody(body: ReadableStream<Uint8Array>, declared: number, max: number = EVIDENCE_MAX_BYTES): Promise<Uint8Array> {
+  const limit = Math.min(declared, max);
   const out = new Uint8Array(limit);
   let offset = 0;
   const reader = body.getReader();
@@ -248,7 +260,7 @@ export async function readBody(body: ReadableStream<Uint8Array>, declared: numbe
       if (done) break;
       if (offset + value.byteLength > limit) {
         await reader.cancel().catch(() => undefined);
-        throw new ServiceError('PAYLOAD_TOO_LARGE', offset + value.byteLength > EVIDENCE_MAX_BYTES ? TOO_LARGE_MESSAGE : 'The upload was longer than its Content-Length.');
+        throw new ServiceError('PAYLOAD_TOO_LARGE', offset + value.byteLength > max ? (max > EVIDENCE_MAX_BYTES ? VIDEO_TOO_LARGE_MESSAGE : TOO_LARGE_MESSAGE) : 'The upload was longer than its Content-Length.');
       }
       out.set(value, offset);
       offset += value.byteLength;
@@ -297,11 +309,17 @@ async function ownOpenCase(db: Executor, userId: string, caseId: string, lock = 
       assignedToUserId: reviewCase.assignedToUserId,
       party: sql<boolean>`EXISTS (SELECT 1 FROM teaching_relationship r JOIN person x ON x.id IN (r.teacher_person_id, r.student_person_id) AND x.deleted_at IS NULL
                 WHERE r.id = review_case.relationship_id AND x.claimed_by_user_id = ${userId}::uuid)`,
+      // ADR 0089: the account an identity report is about is its other side, once the profile is held.
+      reported: sql<boolean>`EXISTS (SELECT 1 FROM identity_report ir WHERE ir.review_case_id = review_case.id AND ir.reported_user_id = ${userId}::uuid AND ir.held_at IS NOT NULL)`,
     })
     .from(reviewCase)
     .where(eq(reviewCase.id, caseId));
   const [row] = lock ? await query.for('update', { of: reviewCase }) : await query;
-  const allowed = row && ((CLAIMANT_KINDS.includes(row.kind) && row.openedBy === userId) || (row.kind === 'relationship_dispute' && row.party));
+  const allowed =
+    row &&
+    ((CLAIMANT_KINDS.includes(row.kind) && row.openedBy === userId) ||
+      (row.kind === 'relationship_dispute' && row.party) ||
+      (row.kind === 'identity_report' && (row.openedBy === userId || row.reported)));
   if (!row || !allowed) throw new ServiceError('NOT_FOUND', 'No such claim.');
   if (!(OPEN_REVIEW_CASE_STATUSES as readonly string[]).includes(row.status)) {
     throw new ServiceError('CONFLICT', 'This claim has been decided: no more files can be added to it.');
@@ -319,13 +337,17 @@ async function filesInCase(db: Executor, caseId: string, uploadedBy?: string): P
   return row?.n ?? 0;
 }
 
+/** The kinds whose sides each have files of their own, which the other side never sees. */
+const PER_PARTY_KINDS: readonly string[] = ['relationship_dispute', 'identity_report'];
+
 /**
  * Whether `userId` may add one more file to the open case. DEFAULT D25: at most 20 files in a case;
  * in a relationship dispute each party has 20 of its own (M10b review, security-2), counted
- * without the other party's files, which the party never learns about (DEFAULT D19).
+ * without the other party's files, which the party never learns about (DEFAULT D19). The same for
+ * the two sides of an identity report (ADR 0089).
  */
 export async function caseHasRoom(db: Executor, c: { id: string; kind: string }, userId: string): Promise<boolean> {
-  const n = await filesInCase(db, c.id, c.kind === 'relationship_dispute' ? userId : undefined);
+  const n = await filesInCase(db, c.id, PER_PARTY_KINDS.includes(c.kind) ? userId : undefined);
   return n < EVIDENCE_MAX_FILES_PER_CASE;
 }
 
@@ -348,7 +370,7 @@ async function recentUnattached(db: Executor, userId: string): Promise<number> {
 async function checkRoom(db: Executor, userId: string, caseId: string | null, lock = false): Promise<OpenCase | null> {
   if (caseId) {
     const open = await ownOpenCase(db, userId, caseId, lock);
-    if (!(await caseHasRoom(db, open, userId))) throw new ServiceError('CONFLICT', open.kind === 'relationship_dispute' ? PARTY_FULL_MESSAGE : CASE_FULL_MESSAGE);
+    if (!(await caseHasRoom(db, open, userId))) throw new ServiceError('CONFLICT', PER_PARTY_KINDS.includes(open.kind) ? PARTY_FULL_MESSAGE : CASE_FULL_MESSAGE);
     return open;
   }
   if ((await recentUnattached(db, userId)) >= EVIDENCE_MAX_FILES_PER_CASE) throw new ServiceError('TOO_MANY_REQUESTS', UNATTACHED_FULL_MESSAGE);
@@ -356,13 +378,17 @@ async function checkRoom(db: Executor, userId: string, caseId: string | null, lo
 }
 
 /** What is stored of an upload: the bytes, their type and both hashes. */
-async function prepare(bytes: Uint8Array): Promise<{ mime: EvidenceMime; stored: Uint8Array; sha256: string; originalSha256: string | null }> {
+async function prepare(bytes: Uint8Array, videoAllowed = false): Promise<{ mime: EvidenceMime; stored: Uint8Array; sha256: string; originalSha256: string | null }> {
+  const video = videoAllowed ? sniffVideo(bytes) : null;
+  // ADR 0089: a video is stored as uploaded; any other file keeps the 20 MB limit.
+  if (video) return { mime: video, stored: bytes, sha256: sha256(bytes), originalSha256: null };
+  if (bytes.byteLength > EVIDENCE_MAX_BYTES) throw new ServiceError('PAYLOAD_TOO_LARGE', TOO_LARGE_MESSAGE);
   const mime = sniffMime(bytes);
-  if (!mime) throw new ServiceError('UNSUPPORTED_MEDIA_TYPE', WRONG_TYPE_MESSAGE);
+  if (!mime) throw new ServiceError('UNSUPPORTED_MEDIA_TYPE', videoAllowed ? VIDEO_WRONG_TYPE_MESSAGE : WRONG_TYPE_MESSAGE);
   if (!isImage(mime)) return { mime, stored: bytes, sha256: sha256(bytes), originalSha256: null };
   let stored: Uint8Array;
   try {
-    stored = await reencodeImage(bytes, mime as Exclude<EvidenceMime, 'application/pdf'>);
+    stored = await reencodeImage(bytes, mime);
   } catch (error) {
     if (error instanceof ImageRefused) {
       throw new ServiceError(
@@ -388,14 +414,18 @@ export async function uploadEvidence(principal: Principal | null, input: UploadI
   if (input.declaredLength === null || !Number.isSafeInteger(input.declaredLength) || input.declaredLength < 0) {
     throw new ServiceError('LENGTH_REQUIRED', 'Send the file with its size (Content-Length).');
   }
-  if (input.declaredLength > EVIDENCE_MAX_BYTES) throw new ServiceError('PAYLOAD_TOO_LARGE', TOO_LARGE_MESSAGE);
+  // ADR 0089: only a file sent to an identity report's case may be larger (a video, up to 50 MB).
+  const max = input.caseId ? EVIDENCE_VIDEO_MAX_BYTES : EVIDENCE_MAX_BYTES;
+  if (input.declaredLength > max) throw new ServiceError('PAYLOAD_TOO_LARGE', input.caseId ? VIDEO_TOO_LARGE_MESSAGE : TOO_LARGE_MESSAGE);
   if (input.declaredLength === 0 || !input.body) throw new ServiceError('BAD_REQUEST', 'This file is empty.');
   const db = getDb();
   // 3. Room for one more file, before the body is read (checked again under the lock below).
-  await checkRoom(db, p.user.id, input.caseId);
+  const target = await checkRoom(db, p.user.id, input.caseId);
+  const videoAllowed = target?.kind === 'identity_report';
+  if (!videoAllowed && input.declaredLength > EVIDENCE_MAX_BYTES) throw new ServiceError('PAYLOAD_TOO_LARGE', TOO_LARGE_MESSAGE);
   // 4. The body; 5-6. its type and what is stored of it.
-  const bytes = await readBody(input.body, input.declaredLength);
-  const prepared = await prepare(bytes);
+  const bytes = await readBody(input.body, input.declaredLength, videoAllowed ? EVIDENCE_VIDEO_MAX_BYTES : EVIDENCE_MAX_BYTES);
+  const prepared = await prepare(bytes, videoAllowed);
   const name = cleanFileName(input.name);
   // 7. The object first, under a random key; then the row, or the object is removed again.
   const key = newStorageKey();

@@ -14,7 +14,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { APPEAL_FORM, REPLY_FORM } from './form-ids';
+import { APPEAL_FORM, CODE_ADD_FORM, CODE_CONFIRM_FORM, REPLY_FORM, VOUCH_ASK_FORM } from './form-ids';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9_-]{8,64}$/;
@@ -51,4 +51,56 @@ export async function appealDecisionAction(_previous: FormState, form: FormData)
     return formResult({ form: APPEAL_FORM, page, anchor: outcomeTarget(APPEAL_FORM, state, true) }, state);
   }
   redirect(atOutcome(`${page}?appealed=1`));
+}
+
+/** ADR 0089: "Ask them to vouch" on an impersonation report (identity.askVouch). */
+export async function askVouchAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const caseId = textValue(form, 'caseId', 40);
+  const slug = textValue(form, 'slug', 200);
+  const kind = textValue(form, 'kind', 10);
+  const message = textValue(form, 'message', 1000);
+  const page = UUID.test(caseId) ? `/dashboard/cases/${caseId}` : '/dashboard/cases';
+  try {
+    await serverClient(await headers(), await getRequestPrincipal()).identity.askVouch({ caseId, slug, kind: kind as 'teacher', ...(message ? { message } : {}) });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(`/sign-in?next=${encodeURIComponent(page)}`);
+    const state = formStateFromFailure(error, { caseId, slug, kind, message });
+    return formResult({ form: VOUCH_ASK_FORM, page, anchor: outcomeTarget(VOUCH_ASK_FORM, state, true) }, state);
+  }
+  redirect(atOutcome(`${page}?vouch=1`));
+}
+
+/** ADR 0089: "Send the code" or "Make a code" on an impersonation report (identity.addCode). */
+export async function addCodeAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const caseId = textValue(form, 'caseId', 40);
+  const channel = textValue(form, 'channel', 10);
+  const target = textValue(form, 'target', 400);
+  const page = UUID.test(caseId) ? `/dashboard/cases/${caseId}` : '/dashboard/cases';
+  try {
+    await serverClient(await headers(), await getRequestPrincipal()).identity.addCode({ caseId, channel: channel as 'email', target });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(`/sign-in?next=${encodeURIComponent(page)}`);
+    const state = formStateFromFailure(error, { caseId, channel, target });
+    return formResult({ form: CODE_ADD_FORM, page, anchor: outcomeTarget(CODE_ADD_FORM, state, true) }, state);
+  }
+  redirect(atOutcome(`${page}?code=${channel === 'page' ? 'page' : 'email'}`));
+}
+
+/** ADR 0089: "Confirm the code" of a mailed code (identity.confirmCode). */
+export async function confirmCodeAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const caseId = textValue(form, 'caseId', 40);
+  const codeId = textValue(form, 'codeId', 40);
+  const code = textValue(form, 'code', 20);
+  const page = UUID.test(caseId) ? `/dashboard/cases/${caseId}` : '/dashboard/cases';
+  try {
+    await serverClient(await headers(), await getRequestPrincipal()).identity.confirmCode({ codeId, code });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(`/sign-in?next=${encodeURIComponent(page)}`);
+    const state = formStateFromFailure(error, { caseId, codeId, code });
+    return formResult({ form: CODE_CONFIRM_FORM, page, anchor: outcomeTarget(CODE_CONFIRM_FORM, state, true) }, state);
+  }
+  redirect(atOutcome(`${page}?confirmed=1`));
 }

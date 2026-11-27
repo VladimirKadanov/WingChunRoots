@@ -31,6 +31,8 @@ export const REVIEW_KIND_LABELS: Record<ReviewCaseKind, string> = {
   lineage_report: 'Lineage dispute report',
   decision_appeal: 'Appeal',
   record_proposal: 'Archival record proposal',
+  // ADR 0089: "This account is pretending to be me".
+  identity_report: 'Impersonation report',
 };
 
 /** The status of a case as the reviewers read it. */

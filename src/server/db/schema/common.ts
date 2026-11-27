@@ -101,6 +101,9 @@ export const REVIEW_CASE_KINDS = [
   'lineage_report',
   'decision_appeal',
   'record_proposal',
+  // Owner decisions 2026-11-27 (docs/adr/0089-impersonation-reports.md): "This account is
+  // pretending to be me" (identity-reports.ts).
+  'identity_report',
 ] as const;
 export const REVIEW_CASE_STATUSES = ['open', 'in_review', 'needs_info', 'resolved', 'dismissed'] as const;
 /** M10a: the statuses of a case that still waits for a decision. */
@@ -110,7 +113,7 @@ export const REVIEW_RESOLUTIONS = ['approved', 'rejected'] as const;
  * M10b: what a review_event records about a case: opened, assigned or unassigned, a question to its
  * parties (needs_info), evidence added, decided (approve, reject, dismiss) or withdrawn.
  */
-export const REVIEW_EVENT_ACTIONS = ['open', 'assign', 'unassign', 'needs_info', 'evidence', 'approve', 'reject', 'dismiss', 'withdraw', 'reopen'] as const;
+export const REVIEW_EVENT_ACTIONS = ['open', 'assign', 'unassign', 'needs_info', 'evidence', 'approve', 'reject', 'dismiss', 'withdraw', 'reopen', 'hold', 'release'] as const;
 export const REPORT_SUBJECTS = ['person', 'teaching_relationship', 'school', 'person_name'] as const;
 /** M10b: the reasons of "Report profile" (plan §6.2; the milestone's In scope 4). */
 export const REPORT_REASONS = ['copyright', 'spam', 'inappropriate', 'misleading'] as const;
@@ -121,7 +124,14 @@ export const REPORT_STATUSES = ['open', 'triaged', 'resolved', 'dismissed'] as c
 export const EVIDENCE_MAX_BYTES = 20 * 1024 * 1024;
 export const EVIDENCE_MAX_FILES_PER_CASE = 20;
 /** M10a: the only types an evidence file can have, recognised by their magic bytes (plan §6.4). */
-export const EVIDENCE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const;
+export const EVIDENCE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'video/mp4', 'video/webm'] as const;
+/**
+ * ADR 0089 (owner decision 2026-11-27, decision 2): a short video is a proof of an impersonation
+ * report only. It is uploaded to that case alone, opens for its uploader and the administrators,
+ * and is purged IDENTITY_VIDEO_KEEP_DAYS after the decision (decision 7).
+ */
+export const EVIDENCE_VIDEO_MIME_TYPES = ['video/mp4', 'video/webm'] as const;
+export const EVIDENCE_VIDEO_MAX_BYTES = 50 * 1024 * 1024;
 /** M10a: the longest stored file name of an evidence file. */
 export const EVIDENCE_NAME_MAX = 200;
 
@@ -365,6 +375,48 @@ export const LINEAGE_REPORT_GROUNDS = ['never_trained', 'wrong_teacher', 'wrong_
 /** M25: an appeal waits (`pending`), is upheld (the decision is reopened) or rejected (it stands). */
 export const APPEAL_STATUSES = ['pending', 'upheld', 'rejected'] as const;
 /** M25: the decisions that can be appealed, once each, by their parties. */
+// --- Impersonation reports (docs/adr/0089-impersonation-reports.md) -------------------------------
+/**
+ * Owner decisions 2026-11-27. `impostor`: the reporter has no profile of their own and asks for the
+ * profile; `duplicate`: the reporter's own profile is copied by another account (no proof route:
+ * their own verified links are the proof, and the copy is taken down when the case is upheld).
+ */
+export const IDENTITY_REPORT_TYPES = ['impostor', 'duplicate'] as const;
+/** Decision 2: the proof routes of the first build (no ID document in Phase 1). */
+export const IDENTITY_ROUTES = ['vouching', 'channel', 'video', 'own_profile'] as const;
+/**
+ * `open`: filed, waiting for the moderators' check (decision 1); `held`: found plausible, the
+ * profile is on hold; then `upheld`, `dismissed`, `unsettled` (cannot be settled) or `closed` (not
+ * plausible at the moderators' check, or out of time).
+ */
+export const IDENTITY_REPORT_STATUSES = ['open', 'held', 'upheld', 'dismissed', 'unsettled', 'closed'] as const;
+export const OPEN_IDENTITY_REPORT_STATUSES = ['open', 'held'] as const;
+/** Who asked for a vouch or a code: the reporter, or the account the report is about. */
+export const IDENTITY_SIDES = ['reporter', 'reported'] as const;
+/** Decision 6: one verified teacher, or two verified peers. */
+export const IDENTITY_VOUCH_KINDS = ['teacher', 'peer'] as const;
+export const IDENTITY_VOUCH_ANSWERS = ['yes', 'no', 'unsure'] as const;
+/** The own-channel route: a code e-mailed to an address at the school's domain, or posted on a page. */
+export const IDENTITY_CODE_CHANNELS = ['email', 'page'] as const;
+export const IDENTITY_TEXT_MAX = 2000;
+export const IDENTITY_NOTE_MAX = 500;
+export const IDENTITY_TARGET_MAX = 300;
+/** Proof must arrive within this many days of the hold, or the case closes as "cannot be settled". */
+export const IDENTITY_PROOF_DAYS = 14;
+/** A hold lasts at most this many days without a decision; then it lifts and the admins are reminded. */
+export const IDENTITY_HOLD_DAYS = 30;
+/** Decision 7: a proof video is purged this many days after the decision. */
+export const IDENTITY_VIDEO_KEEP_DAYS = 30;
+/** After "cannot be settled", the same reporter may report the same profile again after this many days. */
+export const IDENTITY_REFILE_DAYS = 30;
+/** At most this many impersonation reports per account in 30 days. */
+export const IDENTITY_REPORTS_PER_30_DAYS = 3;
+/** A voucher's account is at least this many days old. */
+export const IDENTITY_VOUCHER_MIN_AGE_DAYS = 30;
+/** A code is valid this many days; at most this many wrong tries. */
+export const IDENTITY_CODE_DAYS = 14;
+export const IDENTITY_CODE_MAX_ATTEMPTS = 5;
+
 export const APPEALABLE_KINDS = ['relationship_dispute', 'lineage_report', 'succession_request', 'record_proposal'] as const;
 /** DEFAULT M25 (question 4): an appeal is sent within this many days of the decision. */
 export const APPEAL_WINDOW_DAYS = 30;

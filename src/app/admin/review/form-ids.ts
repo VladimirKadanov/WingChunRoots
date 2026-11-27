@@ -27,3 +27,9 @@ export const RESTORE_FORM = 'review-restore';
 /** Role replay 2026-11-25 (P3-8, ADR 0067): "Ask <teacher> to confirm" (review.askTeacher), one form per teacher. */
 export const ASK_TEACHER_FORM = 'review-ask-teacher';
 export const askTeacherForm = (relationshipId: string) => `${ASK_TEACHER_FORM}-${relationshipId}`;
+/** ADR 0089: the moderators' first check of an impersonation report (identity.triage), one form per outcome. */
+export const TRIAGE_FORM = 'review-identity-triage';
+export const triageForm = (outcome: 'hold' | 'close') => `${TRIAGE_FORM}-${outcome}`;
+/** ADR 0089: "I saw the code on the page" of one code (identity.checkCode), one form per code. */
+export const CHECK_CODE_FORM = 'review-identity-check';
+export const checkCodeForm = (codeId: string) => `${CHECK_CODE_FORM}-${codeId}`;

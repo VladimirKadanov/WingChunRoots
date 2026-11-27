@@ -18,8 +18,9 @@ import { closeStaleTrialInquiries, nullOldIpHmacs, purgeEndedClaimData, purgeThi
 import { logger } from '../log';
 import { TemplateDataError } from '../templates/email';
 import { eventsNotifyHandler } from './event-notify';
-import { lineageRecomputeHandler } from './lineage-recompute';
+import { lineageRecomputeHandler, postRevalidate } from './lineage-recompute';
 import { startHeartbeat } from './heartbeat';
+import { purgeIdentityVideos, sweepIdentityReports } from '../services/identity-reports';
 import { billingEventHandler, billingGraceHandler } from './billing';
 import { planExpiryHandler } from './plan-expiry';
 import { schoolActivityHandler } from './school-activity';
@@ -191,6 +192,13 @@ export function retentionPurgeHandler(db: Database, log: (line: string) => void)
       await step('ip_hmac', async () => {
         const r = await nullOldIpHmacs(db);
         return `removed ${r.audit} old audit ip_hmac value(s), ${r.sessions} old session value(s)`;
+      });
+      // ADR 0089: impersonation reports whose proof is overdue, holds past 30 days, videos past theirs.
+      await step('impersonation reports', async () => {
+        const swept = await sweepIdentityReports(db);
+        const videos = await purgeIdentityVideos(db);
+        if (swept.tags.length > 0) await postRevalidate(swept.tags);
+        return `closed ${swept.closed} impersonation report(s) without proof, lifted ${swept.lifted} hold(s), deleted ${videos.files} video(s) (${videos.failed} not deleted)`;
       });
       await step('open trial requests', async () => {
         const r = await closeStaleTrialInquiries(db);

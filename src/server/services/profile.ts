@@ -26,6 +26,7 @@ import type { Transaction } from '../jobs/outbox';
 import { writePersonKeys } from '../search/store';
 import { type Country, COUNTRIES, fieldErrors, isCountryCode, type PlaceOption } from './account';
 import { currentConsents, grantConsents, withdrawConsents } from './consent';
+import { refuseWhileHeld } from './identity-hold';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 import { accountFeatured } from './featured-profile';
@@ -375,6 +376,7 @@ export async function profilePublish(principal: Principal | null, meta: RequestM
       .where(and(eq(person.claimedByUserId, p.user.id), eq(person.stewardship, 'self'), isNull(person.deletedAt)))
       .for('update');
     if (!own) throw new ServiceError('NOT_FOUND', 'Create your profile first: finish setting up your account.');
+    await refuseWhileHeld(tx, own.id);
     const visibilityChanged = await setOwnVisibility(tx, p, own, true, meta);
     if (visibilityChanged) {
       await writeAudit(tx, {
@@ -459,6 +461,8 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
       .for('update');
     if (input.personId && input.personId !== own?.id) throw new ServiceError('FORBIDDEN', NOT_YOURS_MESSAGE);
     if (!own) throw new ServiceError('NOT_FOUND', 'Create your profile first: finish setting up your account.');
+    // ADR 0089: no renames or other changes while an impersonation report holds the profile.
+    await refuseWhileHeld(tx, own.id);
 
     let countryCode = input.countryCode === undefined ? own.countryCode : input.countryCode;
     const placeId = input.placeId === undefined ? own.placeId : input.placeId;

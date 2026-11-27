@@ -6,7 +6,11 @@
 //   - images are decoded and encoded again with sharp, which keeps the pixels (turned upright by
 //     their EXIF orientation first) and drops every metadata block: EXIF with its GPS position,
 //     XMP, IPTC and the comments. A file sharp cannot decode is refused;
-//   - a PDF is stored as uploaded, byte for byte (its SHA-256 equals the client's).
+//   - a PDF is stored as uploaded, byte for byte (its SHA-256 equals the client's);
+//   - ADR 0089 (impersonation reports): a short private video, MP4 (an ISO BMFF `ftyp` box at byte
+//     4 with a video brand, not an HEIC or AVIF image's) or WebM (EBML 1A 45 DF A3 with the DocType
+//     "webm"), is also stored as uploaded. sniffMime never returns one: only
+//     sniffVideo does, and only an identity report's case takes it (evidence.ts).
 
 import sharp, { type Sharp } from 'sharp';
 
@@ -25,6 +29,11 @@ const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const RIFF = [0x52, 0x49, 0x46, 0x46];
 const WEBP = [0x57, 0x45, 0x42, 0x50];
 const PDF = [0x25, 0x50, 0x44, 0x46, 0x2d];
+const FTYP = [0x66, 0x74, 0x79, 0x70];
+const EBML = [0x1a, 0x45, 0xdf, 0xa3];
+
+export type EvidenceVideoMime = 'video/mp4' | 'video/webm';
+export type EvidenceDocumentMime = Exclude<EvidenceMime, EvidenceVideoMime>;
 
 /** The evidence type of a file by its first bytes, or null when it is not one of the four. */
 export function sniffMime(head: Uint8Array): EvidenceMime | null {
@@ -35,7 +44,27 @@ export function sniffMime(head: Uint8Array): EvidenceMime | null {
   return null;
 }
 
-export const isImage = (mime: EvidenceMime) => mime !== 'application/pdf';
+/** ADR 0089: the video type of a file by its first bytes (MP4 or WebM), or null. */
+export function sniffVideo(head: Uint8Array): EvidenceVideoMime | null {
+  // MP4: `ftyp` and a video major brand. HEIC and AVIF images share the box, so a brand outside the
+  // list (heic, mif1, avif…) is no video. QuickTime (`qt  `) is what an iPhone records; it plays as MP4.
+  if (startsWith(head, FTYP, 4) && head.length >= 12 && MP4_BRANDS.has(String.fromCharCode(...head.subarray(8, 12)))) return 'video/mp4';
+  // WebM: an EBML header whose DocType is "webm" (Matroska files say "matroska").
+  if (startsWith(head, EBML) && includes(head.subarray(0, 64), WEBM_DOCTYPE)) return 'video/webm';
+  return null;
+}
+
+const MP4_BRANDS = new Set(['isom', 'iso2', 'iso3', 'iso4', 'iso5', 'iso6', 'iso8', 'mp41', 'mp42', 'avc1', 'dash', 'M4V ', 'mmp4', 'qt  ']);
+/** The EBML DocType element (42 82), its one-byte size (0x84) and "webm". */
+const WEBM_DOCTYPE = [0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6d];
+
+function includes(bytes: Uint8Array, needle: readonly number[]): boolean {
+  for (let i = 0; i + needle.length <= bytes.length; i++) if (startsWith(bytes, needle, i)) return true;
+  return false;
+}
+
+export const isImage = (mime: EvidenceMime): mime is Exclude<EvidenceDocumentMime, 'application/pdf'> => mime.startsWith('image/');
+export const isVideo = (mime: string): mime is EvidenceVideoMime => mime.startsWith('video/');
 
 /** The file extension of a type, for the download's file name. */
 export const EXTENSION: Record<EvidenceMime, string> = {
@@ -43,6 +72,8 @@ export const EXTENSION: Record<EvidenceMime, string> = {
   'image/png': 'png',
   'image/webp': 'webp',
   'application/pdf': 'pdf',
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
 };
 
 /**
@@ -67,7 +98,7 @@ sharp.cache(false);
  * turns the pixels by the EXIF orientation, so a photograph stays upright once that tag is gone.
  * Animated images keep their first frame.
  */
-export async function reencodeImage(bytes: Uint8Array, mime: Exclude<EvidenceMime, 'application/pdf'>): Promise<Uint8Array> {
+export async function reencodeImage(bytes: Uint8Array, mime: Exclude<EvidenceDocumentMime, 'application/pdf'>): Promise<Uint8Array> {
   let pipeline: Sharp;
   try {
     pipeline = sharp(bytes, { failOn: 'error', limitInputPixels: MAX_IMAGE_PIXELS, animated: false }).rotate();

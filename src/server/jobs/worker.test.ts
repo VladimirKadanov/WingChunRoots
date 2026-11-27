@@ -40,6 +40,8 @@ describe('retentionPurgeHandler', () => {
       'retention.purge: set the retention of 0 evidence file(s), deleted 0 (0 not deleted), removed the text of 0 review note(s)',
       'retention.purge: redacted the text of 0 old record revision(s)',
       'retention.purge: removed 0 old audit ip_hmac value(s), 0 old session value(s)',
+      // ADR 0089: impersonation reports past their proof or hold, and their videos past 30 days.
+      'retention.purge: closed 0 impersonation report(s) without proof, lifted 0 hold(s), deleted 0 video(s) (0 not deleted)',
       'retention.purge: closed and scrubbed 0 unanswered and 0 orphaned trial lesson request(s)',
     ]);
   });
