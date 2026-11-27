@@ -4,7 +4,7 @@
 |---|---|
 | Статус | Прието (27.11.2026) |
 | Контекст | Вторият преглед на всички пътища (26.11.2026), находка P2-9. Собственикът: „all the fixes you proposed are good“. |
-| Свързани | M07, M10b, [ADR 0056](0056-not-on-wingchunroots-yet.md), [ADR 0077](0077-legend-and-record.md) |
+| Свързани | M07, M10b, [ADR 0056](0056-teacher-not-on-site.md), [ADR 0077](0077-legend-and-record.md) |
 
 ## Проблемът
 
