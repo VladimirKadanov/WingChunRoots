@@ -1058,6 +1058,12 @@ test('@M02 every page sends the security headers; link pages send only the origi
   const headers = response.headers();
   expect(headers['x-frame-options']).toBe('DENY');
   expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
+  // Review 2026-11-13: the baseline script policy and no device permissions.
+  for (const directive of ["default-src 'self'", "object-src 'none'", "base-uri 'self'", 'frame-src https://www.youtube-nocookie.com https://player.vimeo.com']) {
+    expect(headers['content-security-policy']).toContain(directive);
+  }
+  expect(headers['content-security-policy']).not.toContain('unsafe-eval');
+  expect(headers['permissions-policy']).toContain('camera=()');
   expect(headers['x-content-type-options']).toBe('nosniff');
   expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
   // Not no-referrer: with it a form's POST carries `Origin: null`, which Next.js refuses.

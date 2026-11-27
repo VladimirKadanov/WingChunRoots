@@ -329,3 +329,16 @@ export async function expireOrganizationImports(db: Database, { batchSize = RETE
     if (n < batchSize) return { imports };
   }
 }
+
+/**
+ * Review 2026-11-13 (ADR 0088): administrator invitations nobody accepted within
+ * NAMING_ADMIN_INVITE_DAYS are deleted, with the address they name. Returns how many went.
+ */
+export async function purgeExpiredNamingInvites(db: Database, { batchSize = RETENTION_BATCH_SIZE }: { batchSize?: number } = {}): Promise<number> {
+  return inBatches(
+    db,
+    batchSize,
+    (limit) => sql`DELETE FROM naming_request WHERE id IN (
+      SELECT id FROM naming_request WHERE kind = 'organization_admin' AND expires_at <= now() LIMIT ${limit} FOR UPDATE SKIP LOCKED)`,
+  );
+}

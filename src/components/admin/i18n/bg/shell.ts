@@ -32,4 +32,6 @@ export const BG_SHELL: AdminDict = {
   "Page {page} of {pages}": "Страница {page} от {pages}",
   "Next": "Следваща",
   "Cases": "Случаи",
+  // Review 2026-11-13 (ADR 0088)
+  'Naming requests': 'Заявки за посочване',
 };

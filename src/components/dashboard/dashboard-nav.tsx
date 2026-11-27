@@ -98,6 +98,8 @@ export function dashboardNavGroups(nav: NavData): DashboardNavGroup[] {
   // Without a profile the dashboard home's "Next steps" offers "Set up your profile"; the menu does not repeat it.
   if (nav.hasProfile) account.push(link('/dashboard/profile', 'Profile'), link('/dashboard/photos', 'Photos'));
   account.push(link('/dashboard/notifications', 'Notifications', nav.unreadNotifications || null, 'unread'));
+  // Review 2026-11-13 (ADR 0088): shown while a request to name the account waits for its answer.
+  if (nav.waitingNaming > 0) account.push(link('/dashboard/naming', 'Requests to name you', nav.waitingNaming, 'waiting'));
   if (!nav.staffOnly && nav.hasCases) account.push(link('/dashboard/cases', 'Cases'));
   if (!nav.staffOnly && (sifu || nav.inSuccession)) account.push(link('/dashboard/succession', 'Digital successor'));
   account.push(link('/account/plan', 'Plan and billing'), link('/account', 'Settings'));

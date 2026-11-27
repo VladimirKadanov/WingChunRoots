@@ -37,6 +37,7 @@ import {
   updateOrganization,
 } from './organizations';
 import { createUser, key, member, meta, principalOf, staff } from './relationships.test-support';
+import { adminIdOf, membershipIdOf, personIdOf, settleNaming } from './naming.test-support';
 import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
 import { createSchool, schoolGet } from './schools';
 
@@ -213,9 +214,13 @@ describe('one organization’s admin never reaches another’s (authorization ma
     await expect(addOrganizationAdmin(b.principal, { organizationId: a.organizationId, email: b.account.email }, meta)).rejects.toMatchObject(notFound);
     await expect(addOrganizationMember(b.principal, { organizationId: a.organizationId, personSlug: 'demo-root-a' }, meta)).rejects.toMatchObject(notFound);
     const added = await addOrganizationMember(a.principal, { organizationId: a.organizationId, personSlug: 'demo-root-a' }, meta);
-    await expect(endOrganizationMember(b.principal, { organizationId: a.organizationId, membershipId: added.membershipId }, meta)).rejects.toMatchObject(notFound);
+    // The demo person has an account: it answers first (review 2026-11-13, ADR 0088).
+    expect(added).toEqual({ membershipId: null, outcome: 'pending' });
+    await settleNaming({ organizationId: a.organizationId });
+    const membershipId = await membershipIdOf(a.organizationId, await personIdOf('demo-root-a'));
+    await expect(endOrganizationMember(b.principal, { organizationId: a.organizationId, membershipId }, meta)).rejects.toMatchObject(notFound);
     // Another organization's membership through one's own organization's id: no such member.
-    await expect(endOrganizationMember(b.principal, { organizationId: b.organizationId, membershipId: added.membershipId }, meta)).rejects.toMatchObject(notFound);
+    await expect(endOrganizationMember(b.principal, { organizationId: b.organizationId, membershipId }, meta)).rejects.toMatchObject(notFound);
     const s = await listedSchool();
     const link = await requestOrganizationSchool(a.principal, { organizationId: a.organizationId, schoolSlug: s.slug }, meta);
     await expect(endSchoolLink(b.principal, { linkId: link.linkId }, meta)).rejects.toMatchObject(notFound);
@@ -227,7 +232,12 @@ describe('one organization’s admin never reaches another’s (authorization ma
     await approve(a.caseId);
     await federation(a.organizationId);
     const second = await createUser('org-second-admin');
-    const added = await addOrganizationAdmin(a.principal, { organizationId: a.organizationId, email: second.email }, meta);
+    const invited = await addOrganizationAdmin(a.principal, { organizationId: a.organizationId, email: second.email }, meta);
+    // An invitation: the account becomes an admin only once it accepts (review 2026-11-13, ADR 0088).
+    expect(invited).toEqual({ invited: true });
+    await expect(manageOrganization(principalOf(second), { organizationId: a.organizationId })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await settleNaming({ organizationId: a.organizationId, kind: 'organization_admin' });
+    const adminId = await adminIdOf(a.organizationId, second.id);
     const asAdmin = principalOf(second);
     await addOrganizationMember(asAdmin, { organizationId: a.organizationId, personSlug: 'demo-root-a' }, meta);
     await expect(addOrganizationAdmin(asAdmin, { organizationId: a.organizationId, email: (await createUser('org-third')).email }, meta)).rejects.toMatchObject({ code: 'FORBIDDEN' });
@@ -235,7 +245,7 @@ describe('one organization’s admin never reaches another’s (authorization ma
     const ownerRow = view.admins.find((x) => x.role === 'owner')!;
     await expect(removeOrganizationAdmin(asAdmin, { organizationId: a.organizationId, adminId: ownerRow.id }, meta)).rejects.toMatchObject({ code: 'CONFLICT' });
     // An admin may leave.
-    await removeOrganizationAdmin(asAdmin, { organizationId: a.organizationId, adminId: added.adminId }, meta);
+    await removeOrganizationAdmin(asAdmin, { organizationId: a.organizationId, adminId }, meta);
     await expect(manageOrganization(asAdmin, { organizationId: a.organizationId })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 });
@@ -259,6 +269,9 @@ describe('members, the plan and revoking it (DEFAULT D03, D08, D12)', () => {
       fields: { personSlug: expect.any(String) },
     });
     await addOrganizationMember(a.principal, { organizationId: a.organizationId, personSlug: `https://example.test/people/${shown.slug}`, role: 'leader' }, meta);
+    // Listed only once the person accepts (review 2026-11-13, ADR 0088).
+    expect((await organizationGet(null, { slug: await slugOf(a.organizationId) })).members).toEqual([]);
+    expect(await settleNaming({ organizationId: a.organizationId })).toBe(1);
     const link = await requestOrganizationSchool(a.principal, { organizationId: a.organizationId, schoolSlug: s.slug }, meta);
     await answerSchoolLink(s.owner.principal, { linkId: link.linkId, accept: true }, meta);
     const slug = await slugOf(a.organizationId);

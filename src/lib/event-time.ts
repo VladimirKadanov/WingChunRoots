@@ -46,6 +46,39 @@ function partsFormatter(zone: string): Intl.DateTimeFormat {
   return f;
 }
 
+/**
+ * Review 2026-11-13 (flows-community N1): the old names that Node's ICU still lists in
+ * Intl.supportedValuesOf('timeZone') (CLDR keeps them as canonical) but that a PostgreSQL built on
+ * a trimmed tzdata does not know. An event saved in one of them broke the organizer's quota query
+ * and the passport pages of its people (`AT TIME ZONE`). Every zone is stored under its current
+ * IANA name; the services also check the name against the database before saving.
+ */
+export const LEGACY_TIME_ZONES: Readonly<Record<string, string>> = {
+  'Africa/Asmera': 'Africa/Asmara',
+  'America/Buenos_Aires': 'America/Argentina/Buenos_Aires',
+  'America/Catamarca': 'America/Argentina/Catamarca',
+  'America/Cordoba': 'America/Argentina/Cordoba',
+  'America/Godthab': 'America/Nuuk',
+  'America/Indianapolis': 'America/Indiana/Indianapolis',
+  'America/Jujuy': 'America/Argentina/Jujuy',
+  'America/Louisville': 'America/Kentucky/Louisville',
+  'America/Mendoza': 'America/Argentina/Mendoza',
+  'Asia/Calcutta': 'Asia/Kolkata',
+  'Asia/Katmandu': 'Asia/Kathmandu',
+  'Asia/Rangoon': 'Asia/Yangon',
+  'Asia/Saigon': 'Asia/Ho_Chi_Minh',
+  'Atlantic/Faeroe': 'Atlantic/Faroe',
+  'Europe/Kiev': 'Europe/Kyiv',
+  'Pacific/Enderbury': 'Pacific/Kanton',
+  'Pacific/Ponape': 'Pacific/Pohnpei',
+  'Pacific/Truk': 'Pacific/Chuuk',
+};
+
+/** The current IANA name of a zone (Asia/Calcutta -> Asia/Kolkata); any other name as it is. */
+export function canonicalTimeZone(zone: string): string {
+  return LEGACY_TIME_ZONES[zone] ?? zone;
+}
+
 /** Whether the platform knows this IANA time zone (Europe/Sofia, America/New_York, UTC). */
 export function isTimeZone(zone: unknown): zone is string {
   if (typeof zone !== 'string' || !ZONE_FORMAT.test(zone)) return false;

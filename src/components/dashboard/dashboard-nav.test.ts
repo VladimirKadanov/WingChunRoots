@@ -17,6 +17,7 @@ const student: DashboardNav = {
   family: false,
   hasCases: false,
   inSuccession: false,
+  waitingNaming: 0,
 };
 
 const labels = (nav: DashboardNav) => dashboardNavGroups(nav).map((g) => g.label);
@@ -93,5 +94,12 @@ describe('currentHref', () => {
     expect(currentHref(groups, '/dashboard/students')).toBe('/dashboard/students');
     expect(currentHref(groups, '/dashboard/schools/abc/inquiries')).toBe('/dashboard/schools');
     expect(currentHref(groups, '/dashboard/organization/o1/analytics')).toBe('/dashboard/organization/o1');
+  });
+
+  it('shows Requests to name you only while one waits, with the count (review 2026-11-13, ADR 0088)', () => {
+    const hrefs = (nav: DashboardNav) => dashboardNavGroups(nav).flatMap((g) => g.links.map((l) => l.href));
+    expect(hrefs(student)).not.toContain('/dashboard/naming');
+    const waiting = dashboardNavGroups({ ...student, waitingNaming: 2 }).flatMap((g) => g.links).find((l) => l.href === '/dashboard/naming');
+    expect(waiting).toMatchObject({ label: 'Requests to name you', count: 2, countLabel: 'waiting' });
   });
 });

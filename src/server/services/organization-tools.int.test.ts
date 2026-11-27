@@ -25,6 +25,7 @@ import { leaveOrganization, myMemberships, organizationClaims, withdrawClaim } f
 import { addOrganizationMember, applyOrganization, endOrganizationMember } from './organizations';
 import { approveRelationship, requestTeacher } from './relationships';
 import { createUser, key, member, meta, newLineage, ongoingFrom, principalOf, staff } from './relationships.test-support';
+import { membershipIdOf, settleNaming } from './naming.test-support';
 import { expireOrganizationImports } from './retention';
 
 vi.mock('next/cache', () => ({
@@ -224,6 +225,7 @@ describe('analytics and the heatmap (In scope 2, 3)', () => {
     await approveRelationship(teacher.principal, { relationshipId: r1.relationship.id, idempotencyKey: key() }, meta);
     await requestTeacher(pending.principal, { teacherId: teacher.personId, lineageId, periods: ongoingFrom(), idempotencyKey: key() }, meta);
     for (const m of [verified, pending]) await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: m.slug, role: 'member' }, meta);
+    await settleNaming({ organizationId: org.organizationId });
     const preview = await previewImport(org.owner, { organizationId: org.organizationId, contentBase64: b64(`${HEADER}\nDemo,Counted Record,,,,,${teacher.slug},\n`) }, meta);
     await commitImport(org.owner, { organizationId: org.organizationId, importId: preview.id }, meta);
     const a = await organizationAnalytics(org.owner, { organizationId: org.organizationId });
@@ -277,7 +279,9 @@ describe('separation (In scope 4)', () => {
     const lineageId = await newLineage('m24-leave');
     const r = await requestTeacher(student.principal, { teacherId: teacher.personId, lineageId, periods: ongoingFrom(), idempotencyKey: key() }, meta);
     await approveRelationship(teacher.principal, { relationshipId: r.relationship.id, idempotencyKey: key() }, meta);
-    const added = await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: student.slug, role: 'member' }, meta);
+    await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: student.slug, role: 'member' }, meta);
+    await settleNaming({ organizationId: org.organizationId });
+    const added = { membershipId: await membershipIdOf(org.organizationId, student.personId) };
     await getDb().execute(sql`INSERT INTO organization_member_record (membership_id, rank_label) VALUES (${added.membershipId}::uuid, 'Demo rank')`);
     await getDb().insert(organizationTeacherClaim).values({ organizationId: org.organizationId, studentPersonId: student.personId, teacherPersonId: teacher.personId });
     const mine = await myMemberships(student.principal);
@@ -304,7 +308,9 @@ describe('separation (In scope 4)', () => {
   it('the organization ends a membership: the member’s account is told, the record and relationships stay', async () => {
     const org = await federation();
     const student = await member('m24-ended');
-    const added = await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: student.slug, role: 'member' }, meta);
+    await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: student.slug, role: 'member' }, meta);
+    await settleNaming({ organizationId: org.organizationId });
+    const added = { membershipId: await membershipIdOf(org.organizationId, student.personId) };
     await getDb().execute(sql`INSERT INTO organization_member_record (membership_id, school_city) VALUES (${added.membershipId}::uuid, 'Demo City')`);
     await endOrganizationMember(org.owner, { organizationId: org.organizationId, membershipId: added.membershipId }, meta);
     const told = await getDb().select().from(notification).where(eq(notification.userId, student.account.id));
@@ -320,7 +326,9 @@ describe('separation (In scope 4)', () => {
     const org = await federation();
     const teacher = await member('m24-claimed-teacher', { sifu: true });
     const publicTeacher = await member('m24-public-teacher', { sifu: true });
-    const added = await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: teacher.slug, role: 'member' }, meta);
+    await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: teacher.slug, role: 'member' }, meta);
+    await settleNaming({ organizationId: org.organizationId });
+    const added = { membershipId: await membershipIdOf(org.organizationId, teacher.personId) };
     // A private member: the organization finds the teacher as its own member only.
     await getDb().update(person).set({ visibility: 'involved_only' }).where(eq(person.id, teacher.personId));
     const preview = await previewImport(
@@ -358,6 +366,7 @@ describe('the dashboard overview of an organization (journey review P2-5, ADR 00
     const org = await federation();
     const one = await member('p25-member');
     await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: one.slug, role: 'member' }, meta);
+    await settleNaming({ organizationId: org.organizationId });
     const preview = await previewImport(org.owner, { organizationId: org.organizationId, contentBase64: b64(`${HEADER}\nDemo,Overview Record,,,,,,\n`) }, meta);
     await commitImport(org.owner, { organizationId: org.organizationId, importId: preview.id }, meta);
 

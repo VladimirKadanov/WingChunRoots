@@ -16,6 +16,7 @@ import { PRIVACY_LOAD_ERROR } from '@/components/account/load-errors/privacy';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { SettingsNav } from '@/components/account/settings-nav';
 import { CheckIcon, DashIcon, LockIcon } from '@/components/icons';
+import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
@@ -176,6 +177,19 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Sear
               </Link>
               .
             </p>
+          </Section>
+
+          <Section id="download-data" title="Download your data">
+            <div className="grid max-w-[62ch] gap-3 text-ui">
+              <p className="text-fg-muted">
+                One file with everything we keep about your account and your profile: sign-in details, consents, names, links, passport,
+                schools, events, requests, plans and the notices we sent you. Passwords and security keys are never in it.
+              </p>
+              {/* A plain download link: works without JavaScript; the file is made when you press it. */}
+              <a href="/api/account/export" download className={`${buttonVariants({ variant: 'secondary' })} w-fit`} data-testid="download-my-data">
+                Download my data (JSON)
+              </a>
+            </div>
           </Section>
 
           <Section id="delete-account" title="Delete your account">

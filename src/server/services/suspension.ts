@@ -117,9 +117,17 @@ interface Target {
   banExpires: Date | null;
 }
 
+/**
+ * The one lock of every change to who may administer: suspensions here and role changes
+ * (roles.ts), so two administrators never suspend or demote each other at the same moment.
+ */
+export async function lockAdministrators(tx: Transaction): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${SUSPENSION_LOCK}))`);
+}
+
 /** Takes the one lock of this file, then the account's row; throws NOT_FOUND for no such account. */
 async function lockTarget(tx: Transaction, ref: { userId: string | null; email: string | null }): Promise<Target> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${SUSPENSION_LOCK}))`);
+  await lockAdministrators(tx);
   const [target] = await tx
     .select({ id: authUser.id, email: authUser.email, role: authUser.role, banned: authUser.banned, banExpires: authUser.banExpires })
     .from(authUser)
@@ -139,7 +147,7 @@ export async function requireStandingAdmin(tx: Transaction, actor: Principal): P
 }
 
 /** Administrators that are not suspended, not counting `exceptId`. */
-async function otherActiveAdmins(tx: Transaction, exceptId: string): Promise<number> {
+export async function otherActiveAdmins(tx: Transaction, exceptId: string): Promise<number> {
   const rows = await tx
     .select({ banned: authUser.banned, banExpires: authUser.banExpires })
     .from(authUser)

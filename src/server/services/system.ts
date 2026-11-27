@@ -3,6 +3,10 @@
 //   healthAnswer()  for /healthz (checkHealth): the database answers and the job queue's schema
 //                   is ready. The route says only {"ok":true} or {"ok":false} and a status code;
 //                   which check failed goes to the log, never to the answer.
+//   deepHealthAnswer() for /healthz/deep (review 2026-11-13, ops M3): the same, plus the worker's
+//                   heartbeat (no beat for WORKER_STALE_SECONDS) and, when BACKUP_MAX_AGE_HOURS is
+//                   set, the age of the newest local archive. For an uptime monitor; the same
+//                   {"ok":…} answer, which check failed only in the log.
 //   systemStatus()  for /admin/system (staff with a verified second factor): the depth of the job
 //                   queue, failed jobs, failed e-mail deliveries and the time of the last local
 //                   archive (scripts/backup-local.sh). Counts, queue names and times only: never a
@@ -18,9 +22,10 @@ import { getDb } from '../db';
 import { databaseName, targetDatabaseUrl } from '../db/env';
 import { emailDelivery } from '../db/schema';
 import { type FailedJob, type QueueCounts, queueCounts, queueSchemaReady, recentFailedJobs } from '../jobs/stats';
+import { lastWorkerBeat, WORKER_STALE_SECONDS } from '../jobs/heartbeat';
 import { requestLogger } from '../log';
 
-export type HealthCheck = 'database' | 'queue';
+export type HealthCheck = 'database' | 'queue' | 'worker' | 'backup';
 
 export interface HealthResult {
   ok: boolean;
@@ -39,15 +44,38 @@ function withinTime<T>(work: Promise<T>, ms: number): Promise<T> {
   return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
 }
 
-/** Runs the checks of /healthz; never throws. */
-export async function checkHealth(timeoutMs = HEALTH_CHECK_TIMEOUT_MS): Promise<HealthResult> {
-  const checks: Record<HealthCheck, () => Promise<boolean>> = {
+/** The newest local archive may be at most this many hours old (/healthz/deep); unset: not checked. */
+export function backupMaxAgeHours(env: Record<string, string | undefined> = process.env): number | null {
+  const raw = env.BACKUP_MAX_AGE_HOURS?.trim();
+  if (!raw) return null;
+  const hours = Number(raw);
+  return Number.isFinite(hours) && hours > 0 ? hours : null;
+}
+
+/** Whether the worker beat within WORKER_STALE_SECONDS of `now`. */
+export function workerAlive(lastBeat: string | null, now: Date = new Date()): boolean {
+  return lastBeat !== null && now.getTime() - Date.parse(lastBeat) <= WORKER_STALE_SECONDS * 1000;
+}
+
+/** Runs the checks of /healthz (and, `deep`, of /healthz/deep); never throws. */
+export async function checkHealth(timeoutMs = HEALTH_CHECK_TIMEOUT_MS, deep = false): Promise<HealthResult> {
+  const checks: Partial<Record<HealthCheck, () => Promise<boolean>>> = {
     database: async () => {
       const { rows } = await getDb().execute<{ ok: number }>(sql`SELECT 1 AS ok`);
       return Number(rows[0]?.ok) === 1;
     },
     queue: async () => queueSchemaReady(getDb()),
   };
+  if (deep) {
+    checks.worker = async () => workerAlive(await lastWorkerBeat(getDb()));
+    const maxHours = backupMaxAgeHours();
+    if (maxHours !== null) {
+      checks.backup = async () => {
+        const { latest } = await backupSummary(backupDir(), databaseName(targetDatabaseUrl()));
+        return latest !== null && Date.now() - Date.parse(latest.createdAt) <= maxHours * 3_600_000;
+      };
+    }
+  }
   // In parallel, so a stalled database answers within one timeout (the Compose probe allows 5 s).
   const entries = Object.entries(checks) as [HealthCheck, () => Promise<boolean>][];
   const results = await Promise.all(entries.map(([, check]) => withinTime(check(), timeoutMs).catch(() => false)));
@@ -56,10 +84,10 @@ export async function checkHealth(timeoutMs = HEALTH_CHECK_TIMEOUT_MS): Promise<
 }
 
 /** The whole answer of /healthz: only {"ok":true} (200) or {"ok":false} (503); a failure is logged. */
-export async function healthAnswer(headers: Headers): Promise<{ status: 200 | 503; body: '{"ok":true}' | '{"ok":false}' }> {
-  const health = await checkHealth();
+export async function healthAnswer(headers: Headers, deep = false): Promise<{ status: 200 | 503; body: '{"ok":true}' | '{"ok":false}' }> {
+  const health = await checkHealth(HEALTH_CHECK_TIMEOUT_MS, deep);
   if (health.ok) return { status: 200, body: '{"ok":true}' };
-  requestLogger(requestIdFrom(headers)).warn({ failed: health.failed }, 'healthz: a check failed');
+  requestLogger(requestIdFrom(headers)).warn({ failed: health.failed, deep }, 'healthz: a check failed');
   return { status: 503, body: '{"ok":false}' };
 }
 
@@ -86,6 +114,12 @@ export interface SystemStatus {
     /** The last attempt of the newest failed delivery (ISO 8601), or null. */
     lastFailedAt: string | null;
   };
+  worker: {
+    /** The worker's last heartbeat (ISO 8601), or null when it never beat. */
+    lastBeat: string | null;
+    /** It beat within WORKER_STALE_SECONDS. */
+    alive: boolean;
+  };
   backup: {
     /** The newest local archive of the app's database, or null when there is none yet. */
     latest: BackupFile | null;
@@ -97,7 +131,7 @@ export interface SystemStatus {
 export async function systemStatus(principal: Principal | null): Promise<SystemStatus> {
   requireStaff2FA(principal);
   const db = getDb();
-  const [queues, recentFailures, emails, backups] = await Promise.all([
+  const [queues, recentFailures, emails, backups, lastBeat] = await Promise.all([
     queueCounts(db),
     recentFailedJobs(db),
     db
@@ -109,6 +143,7 @@ export async function systemStatus(principal: Principal | null): Promise<SystemS
       .from(emailDelivery)
       .where(inArray(emailDelivery.status, ['failed', 'queued'])),
     backupSummary(backupDir(), databaseName(targetDatabaseUrl())),
+    lastWorkerBeat(db),
   ]);
   const sum = (key: 'waiting' | 'ready' | 'active' | 'failed') => queues.reduce((total, q) => total + q[key], 0);
   const email = emails[0];
@@ -120,6 +155,7 @@ export async function systemStatus(principal: Principal | null): Promise<SystemS
       waiting: Number(email?.waiting ?? 0),
       lastFailedAt: email?.lastFailedAt ? new Date(email.lastFailedAt).toISOString() : null,
     },
+    worker: { lastBeat, alive: workerAlive(lastBeat) },
     backup: backups,
   };
 }

@@ -47,6 +47,7 @@ import {
 import { applyPendingBillingEvents, paidSubscription } from './billing.test-support';
 import { addMonths, adminFederationTrial, endFederationTrial, runFederationTrials, startFederationTrial } from './federation-trials';
 import { grantOrganizationPlan, revokeOrganizationPlan } from './organization-grants';
+import { settleNaming } from './naming.test-support';
 import { addOrganizationAdmin, addOrganizationMember, answerSchoolLink, applyOrganization, requestOrganizationSchool } from './organizations';
 import { createUser, key, member, meta, principalOf, staff } from './relationships.test-support';
 import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
@@ -178,6 +179,7 @@ describe('Federation checkout', () => {
     const { owner, organizationId } = await approvedOrganization('m23-refusals');
     const other = await createUser('m23-second-admin');
     await addOrganizationAdmin(owner.principal, { organizationId, email: other.email }, meta);
+    await settleNaming({ organizationId });
     const second = principalOf(other);
     await expect(startCheckout(second, { planCode: 'federation', interval: 'month', organizationId }, meta)).rejects.toMatchObject({ code: 'FORBIDDEN' });
     // Another admin reads, without the offers or the forms.
@@ -208,6 +210,7 @@ describe('Federation checkout', () => {
     const { owner, organizationId } = await approvedOrganization('m23-notices');
     const other = await createUser('m23-notices-admin');
     await addOrganizationAdmin(owner.principal, { organizationId, email: other.email }, meta);
+    await settleNaming({ organizationId });
     await federationSubscription(owner.principal, organizationId, 'month');
     for (const id of [owner.account.id, other.id]) {
       const started = (await noticesOf(id)).find((n) => n.template === 'billing.started');
@@ -242,6 +245,7 @@ describe('switching plans and billing periods (DEFAULT M23, question 2)', () => 
     await expect(changeSubscriptionPlan(stranger.principal, { subscriptionId: subscription.id, planCode: 'federation', interval: 'year' }, meta)).rejects.toMatchObject({ code: 'NOT_FOUND' });
     const other = await createUser('m23-switch-admin');
     await addOrganizationAdmin(owner.principal, { organizationId, email: other.email }, meta);
+    await settleNaming({ organizationId });
     await expect(changeSubscriptionPlan(principalOf(other), { subscriptionId: subscription.id, planCode: 'federation', interval: 'year' }, meta)).rejects.toMatchObject({ code: 'FORBIDDEN' });
 
     const changed = await changeSubscriptionPlan(owner.principal, { subscriptionId: subscription.id, planCode: 'federation', interval: 'year' }, meta);
@@ -360,10 +364,12 @@ describe('the federation trial', () => {
     const { owner, organizationId } = await approvedOrganization('m23-trial-run');
     const other = await createUser('m23-trial-run-admin');
     await addOrganizationAdmin(owner.principal, { organizationId, email: other.email }, meta);
+    await settleNaming({ organizationId });
     await startFederationTrial((await anAdmin()).principal, { organizationId, months: 6, reason: 'Demo trial run' }, meta);
     // Member administration is part of Federation: the trial gives it.
     const memberPerson = await member('m23-trial-run-member');
     await addOrganizationMember(owner.principal, { organizationId, personSlug: memberPerson.slug }, meta);
+    await settleNaming({ organizationId });
     const trial = (await trialOf(organizationId))!;
     const at = (daysBefore: number) => new Date(trial.endsAt.getTime() - daysBefore * DAY);
     const reminders = async (userId: string) => (await noticesOf(userId)).filter((n) => n.template === 'federation.trial-ending').map((n) => (n.payload as { daysBefore: number }).daysBefore);
@@ -474,6 +480,7 @@ describe('downstream independence (specification §10.3)', () => {
     const student = await member(`${label}-student`);
     const studentSub = await paidSubscription(student.principal, 'premium_student');
     await addOrganizationMember(owner.principal, { organizationId, personSlug: student.slug }, meta);
+    await settleNaming({ organizationId });
     const [setup] = await getDb().select({ id: entitlementGrant.id }).from(entitlementGrant).where(eq(entitlementGrant.subjectOrganizationId, organizationId));
     await revokeOrganizationPlan(a.principal, { grantId: setup!.id, reason: 'M23 setup over (fictional)' }, meta);
     return { owner, organizationId, sifu, sifuSub: sifuSub.subscription, schoolId: saved.id, student, studentSub: studentSub.subscription };

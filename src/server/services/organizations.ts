@@ -92,6 +92,7 @@ import { idempotencyKey, keyReused } from './relationships';
 import { caseReplayOf, isCaseKeyConflict, lockAccountCases, recordCaseEvent, tellStaff } from './review-core';
 import { notify, notifyEach } from './notify';
 import { accountOfPerson, separateMembership } from './organization-separation-core';
+import { askerOf, inviteAdmin, nameMember, pendingAdminInvites, pendingMembers, WAITING_LABELS, withdrawAdminInvite, withdrawMemberRequest } from './naming';
 
 // --- Words ---------------------------------------------------------------------------------------
 
@@ -662,6 +663,10 @@ export interface ManagedOrganization {
   admins: { id: string; userId: string; label: string; role: OrganizationAdminRole; roleLabel: string; you: boolean }[];
   /** M24: `recordOnly` is a private record without an account (an import): it has no public page to link. */
   members: { id: string; person: PersonRef; role: OrganizationMemberRole; roleLabel: string; startsOn: string | null; endsOn: string | null; current: boolean; recordOnly: boolean }[];
+  /** Review 2026-11-13 (ADR 0088): members asked who have not answered yet, and people without an account the archive team checks. */
+  pendingMembers: { requestId: string; slug: string; name: string; roleLabel: string; waiting: string }[];
+  /** Administrator invitations by e-mail address that wait for an answer (the same whether or not an account uses the address). */
+  pendingAdmins: { requestId: string; email: string; expiresAt: string }[];
   schools: { id: string; schoolId: string; slug: string; name: string; city: string; countryCode: string; status: SchoolLinkStatus; statusLabel: string }[];
   countries: readonly { code: string; name: string }[];
   kinds: { value: OrganizationKind; label: string }[];
@@ -758,6 +763,14 @@ export async function manageOrganization(principal: Principal | null, raw: z.inp
       const current = membershipIsCurrent(m, today);
       return [{ id: m.id, person, role: m.role, roleLabel: MEMBER_ROLE_LABELS[m.role], startsOn: m.startsOn, endsOn: m.endsOn, current, recordOnly: !shown.has(m.personId) }];
     }),
+    pendingMembers: (await pendingMembers(db, org.id)).map((r) => ({
+      requestId: r.requestId,
+      slug: r.slug,
+      name: r.name,
+      roleLabel: MEMBER_ROLE_LABELS[r.role as OrganizationMemberRole] ?? r.role,
+      waiting: WAITING_LABELS[r.status],
+    })),
+    pendingAdmins: role === 'owner' ? await pendingAdminInvites(db, org.id) : [],
     schools: links.rows.map((l) => ({ id: l.id, schoolId: l.school_id, slug: l.slug, name: l.name, city: l.city, countryCode: l.country_code, status: l.status, statusLabel: LINK_STATUS_LABELS[l.status] })),
     countries: COUNTRIES,
     kinds: ORGANIZATION_KINDS.map((k) => ({ value: k, label: ORGANIZATION_KIND_LABELS[k] })),
@@ -916,31 +929,66 @@ export interface AdminChanged {
   adminId: string;
 }
 
-/** organizations.addAdmin: an owner adds an existing account as an admin of an approved organization. */
-export async function addOrganizationAdmin(principal: Principal | null, raw: z.input<typeof addAdminInput>, meta: RequestMeta): Promise<AdminChanged> {
+/** Review 2026-11-13: at most this many administrator invitations per organization and day. */
+export const ADMIN_INVITES_PER_DAY = 10;
+
+export interface AdminInvited {
+  /** Always true: the answer is the same whether or not an account uses the address (no account oracle). */
+  invited: true;
+}
+
+/**
+ * organizations.addAdmin: an owner invites an e-mail address to administer an approved organization
+ * (review 2026-11-13, ADR 0088). The account that uses the address becomes an admin only when it
+ * accepts, within 14 days; the owner's answer never says whether such an account exists.
+ */
+export async function addOrganizationAdmin(principal: Principal | null, raw: z.input<typeof addAdminInput>, meta: RequestMeta): Promise<AdminInvited> {
   const p = requireUser(principal);
   const input = parseId(addAdminInput, raw);
   return getDb().transaction(async (tx) => {
     const { org, role } = await managed(tx, p, input.organizationId);
     if (org.status !== 'active') throw new ServiceError('CONFLICT', 'Admins are added once the organization is approved.');
     if (role !== 'owner') throw new ServiceError('FORBIDDEN', 'Only an owner of the organization adds admins.');
-    const [account] = await tx.select({ id: authUser.id, banned: authUser.banned }).from(authUser).where(eq(authUser.email, input.email));
-    if (!account || account.banned) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { email: 'No account has this e-mail address. The person signs up first.' });
-    if (await adminRoleOf(tx, org.id, account.id)) throw new ServiceError('CONFLICT', 'This account is an admin of the organization already.');
-    const adminId = uuidv7();
-    await tx.insert(organizationAdmin).values({ id: adminId, organizationId: org.id, userId: account.id, role: 'admin', grantedByUserId: p.user.id });
+    const { rows } = await tx.execute<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM audit_log
+       WHERE action = 'organization.admin_add' AND subject_type = 'organization' AND subject_id = ${org.id} AND created_at > now() - interval '1 day'`);
+    if ((rows[0]?.n ?? 0) >= ADMIN_INVITES_PER_DAY) throw new ServiceError('TOO_MANY_REQUESTS', `You can send at most ${ADMIN_INVITES_PER_DAY} invitations a day. Try again tomorrow.`);
+    await inviteAdmin(tx, { userId: p.user.id, role: p.user.role, ownPersonId: null }, org.id, input.email, 'admin', meta);
     await writeAudit(tx, {
       action: 'organization.admin_add',
       actorUserId: p.user.id,
       actorRole: p.user.role,
       subjectType: 'organization',
       subjectId: org.id,
-      after: { adminId, userId: account.id, role: 'admin' },
+      after: { invited: true, role: 'admin' },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
-    await notify(tx, account.id, 'organization.admin_added', { organizationId: org.id });
-    return { adminId };
+    return { invited: true as const };
+  });
+}
+
+export const withdrawNamingInput = z.object({ organizationId: z.uuid({ error: 'No such organization.' }), requestId: z.uuid({ error: 'No such request.' }) });
+
+/** organizations.withdrawRequest: an admin takes back a member request; an owner, an administrator invitation. */
+export async function withdrawOrganizationRequest(principal: Principal | null, raw: z.input<typeof withdrawNamingInput>, meta: RequestMeta): Promise<{ withdrawn: boolean }> {
+  const p = requireUser(principal);
+  const input = parseId(withdrawNamingInput, raw);
+  return getDb().transaction(async (tx) => {
+    const { org, role } = await managed(tx, p, input.organizationId);
+    const withdrawn = (await withdrawMemberRequest(tx, org.id, input.requestId)) || (role === 'owner' && (await withdrawAdminInvite(tx, org.id, input.requestId)));
+    if (!withdrawn) throw new ServiceError('NOT_FOUND', 'This request is not there any more.');
+    await writeAudit(tx, {
+      action: 'naming.withdraw',
+      actorUserId: p.user.id,
+      actorRole: p.user.role,
+      subjectType: 'naming_request',
+      subjectId: input.requestId,
+      after: { organizationId: org.id },
+      requestId: meta.requestId,
+      ipHmac: meta.ipHmac,
+    });
+    return { withdrawn };
   });
 }
 
@@ -978,7 +1026,10 @@ export async function removeOrganizationAdmin(principal: Principal | null, raw: 
 // --- Members -------------------------------------------------------------------------------------
 
 export interface MemberChanged {
-  membershipId: string;
+  /** The membership, or null while the request waits (review 2026-11-13, ADR 0088). */
+  membershipId: string | null;
+  /** added: listed now (your own person); pending: they accept or decline; in_review: no account, the archive team decides. */
+  outcome: 'added' | 'pending' | 'in_review';
 }
 
 /**
@@ -1004,6 +1055,10 @@ export async function addOrganizationMember(principal: Principal | null, raw: z.
       .for('update');
     const today = isoDay(new Date());
     if (existing && !membershipHasEnded(existing, today)) throw new ServiceError('CONFLICT', 'This person is a member of the organization already.');
+    // Review 2026-11-13 (ADR 0088): someone else's person is listed only once they (or, without an
+    // account, the archive team) agree; the request waits in naming_request until then.
+    const outcome = await nameMember(tx, await askerOf(tx, p), { organizationId: org.id, personId, role: input.role, startsOn: input.startsOn }, meta);
+    if (outcome !== 'attached') return { membershipId: null, personId, outcome };
     const now = new Date();
     const membershipId = existing?.id ?? uuidv7();
     if (existing) {
@@ -1023,10 +1078,10 @@ export async function addOrganizationMember(principal: Principal | null, raw: z.
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
-    return { membershipId, personId };
+    return { membershipId, personId, outcome: 'added' as const };
   });
-  invalidatePublic([ORGANIZATIONS_TAG], 'procedure');
-  return { membershipId: out.membershipId };
+  if (out.outcome === 'added') invalidatePublic([ORGANIZATIONS_TAG], 'procedure');
+  return { membershipId: out.membershipId, outcome: out.outcome };
 }
 
 type MembershipDays = { startsOn: string | null; endsOn: string | null };
@@ -1043,7 +1098,7 @@ export function membershipIsCurrent(m: MembershipDays, today: string): boolean {
 }
 
 /** organizations.endMember: ends a current membership today; the row stays as history. */
-export async function endOrganizationMember(principal: Principal | null, raw: z.input<typeof endMemberInput>, meta: RequestMeta): Promise<MemberChanged> {
+export async function endOrganizationMember(principal: Principal | null, raw: z.input<typeof endMemberInput>, meta: RequestMeta): Promise<{ membershipId: string }> {
   const p = requireUser(principal);
   const input = parseId(endMemberInput, raw);
   const out = await getDb().transaction(async (tx) => {

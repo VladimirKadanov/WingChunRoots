@@ -17,6 +17,8 @@ export type AuditAction =
   | 'auth.2fa.reset'
   // Journey review P2-4 (ADR 0081): the account's e-mail address changed (confirmed from the new one).
   | 'account.email_change'
+  // Review 2026-11-13 (ADR 0088): the account downloaded its own data (no content in the row).
+  | 'account.export'
   | 'person.create'
   // Journey review P2-10 (ADR 0086): a duplicate record merged into the kept one (ids and counts only).
   | 'person.merge'
@@ -212,7 +214,14 @@ export type AuditAction =
   | 'place.missing_report'
   // Journey review 2026-11-26, P2-2: "My lineage is not listed". The lineage's name as typed, the
   // reporting account as the actor; at most five a day per account (services/lineage-missing.ts).
-  | 'lineage.missing_report';
+  | 'lineage.missing_report'
+  // Review 2026-11-13 (ADR 0088): a naming request (a member, instructor, examiner, issuer or
+  // administrator named by someone else), its answer by the named account, and the archive team's
+  // decision for a person without an account. Kinds and outcomes only; the reason is staff's own.
+  | 'naming.request'
+  | 'naming.answer'
+  | 'naming.withdraw'
+  | 'naming.review';
 
 export interface AuditEntry {
   action: AuditAction;

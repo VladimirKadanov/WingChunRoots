@@ -130,7 +130,7 @@ function Section({ id, title, verdict, children }: { id: string; title: string; 
   );
 }
 
-const queueAttention = (status: SystemStatus) => status.queue.queues.some((q) => q.failed > 0 || (q.oldestReadySeconds ?? 0) > STALE_SECONDS);
+const queueAttention = (status: SystemStatus) => !status.worker.alive || status.queue.queues.some((q) => q.failed > 0 || (q.oldestReadySeconds ?? 0) > STALE_SECONDS);
 const queueRank = (q: SystemStatus['queue']['queues'][number]) => (q.failed > 0 ? 0 : (q.oldestReadySeconds ?? 0) > STALE_SECONDS ? 1 : 2);
 
 function QueueSection({ status, t }: { status: SystemStatus; t: AdminT }) {
@@ -139,6 +139,16 @@ function QueueSection({ status, t }: { status: SystemStatus; t: AdminT }) {
     <Section id="queues" title={t('Job queue')} verdict={<Verdict attention={attention} testId="queue-verdict" t={t} />}>
       <p className="max-w-[60ch] text-ui text-fg-muted">
         {t('The worker takes jobs as they become ready: e-mail, the daily erasure of old addresses, search keys and lineage counters. A job that waits long means the worker is stopped or cannot keep up.')}
+      </p>
+      <p className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-ui" data-testid="worker-heartbeat" data-state={status.worker.alive ? 'ok' : 'attention'}>
+        {status.worker.alive ? <CheckIcon size={16} className="shrink-0" /> : <AlertIcon size={16} className="shrink-0 text-danger" />}
+        <span data-volatile>
+          {status.worker.lastBeat === null
+            ? t('The worker has not reported yet: it is not running.')
+            : status.worker.alive
+              ? t('The worker is running: last seen {time}.', { time: formatTime(t, status.worker.lastBeat) })
+              : t('The worker has stopped: last seen {time}.', { time: formatTime(t, status.worker.lastBeat) })}
+        </span>
       </p>
       <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="queue-list">
         {[...status.queue.queues].sort((a, b) => queueRank(a) - queueRank(b)).map((q) => {
@@ -232,6 +242,7 @@ const backupStale = (status: SystemStatus) => status.backup.latest !== null && D
 /** What needs a look, in words, each with the section it is in; empty when all is well. */
 function problemsOf(t: AdminT, status: SystemStatus): { section: 'queues' | 'email' | 'backup'; text: string }[] {
   const problems: { section: 'queues' | 'email' | 'backup'; text: string }[] = [];
+  if (!status.worker.alive) problems.push({ section: 'queues', text: t('The worker is not running: no e-mail is sent and the queue does not move.') });
   const failedQueues = status.queue.queues.filter((q) => q.failed > 0);
   if (failedQueues.length > 0) {
     const queues = t.n(failedQueues.length, '{n} queue', '{n} queues');
@@ -269,7 +280,7 @@ function Problems({ status, t }: { status: SystemStatus; t: AdminT }) {
   ) : (
     <p className="mt-6 inline-flex items-center gap-2 rounded-md border border-border-subtle bg-surface-1 px-4 py-3 text-ui" data-testid="system-problems" data-state="ok">
       <CheckIcon size={18} className="shrink-0" />
-      {t('Nothing needs attention: the queue, e-mail and the backup are fine.')}
+      {t('Nothing needs attention: the worker, the queue, e-mail and the backup are fine.')}
     </p>
   );
 }

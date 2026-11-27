@@ -112,6 +112,10 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/organization/actions.ts#removeOrganizationAdminAction': { rpc: ['organizations.removeAdmin'] },
   'src/app/dashboard/organization/actions.ts#addOrganizationMemberAction': { rpc: ['organizations.addMember'] },
   'src/app/dashboard/organization/actions.ts#endOrganizationMemberAction': { rpc: ['organizations.endMember'] },
+  'src/app/dashboard/organization/actions.ts#withdrawOrganizationRequestAction': { rpc: ['organizations.withdrawRequest'] },
+  // Review 2026-11-13 (ADR 0088): the answers to naming requests.
+  'src/app/dashboard/naming/actions.ts#answerNamingAction': { rpc: ['naming.answer'] },
+  'src/app/admin/archive/naming/actions.ts#reviewNamingAction': { rpc: ['naming.review'] },
   'src/app/dashboard/organization/actions.ts#requestOrganizationSchoolAction': { rpc: ['organizations.requestSchool'] },
   'src/app/dashboard/organization/actions.ts#endOrganizationSchoolAction': { rpc: ['organizations.endSchoolLink'] },
   'src/app/dashboard/schools/actions.ts#answerOrganizationLinkAction': { rpc: ['organizations.answerSchoolLink'] },

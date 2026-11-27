@@ -242,6 +242,11 @@ export default async function PassportPage({ searchParams }: { searchParams: Sea
                             Your correction waits for whoever recorded it: “{entry.correction.note}”
                           </p>
                         ) : null}
+                        {entry.waitingForNaming ? (
+                          <p className="text-sm text-fg-muted" data-testid="passport-entry-naming-waiting">
+                            The organization or examiner it names is shown once they agree.
+                          </p>
+                        ) : null}
                       </EntryLine>
                       <div className="flex flex-wrap items-start gap-2">
                         {entry.waitingForOrganizer ? (
