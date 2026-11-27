@@ -28,6 +28,8 @@ services:
       TRUSTED_PROXIES: 172.31.240.10
       ERASURE_LEDGER_DIR: /erasures
       WCR_DEMO_SIGN_IN: ${WCR_DEMO_SIGN_IN:-}
+      # Review 2026-11-13: the nightly archive (02:30) must be at most 36 hours old for /healthz/deep.
+      BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-36}
     volumes:
       - type: bind
         source: ${BACKUP_DIR:-./backups}/erasures

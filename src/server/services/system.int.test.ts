@@ -15,9 +15,10 @@ import { databaseName } from '../db/env';
 import { emailDelivery } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { startProducer } from '../jobs/boss';
+import { beat, WORKER_STALE_SECONDS } from '../jobs/heartbeat';
 import { QUEUE } from '../jobs/queues';
 import { createUser, principalOf } from './relationships.test-support';
-import { healthAnswer, systemStatus } from './system';
+import { backupMaxAgeHours, healthAnswer, systemStatus, workerAlive } from './system';
 
 let testDb: TestDatabase | undefined;
 let backups: string;
@@ -93,5 +94,18 @@ describe('systemStatus', () => {
 describe('healthAnswer', () => {
   it('answers only {"ok":true} with 200 when the database and the queue schema answer', async () => {
     expect(await healthAnswer(new Headers())).toEqual({ status: 200, body: '{"ok":true}' });
+  });
+
+  it('deep: 503 without a recent worker beat, 200 with one; the shallow check ignores the worker (review 2026-11-13)', async () => {
+    const old = new Date(Date.now() - (WORKER_STALE_SECONDS + 60) * 1000);
+    await beat(getDb(), old, old);
+    expect(await healthAnswer(new Headers(), true)).toEqual({ status: 503, body: '{"ok":false}' });
+    expect(await healthAnswer(new Headers())).toEqual({ status: 200, body: '{"ok":true}' });
+    await beat(getDb(), old);
+    expect(await healthAnswer(new Headers(), true)).toEqual({ status: 200, body: '{"ok":true}' });
+    expect(workerAlive(null)).toBe(false);
+    expect(backupMaxAgeHours({ BACKUP_MAX_AGE_HOURS: '36' })).toBe(36);
+    expect(backupMaxAgeHours({ BACKUP_MAX_AGE_HOURS: 'soon' })).toBeNull();
+    expect(backupMaxAgeHours({})).toBeNull();
   });
 });

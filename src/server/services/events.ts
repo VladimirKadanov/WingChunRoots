@@ -537,7 +537,7 @@ const ownerColumns = {
   organizerUserId: event.organizerUserId,
   organizationId: event.organizationId,
   startsAt: event.startsAt,
-  timezone: canonicalTimeZone(event.timezone),
+  timezone: event.timezone,
   posterStorageKey: event.posterStorageKey,
 };
 
@@ -1472,6 +1472,7 @@ export async function eventEditor(principal: Principal | null, raw: z.input<type
     const instructors = await db.select({ id: eventInstructor.personId }).from(eventInstructor).where(eq(eventInstructor.eventId, seen.id)).orderBy(asc(eventInstructor.position));
     current = {
       ...r!,
+      timezone: canonicalTimeZone(r!.timezone),
       status: r!.status as 'published' | 'cancelled',
       startsAt: toWallTime(r!.startsAt, r!.timezone),
       endsAt: toWallTime(r!.endsAt, r!.timezone),

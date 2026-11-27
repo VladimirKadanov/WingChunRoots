@@ -16,5 +16,6 @@ export * from './passport';
 export * from './persons';
 export * from './records';
 export * from './schools';
+export * from './system';
 export * from './trial-lessons';
 export * from './views';

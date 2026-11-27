@@ -19,6 +19,7 @@ import { logger } from '../log';
 import { TemplateDataError } from '../templates/email';
 import { eventsNotifyHandler } from './event-notify';
 import { lineageRecomputeHandler } from './lineage-recompute';
+import { startHeartbeat } from './heartbeat';
 import { billingEventHandler, billingGraceHandler } from './billing';
 import { planExpiryHandler } from './plan-expiry';
 import { schoolActivityHandler } from './school-activity';
@@ -38,6 +39,8 @@ export interface WorkerOptions {
   pollingIntervalSeconds?: number;
   /** Register the recurring jobs (default true). */
   schedules?: boolean;
+  /** Write the worker's heartbeat (system_heartbeat; review 2026-11-13). Default true. */
+  heartbeat?: boolean;
   log?: (line: string) => void;
 }
 
@@ -223,7 +226,7 @@ export function searchKeysRebuildHandler(db: Database, log: (line: string) => vo
 
 /** Starts pg-boss, the queues, the handlers and the schedules. */
 export async function startWorker(options: WorkerOptions): Promise<RunningWorker> {
-  const { boss, db, mailer, queueOptions, pollingIntervalSeconds = 2, schedules = true } = options;
+  const { boss, db, mailer, queueOptions, pollingIntervalSeconds = 2, schedules = true, heartbeat = true } = options;
   const log = options.log ?? ((line: string) => logger().info(line));
 
   await boss.start();
@@ -252,9 +255,13 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
     for (const { queue, cron } of SCHEDULES) await boss.schedule(queue, cron, null, { tz: 'UTC', missed: 'once' });
   }
 
+  // Review 2026-11-13 (ops M3): /healthz/deep and /admin/system notice a stopped worker by its beat.
+  const stopBeat = heartbeat ? startHeartbeat(db) : () => undefined;
+
   return {
     boss,
     async stop() {
+      stopBeat();
       await boss.stop({ graceful: true, timeout: 30_000 });
     },
   };
