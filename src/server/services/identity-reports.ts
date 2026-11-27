@@ -79,7 +79,7 @@ import { notify, notifyEach } from './notify';
 import { sifuOnClaim } from './plans';
 import { neighbourTags } from './profile';
 export { HELD_MESSAGE, refuseWhileHeld } from './identity-hold';
-import { fieldErrors, idempotencyKey, keyReused, viewerOf } from './relationships';
+import { fieldErrors, idempotencyKey, keyReused, namesFor, viewerOf } from './relationships';
 import { askParties, type KindDecisionInput, type KindDecisionOutcome, resolveCase } from './review-kinds';
 import { type CaseRow, caseById, caseNotFound, caseReplayOf, isCaseKeyConflict, isOpenCase, lockAccountCases, ownSide, recordCaseEvent } from './review-core';
 import { applySuspension, SUSPENSION_REASON_MAX } from './suspension';
@@ -887,7 +887,7 @@ export async function addIdentityCode(principal: Principal | null, raw: z.input<
     if (target.length > IDENTITY_TARGET_MAX) throw field(`Use at most ${IDENTITY_TARGET_MAX} characters.`);
   }
   return getDb().transaction(async (tx) => {
-    const { c, side } = await provingSide(tx, p, input.caseId);
+    const { c, report, side } = await provingSide(tx, p, input.caseId);
     const [made] = await tx.select({ n: count() }).from(identityCode).where(and(eq(identityCode.reviewCaseId, c.id), eq(identityCode.side, side)));
     if ((made?.n ?? 0) >= IDENTITY_CODES_PER_SIDE) throw new ServiceError('CONFLICT', `You have asked for ${IDENTITY_CODES_PER_SIDE} codes already, the most for one report.`);
     const id = uuidv7();
@@ -910,7 +910,7 @@ export async function addIdentityCode(principal: Principal | null, raw: z.input<
       .returning();
     if (code && address) {
       // Ids only in the key (mailer.ts checkIdempotencyKey); the code travels sealed.
-      await queueEmail(tx, { template: 'identity-code', to: address, userId: null, idempotencyKey: `identity-code:${id}`, data: { code, domain: target, days: IDENTITY_CODE_DAYS } });
+      await queueEmail(tx, { template: 'identity-code', to: address, userId: null, idempotencyKey: `identity-code:${id}`, data: { code, domain: target, days: IDENTITY_CODE_DAYS, profileNames: await namesFor(tx, report.subjectPersonId) } });
     }
     await writeAudit(tx, {
       action: 'identity.code_create',
@@ -1316,11 +1316,13 @@ export async function sweepIdentityReports(db: ReturnType<typeof getDb>, now: Da
   const tags: string[] = [];
   let closed = 0;
   let lifted = 0;
-  const overdue = await db
-    .select({ caseId: identityReport.reviewCaseId })
-    .from(identityReport)
-    .where(and(eq(identityReport.status, 'held'), eq(identityReport.type, 'impostor'), sql`${identityReport.proofDueAt} < ${now}`))
-    .limit(200);
+  // Plain SQL for the two lookups, so that a night without work reads two statements and no more.
+  const overdue = (
+    await db.execute<{ case_id: string }>(sql`
+SELECT review_case_id AS case_id FROM identity_report
+ WHERE status = 'held' AND type = 'impostor' AND proof_due_at < ${now.toISOString()}::timestamptz
+ LIMIT 200`)
+  ).rows.map((r) => ({ caseId: r.case_id }));
   for (const { caseId } of overdue) {
     await db.transaction(async (tx) => {
       const c = await caseById(tx, caseId, true);
@@ -1354,12 +1356,12 @@ export async function sweepIdentityReports(db: ReturnType<typeof getDb>, now: Da
       closed++;
     });
   }
-  const expired = await db
-    .select({ caseId: identityReport.reviewCaseId })
-    .from(identityReport)
-    .innerJoin(person, and(eq(person.id, identityReport.subjectPersonId), isNotNull(person.identityHoldAt)))
-    .where(and(eq(identityReport.status, 'held'), sql`${identityReport.holdUntil} < ${now}`))
-    .limit(200);
+  const expired = (
+    await db.execute<{ case_id: string }>(sql`
+SELECT r.review_case_id AS case_id FROM identity_report r JOIN person p ON p.id = r.subject_person_id AND p.identity_hold_at IS NOT NULL
+ WHERE r.status = 'held' AND r.hold_until < ${now.toISOString()}::timestamptz
+ LIMIT 200`)
+  ).rows.map((r) => ({ caseId: r.case_id }));
   for (const { caseId } of expired) {
     await db.transaction(async (tx) => {
       const report = await reportOfCase(tx, caseId, true);
@@ -1390,7 +1392,11 @@ export async function sweepIdentityReports(db: ReturnType<typeof getDb>, now: Da
  * the object from the private store, then the row marked deleted, audited as evidence.purge. An
  * object the store would not delete stays for the next run.
  */
-export async function purgeIdentityVideos(db: ReturnType<typeof getDb>, store: ObjectStore = getEvidenceStore(), now: Date = new Date()): Promise<{ files: number; failed: number }> {
+export async function purgeIdentityVideos(db: ReturnType<typeof getDb>, given?: ObjectStore, now: Date = new Date()): Promise<{ files: number; failed: number }> {
+  const waiting = await db.execute<{ n: number }>(sql`
+SELECT count(*)::int AS n FROM evidence_file WHERE deleted_at IS NULL AND purge_after IS NOT NULL AND purge_after <= ${now.toISOString()}::timestamptz`);
+  if (!(Number(waiting.rows[0]?.n ?? 0) > 0)) return { files: 0, failed: 0 };
+  const store = given ?? getEvidenceStore();
   return db.transaction(async (tx) => {
     const due = await tx
       .select({ id: evidenceFile.id, storageKey: evidenceFile.storageKey })

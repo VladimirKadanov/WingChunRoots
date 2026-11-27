@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
-import { auditLog, authUser, emailDelivery, identityCode, identityReport, notification, person, personPhoto, teachingRelationship } from '../db/schema';
+import { auditLog, authUser, emailDelivery, evidenceFile, identityCode, identityReport, notification, person, personPhoto, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { getPartyCase, myCases } from './cases';
 import { grantConsents, REQUIRED_SIGN_UP_CONSENTS } from './consent';
@@ -30,6 +30,7 @@ import {
   getIdentityReportOption,
   getIdentityVouch,
   HELD_MESSAGE,
+  purgeIdentityVideos,
   sweepIdentityReports,
   triageIdentityReport,
 } from './identity-reports';
@@ -299,5 +300,38 @@ describe('the daily sweep', () => {
     expect(record?.held).toBeNull();
     const [still] = await getDb().select({ status: identityReport.status }).from(identityReport).where(eq(identityReport.reviewCaseId, withProof));
     expect(still?.status).toBe('held');
+  });
+});
+
+describe('the videos of a decided report', () => {
+  it('are deleted from the store once their 30 days are past, and kept when the store refuses', async () => {
+    const db = getDb();
+    const uploader = await member(`id-video-${suffix()}`);
+    const file = (purgeAfter: Date) => ({ storageKey: `evidence/${randomBytes(24).toString('hex')}`, sha256: 'b'.repeat(64), mime: 'video/mp4' as const, sizeBytes: 1000, uploadedByUserId: uploader.account.id, purgeAfter });
+    const [due, refused, later] = await db
+      .insert(evidenceFile)
+      .values([file(new Date(Date.now() - DAY)), file(new Date(Date.now() - DAY)), file(new Date(Date.now() + 10 * DAY))])
+      .returning({ id: evidenceFile.id, storageKey: evidenceFile.storageKey });
+    const deleted: string[] = [];
+    const store = {
+      driver: 'filesystem' as const,
+      put: async () => undefined,
+      get: async () => null,
+      delete: async (key: string) => {
+        if (key === refused!.storageKey) throw new Error('store refused');
+        deleted.push(key);
+      },
+    };
+    const result = await purgeIdentityVideos(db, store);
+    expect(deleted).toContain(due!.storageKey);
+    expect(deleted).not.toContain(later!.storageKey);
+    expect(result.failed).toBeGreaterThanOrEqual(1);
+    const rows = await db.select({ id: evidenceFile.id, deletedAt: evidenceFile.deletedAt }).from(evidenceFile).where(eq(evidenceFile.uploadedByUserId, uploader.account.id));
+    const byId = new Map(rows.map((r) => [r.id, r.deletedAt]));
+    expect(byId.get(due!.id)).not.toBeNull();
+    expect(byId.get(refused!.id)).toBeNull();
+    expect(byId.get(later!.id)).toBeNull();
+    const [audit] = await db.select({ action: auditLog.action }).from(auditLog).where(and(eq(auditLog.subjectId, due!.id), eq(auditLog.action, 'evidence.purge')));
+    expect(audit).toBeTruthy();
   });
 });
