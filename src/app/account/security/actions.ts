@@ -210,7 +210,7 @@ async function changeEmail(form: FormData): Promise<FormState> {
   return { status: 'done', values: { email: newEmail } };
 }
 
-export async function signOutOtherDevicesAction(_previous: FormState, _form: FormData): Promise<FormState> {
+export async function signOutOtherDevicesAction(): Promise<FormState> {
   return formResult({ form: 'sign-out-others', page: PAGE }, await signOutOtherDevices());
 }
 
