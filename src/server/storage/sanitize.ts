@@ -36,7 +36,7 @@ export type EvidenceVideoMime = 'video/mp4' | 'video/webm';
 export type EvidenceDocumentMime = Exclude<EvidenceMime, EvidenceVideoMime>;
 
 /** The evidence type of a file by its first bytes, or null when it is not one of the four. */
-export function sniffMime(head: Uint8Array): EvidenceDocumentMime | null {
+export function sniffMime(head: Uint8Array): EvidenceMime | null {
   if (startsWith(head, JPEG)) return 'image/jpeg';
   if (startsWith(head, PNG)) return 'image/png';
   if (startsWith(head, RIFF) && startsWith(head, WEBP, 8)) return 'image/webp';
