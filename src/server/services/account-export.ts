@@ -64,6 +64,8 @@ export interface AccountExport {
   trialLessonRequests: Row[];
   requestsToTheTeam: Row[];
   invitationsSent: Row[];
+  /** Review 2026-11-13 (ADR 0088): requests the account made to name someone, and requests naming its person. */
+  namingRequests: Row[];
   following: Row[];
   plans: Row[];
   subscriptions: Row[];
@@ -174,6 +176,12 @@ export async function exportAccountData(principal: Principal | null, meta: Reque
         SELECT (SELECT n.value FROM person_name n WHERE n.person_id = i.person_id AND n.is_primary LIMIT 1) AS invited_person,
                i.status, i.created_at, i.expires_at, i.accepted_at
           FROM invitation i WHERE i.invited_by_user_id = ${uid}::uuid ORDER BY i.created_at`);
+      const namingRequests = await q(sql`
+        SELECT r.kind, r.status, r.created_at, r.expires_at, (r.asked_by_user_id = ${uid}::uuid) AS asked_by_you
+          FROM naming_request r
+         WHERE r.asked_by_user_id = ${uid}::uuid
+            OR r.person_id IN (SELECT pe.id FROM person pe WHERE pe.claimed_by_user_id = ${uid}::uuid)
+         ORDER BY r.created_at`);
       const following = await q(sql`
         SELECT pe.slug, (SELECT n.value FROM person_name n WHERE n.person_id = f.person_id AND n.is_primary LIMIT 1) AS name, f.created_at
           FROM person_follow f JOIN person pe ON pe.id = f.person_id WHERE f.follower_user_id = ${uid}::uuid ORDER BY f.created_at`);
@@ -216,6 +224,7 @@ export async function exportAccountData(principal: Principal | null, meta: Reque
         trialLessonRequests,
         requestsToTheTeam,
         invitationsSent,
+        namingRequests,
         following,
         plans,
         subscriptions,
