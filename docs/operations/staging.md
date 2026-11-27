@@ -141,7 +141,7 @@ BACKUP_AGE_IDENTITY=~/wcr-age-key.txt scripts/restore-drill.sh backups/<име>.
    - `BILLING_PROVIDER=stripe`;
    - `STRIPE_SECRET_KEY=sk_test_…` (**Developers → API keys → Secret key**);
    - `STRIPE_WEBHOOK_SECRET=whsec_…` (**Signing secret** на създадения endpoint);
-   - по желание `STRIPE_TEST_CLOCKS=true`: всеки нов клиент получава свой тестов часовник на Stripe и **Test clock** в `/admin/billing/<id>` работи и за Stripe. Такъв абонамент се подновява само когато часовникът се мести ([ADR 0088](../adr/0088-stripe-schedules-clocks-yearly.md)).
+   - по желание `STRIPE_TEST_CLOCKS=true`: всеки нов клиент получава свой тестов часовник на Stripe и **Test clock** в `/admin/billing/<id>` работи и за Stripe. Такъв абонамент се подновява само когато часовникът се мести ([ADR 0090](../adr/0090-stripe-schedules-clocks-yearly.md)).
 
    Публичният ключ (`pk_test_…`) не трябва: приложението праща купувача към страницата на Stripe, без Stripe.js в браузъра.
 3. `deploy/staging/staging.sh deploy`: Compose пресъздава `web` и `worker` с новите стойности.

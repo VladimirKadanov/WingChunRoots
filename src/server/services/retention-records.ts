@@ -94,8 +94,13 @@ export const PERSON_LIVE_TIES: readonly (readonly [table: string, ...columns: st
 /** The tables whose rows about the person go with it (cascade) or are cleared with it: see purgeOne(). */
 export const PERSON_OWNED_TABLES: readonly string[] = [
   'evidence_link',
+  // ADR 0089: impersonation reports about the profile, and the questions to it as a voucher (cascade).
+  'identity_report',
+  'identity_vouch',
   'invitation',
   'lineage_membership',
+  // ADR 0088: requests naming the record as a member, instructor or examiner (cascade).
+  'naming_request',
   // ADR 0074: an organization's claim link to the record (cascade).
   'organization_claim_link',
   'person_bio',

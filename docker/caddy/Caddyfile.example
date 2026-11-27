@@ -7,7 +7,7 @@
 # This file was written without a Caddy at hand (no check ran here): validate it before you rely on it.
 #
 # What it does, in the order of the rules below:
-#   1. everything except /healthz needs the pilot's user name and password (basic auth);
+#   1. everything except /healthz and /healthz/deep needs the pilot's user name and password (basic auth);
 #   2. /api/internal/* is answered 404: it is the worker's route and the worker does not use the proxy;
 #   3. X-Request-Id and X-Forwarded-For are set by the proxy, never taken from the client;
 #   4. HSTS and X-Robots-Tag: noindex are sent (the image sends no HSTS: next.config.ts adds it only
@@ -44,7 +44,7 @@ pilot.example.org {
 	# 1. Basic auth for everything but the health check. The default is "protected": a path that is
 	# added later is closed until it is named here. A Stripe test webhook cannot send a password: see
 	# docs/operations/reverse-proxy.md before opening /api/billing/webhook (add it after /healthz).
-	@protected not path /healthz
+	@protected not path /healthz /healthz/deep
 	basic_auth @protected {
 		{$PILOT_USER} {$PILOT_PASSWORD_HASH}
 	}

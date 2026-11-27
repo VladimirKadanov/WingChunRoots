@@ -376,4 +376,21 @@ export const BG_ARCHIVE: AdminDict = {
   'This record has a link that is still waiting (a request or a claim). Decide it first, then merge.': 'Този запис има връзка, която още чака (заявка или иск). Първо я решете, после слейте.',
   'Give the address of the record to keep.': 'Посочете адреса на записа, който остава.',
   'This link is kept in the common roots already. Every lineage shares it from there; it is not recorded twice.': 'Тази връзка вече е записана в общите корени. Всяка линия я споделя оттам; не се записва два пъти.',
+  // Review 2026-11-13 (ADR 0088): requests naming a record without an account.
+  'Naming requests · Archive editor': 'Заявки за посочване · Редактор на архива',
+  'Naming requests': 'Заявки за посочване',
+  'Member of an organization': 'Член на организация',
+  'Instructor at an event': 'Инструктор на събитие',
+  'Examiner of an examination': 'Изпитващ на изпит',
+  'Issuer of a passport entry': 'Издател на запис в паспорта',
+  'Administrator of an organization': 'Администратор на организация',
+  'Approved. The record is listed now.': 'Одобрено. Записът вече е посочен.',
+  'Declined. Nothing was listed.': 'Отказано. Нищо не е посочено.',
+  'This request no longer applied (what it named has closed or changed), so nothing was listed.': 'Тази заявка вече не важеше (посоченото е затворено или променено), затова нищо не е посочено.',
+  'Someone asked to list a record without an account as a member, an instructor or an examiner. Nobody can answer for that person, so the archive team decides: approve only what the archive supports.':
+    'Някой поиска запис без профил да бъде посочен като член, инструктор или изпитващ. Никой не може да отговори вместо този човек, затова решава екипът на архива: одобрявайте само това, което архивът потвърждава.',
+  'Waiting for a decision': 'Чака решение',
+  'Nothing waits.': 'Нищо не чака.',
+  'Asked {date} by {who}': 'Поискано на {date} от {who}',
+  'an account': 'профил',
 };

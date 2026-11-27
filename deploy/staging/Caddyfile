@@ -7,6 +7,9 @@
 (staging_headers) {
 	header {
 		X-Robots-Tag "noindex, nofollow"
+		# Review 2026-11-13 (ops M5): the image is built without an https APP_URL, so the app's own
+		# HSTS header is not in it; Caddy sends it for every answer.
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
 		-Server
 	}
 }
@@ -16,7 +19,9 @@
 	encode zstd gzip
 
 	# Health checks from outside (uptime monitors) need no password; the answer is only {"ok":…}.
-	handle /healthz {
+	# /healthz/deep also notices a stopped worker and a stale backup (review 2026-11-13).
+	@health path /healthz /healthz/deep
+	handle @health {
 		reverse_proxy web:3000
 	}
 

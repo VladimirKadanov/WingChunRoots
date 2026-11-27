@@ -43,6 +43,10 @@ const DONE: Record<string, string> = {
   applied: 'Your application was sent. The reviewers check it; you get a notification when they decide or ask you something.',
   saved: 'Saved.',
   'admin-added': 'The admin was added and told.',
+  'admin-invited': 'The invitation was sent. The account at that address becomes an admin once it accepts, within 14 days.',
+  'member-asked': 'They were asked. The person is listed once they accept.',
+  'member-review': 'This record has no account, so the archive team decides. The person is listed once they agree.',
+  'request-withdrawn': 'The request was withdrawn.',
   'admin-removed': 'The admin was removed.',
   'member-added': 'The member is listed. Nothing changed in anyone’s teachers or students.',
   'member-ended': 'The membership ended today. It stays in the organization’s history; your organization’s rank, city and claims for the person were removed.',
@@ -101,7 +105,9 @@ export default async function ManageOrganizationPage({ params, searchParams }: P
     readFormResult(ADD_MEMBER_FORM, query.outcome),
     readFormResult(REQUEST_SCHOOL_FORM, query.outcome),
   ]);
-  const rowResult = async (kind: 'admin' | 'member' | 'school', rowId: string) => readFormResult(rowForm(kind, rowId), query.outcome);
+  const rowResult = async (kind: 'admin' | 'member' | 'school' | 'request', rowId: string) => readFormResult(rowForm(kind, rowId), query.outcome);
+  const pendingMemberRows = await Promise.all(org.pendingMembers.map(async (r) => ({ ...r, initial: await rowResult('request', r.requestId) })));
+  const pendingAdminRows = await Promise.all(org.pendingAdmins.map(async (r) => ({ ...r, initial: await rowResult('request', r.requestId) })));
   const adminRows = await Promise.all(org.admins.map(async (a) => ({ ...a, initial: await rowResult('admin', a.id) })));
   const memberRows = await Promise.all(org.members.map(async (m) => ({ ...m, initial: await rowResult('member', m.id) })));
   const schoolRows = await Promise.all(org.schools.map(async (s) => ({ ...s, initial: await rowResult('school', s.id) })));
@@ -260,6 +266,33 @@ export default async function ManageOrganizationPage({ params, searchParams }: P
                     </li>
                   ))}
                 </ul>
+                {pendingAdminRows.length > 0 ? (
+                  <>
+                    <h3 className="text-base font-semibold">Invitations that wait</h3>
+                    <ul className="grid gap-3" data-testid="organization-admin-invitations">
+                      {pendingAdminRows.map((r) => (
+                        <li key={r.requestId} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border-subtle pb-3" data-testid="organization-admin-invitation">
+                          <span className="grid gap-0.5">
+                            <span className="[overflow-wrap:anywhere]" translate="no">
+                              {r.email}
+                            </span>
+                            <span className="text-sm text-fg-muted">Invited · open until {formatDay(r.expiresAt)}</span>
+                          </span>
+                          <RowAction
+                            kind="request"
+                            formId={rowForm('request', r.requestId)}
+                            hidden={{ organizationId: org.id, requestId: r.requestId }}
+                            label="Withdraw"
+                            pendingLabel="Withdrawing…"
+                            initial={r.initial}
+                            testId="organization-request-withdraw"
+                            context={r.email}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
                 {org.can.manageAdmins ? <AddAdminForm organizationId={org.id} initial={adminResult} /> : null}
               </Section>
 
@@ -328,6 +361,33 @@ export default async function ManageOrganizationPage({ params, searchParams }: P
                 ) : (
                   <p className="text-ui text-fg-muted">No members are listed.</p>
                 )}
+                {pendingMemberRows.length > 0 ? (
+                  <>
+                    <h3 className="text-base font-semibold">Asked, not listed yet</h3>
+                    <ul className="grid gap-3" data-testid="organization-member-requests">
+                      {pendingMemberRows.map((r) => (
+                        <li key={r.requestId} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border-subtle pb-3" data-testid="organization-member-request">
+                          <span className="grid gap-0.5">
+                            <span translate="no">{r.name}</span>
+                            <span className="text-sm text-fg-muted">
+                              {r.roleLabel} · {r.waiting}
+                            </span>
+                          </span>
+                          <RowAction
+                            kind="request"
+                            formId={rowForm('request', r.requestId)}
+                            hidden={{ organizationId: org.id, requestId: r.requestId }}
+                            label="Withdraw"
+                            pendingLabel="Withdrawing…"
+                            initial={r.initial}
+                            testId="organization-request-withdraw"
+                            context={r.name}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
                 {org.can.administration ? <AddMemberForm organizationId={org.id} roles={org.memberRoles} initial={memberResult} /> : null}
               </Section>
 

@@ -128,7 +128,8 @@ export async function addOrganizationAdminAction(_previous: FormState, form: For
   } catch (error) {
     return failed(error, ADD_ADMIN_FORM, page, { email }, true);
   }
-  redirect(atOutcome(`${page}?done=admin-added`));
+  // Review 2026-11-13 (ADR 0088): an invitation, the same answer whether or not an account uses the address.
+  redirect(atOutcome(`${page}?done=admin-invited`));
 }
 
 /** "Remove" an admin, or "Leave" (organizations.removeAdmin). */
@@ -151,12 +152,27 @@ export async function addOrganizationMemberAction(_previous: FormState, form: Fo
   const organizationId = textValue(form, 'organizationId', 40);
   const page = pageOf(organizationId);
   const values = { personSlug: textValue(form, 'personSlug', 400), role: textValue(form, 'role', 20), startsOn: textValue(form, 'startsOn', 16) };
+  let outcome: 'added' | 'pending' | 'in_review';
   try {
-    await (await client()).organizations.addMember({ organizationId, personSlug: values.personSlug, role: (values.role || 'member') as 'member', startsOn: values.startsOn || null });
+    ({ outcome } = await (await client()).organizations.addMember({ organizationId, personSlug: values.personSlug, role: (values.role || 'member') as 'member', startsOn: values.startsOn || null }));
   } catch (error) {
     return failed(error, ADD_MEMBER_FORM, page, values);
   }
-  redirect(atOutcome(`${page}?done=member-added`));
+  // Review 2026-11-13 (ADR 0088): listed at once only for the admin's own person.
+  redirect(atOutcome(`${page}?done=${outcome === 'added' ? 'member-added' : outcome === 'pending' ? 'member-asked' : 'member-review'}`));
+}
+
+/** "Withdraw" a member request or an administrator invitation that waits (organizations.withdrawRequest). */
+export async function withdrawOrganizationRequestAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const organizationId = textValue(form, 'organizationId', 40);
+  const requestId = textValue(form, 'requestId', 40);
+  const page = pageOf(organizationId);
+  try {
+    await (await client()).organizations.withdrawRequest({ organizationId, requestId });
+  } catch (error) {
+    return failed(error, rowForm('request', requestId), page, {}, true);
+  }
+  redirect(atOutcome(`${page}?done=request-withdrawn`));
 }
 
 /** "End membership" (organizations.endMember). */

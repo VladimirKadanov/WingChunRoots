@@ -1,19 +1,53 @@
 import type { NextConfig } from 'next';
 
 /**
+ * The script policy of every page (review 2026-11-13, ops M5 and uploads 8; owner decision
+ * 2026-11-27, docs/adr/0088-review-1113-leftovers.md): a baseline now, a nonce policy at go-live.
+ * Scripts, styles, fonts, frames, workers and connections come from this site only, apart from the
+ * map tiles (OpenFreeMap) and the two video players; no plugins, no <base>, forms post here (or to
+ * the payment page). Inline scripts stay allowed: Next.js's own bootstrap and the theme script are
+ * inline, and a per-request nonce would make every cached page dynamic (Cache Components).
+ * DEFAULT review-1113: 'unsafe-inline' for scripts until the go-live nonce policy.
+ */
+function contentSecurityPolicy(dev = process.env.NODE_ENV !== 'production', https = false): string {
+  const map = 'https://tiles.openfreemap.org';
+  const directives = [
+    "default-src 'self'",
+    `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ''}`,
+    "style-src 'self' 'unsafe-inline'",
+    `img-src 'self' data: blob: ${map}`,
+    "font-src 'self' data:",
+    `connect-src 'self' ${map}${dev ? ' ws: wss:' : ''}`,
+    "media-src 'self'",
+    "worker-src 'self' blob:",
+    "manifest-src 'self'",
+    'frame-src https://www.youtube-nocookie.com https://player.vimeo.com',
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+    "frame-ancestors 'none'",
+    ...(https ? ['upgrade-insecure-requests'] : []),
+  ];
+  return directives.join('; ');
+}
+
+/**
  * Response headers of every route (milestone M02 fix round 1): no framing (clickjacking of the
  * sign-in and security forms), no MIME sniffing, no full URL (with a token) in the Referer of a
- * link to another site. HSTS only when the build's APP_URL is https: Phase 1 runs on plain http
- * on loopback, where HSTS would do nothing useful.
+ * link to another site, the script policy above, and no camera, microphone or the like.
+ * HSTS only when the build's APP_URL is https; the Docker image is built without one, so the
+ * proxy in front of it sends HSTS too (deploy/staging/Caddyfile, docker/caddy/Caddyfile.example).
  */
 function securityHeaders(appUrl: string | undefined = process.env.APP_URL): { key: string; value: string }[] {
+  const https = appUrl?.startsWith('https://') === true;
   const headers = [
     { key: 'X-Frame-Options', value: 'DENY' },
-    { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+    { key: 'Content-Security-Policy', value: contentSecurityPolicy(undefined, https) },
     { key: 'X-Content-Type-Options', value: 'nosniff' },
     { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+    { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()' },
   ];
-  if (appUrl?.startsWith('https://')) {
+  if (https) {
     headers.push({ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' });
   }
   return headers;
@@ -43,6 +77,9 @@ const nextConfig: NextConfig = {
   // React Compiler is on from day one: no hand-written useMemo/useCallback (plan §3.1).
   reactCompiler: true,
   poweredByHeader: false,
+  // Review 2026-11-13 (ops M5): no component uses next/image, so /_next/image (an unauthenticated
+  // resize endpoint) is switched off.
+  images: { unoptimized: true },
   turbopack: {
     rules: {
       // M11: `import url from '…/file.mjs?asset'` emits the file as published, under a hashed name

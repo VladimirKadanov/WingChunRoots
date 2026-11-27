@@ -92,6 +92,8 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
   '/admin/archive': { kind: 'staff2fa', roles: ['archivist', 'admin'] },
   // Control panel 2026-11: the people and records grid of the archive editor, the same roles.
   '/admin/archive/people': { kind: 'staff2fa', roles: ['archivist', 'admin'] },
+  // Review 2026-11-13 (ADR 0088): the requests naming a record without an account, the same roles.
+  '/admin/archive/naming': { kind: 'staff2fa', roles: ['archivist', 'admin'] },
   // M15: organizations and their plans, for admins only (as /admin/grants).
   '/admin/organizations': { kind: 'staff2fa', roles: ['admin'] },
   // M20: the activity check of the listed schools, for the roles that moderate listings (M11).

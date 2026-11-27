@@ -75,6 +75,8 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/admin/archive', name: 'archive-editor', status: 200, milestone: 'M26', signInAs: 'admin' },
   { path: '/admin/archive/lineages/demo-lineage-c', name: 'archive-lineage', status: 200, milestone: 'M26', signInAs: 'demo-archivist' },
   { path: '/admin/archive/people', name: 'archive-people', status: 200, milestone: 'M26', signInAs: 'admin' },
+  // Review 2026-11-13 (ADR 0088): the requests naming a record without an account.
+  { path: '/admin/archive/naming', name: 'archive-naming', status: 200, milestone: 'M26', signInAs: 'admin' },
   { path: '/admin/archive/lineages/demo-lineage-c/links', name: 'archive-links', status: 200, milestone: 'M26', signInAs: 'demo-archivist' },
   // The explorer (M05): its starting page. The three graph views and the list view need a demo
   // person's id, so they are screen states (e2e/screenshots.spec.ts, e2e/visual.spec.ts; axe in
@@ -230,6 +232,8 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/schools/demo-school-sofia/trial', name: 'school-trial-open', status: 200, milestone: 'M21', signInAs: 'user' },
   { path: '/dashboard/trial-lessons', name: 'dashboard-trial-lessons', status: 200, milestone: 'M21', key: true, signInAs: 'demo-premium-student' },
   { path: '/dashboard/trial-lessons', name: 'dashboard-trial-lessons-empty', status: 200, milestone: 'M21', signInAs: 'demo-pending' },
+  // Review 2026-11-13 (ADR 0088): the requests to name the account.
+  { path: '/dashboard/naming', name: 'dashboard-naming', status: 200, milestone: 'M15', signInAs: 'user' },
   // Payments in test mode (M22, docs/adr/0025-billing.md): the billing page of demo-premium-student
   // (its active Premium Student subscription and its payment), of demo-free-sifu-5 (its ended
   // Professional Sifu subscription, kept, and the offer of the plan again) and of an account without

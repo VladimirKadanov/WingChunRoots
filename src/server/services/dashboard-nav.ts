@@ -11,6 +11,7 @@ import { isStaffRole, type Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { notification, organization, organizationAdmin, person, school, schoolInstructor, successionNomination } from '../db/schema';
 import { effectivePlan } from '../entitlements/access';
+import { namingWaitingCount } from './naming';
 import { hasPartyCases } from './cases';
 import { waitingRequests } from './dashboard';
 import { familyIncluded } from './family';
@@ -46,6 +47,8 @@ export interface DashboardNav {
   hasCases: boolean;
   /** P2-7: the account has nominated a successor or been nominated as one (a Sifu always sees the page). */
   inSuccession: boolean;
+  /** Review 2026-11-13 (ADR 0088): requests to name this account that wait for its answer. */
+  waitingNaming: number;
 }
 
 export async function dashboardNav(principal: Principal | null): Promise<DashboardNav> {
@@ -81,13 +84,14 @@ export async function dashboardNav(principal: Principal | null): Promise<Dashboa
           .then(([row]) => row?.n ?? 0),
       ])
     : [0, 0];
-  const [hasCases, [nominated]] = await Promise.all([
+  const [hasCases, [nominated], waitingNaming] = await Promise.all([
     hasPartyCases(db, p.user.id, own?.id ?? null),
     db
       .select({ id: successionNomination.id })
       .from(successionNomination)
       .where(or(eq(successionNomination.ownerUserId, p.user.id), eq(successionNomination.successorUserId, p.user.id)))
       .limit(1),
+    namingWaitingCount(db, p.user.id),
   ]);
   return {
     accountType: effective.accountType,
@@ -102,5 +106,6 @@ export async function dashboardNav(principal: Principal | null): Promise<Dashboa
     family: Boolean(own) && familyIncluded(effective.plan),
     hasCases,
     inSuccession: Boolean(nominated),
+    waitingNaming,
   };
 }

@@ -194,6 +194,8 @@ services:
       <<: *app-env
       # The local archives of scripts/backup-local.sh, read-only: /admin/system shows the newest.
       BACKUP_DIR: /backups
+      # /healthz/deep: the newest archive may be this many hours old (unset: not checked).
+      BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-}
       # The erasure ledger (src/server/erasure-ledger.ts), read-write below: web writes a line for every
       # erasure and withdrawal, and refuses them while it cannot.
       ERASURE_LEDGER_DIR: /erasures

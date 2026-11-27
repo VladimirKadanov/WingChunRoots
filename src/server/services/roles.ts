@@ -5,6 +5,11 @@
 //
 // DEFAULT D04: administrative roles are separate from plans and from verification: no plan or
 // entitlement grants a role, and a role verifies no relationship by itself.
+//
+// Review 2026-11-13: the last active administrator keeps the role. A role change takes the same
+// lock as a suspension (suspension.ts), so two administrators who demote each other at the same
+// moment cannot leave the platform with none; and the actor must still be a standing administrator
+// (not demoted or suspended since the request began).
 
 import { eq } from 'drizzle-orm';
 import * as z from 'zod';
@@ -15,6 +20,7 @@ import { isStaffRole, type Principal, type Role, USER_ROLES } from '../auth/prin
 import { getDb } from '../db';
 import { authUser } from '../db/schema';
 import type { RequestMeta } from './context';
+import { lockAdministrators, otherActiveAdmins, requireStandingAdmin } from './suspension';
 import { pgErrorOf, ServiceError } from './errors';
 
 export const setRoleInput = z.object({
@@ -39,6 +45,8 @@ export async function setUserRole(principal: Principal | null, raw: unknown, met
 
   return getDb()
     .transaction(async (tx) => {
+      await lockAdministrators(tx);
+      await requireStandingAdmin(tx, actor);
       const [target] = await tx
         .select({ id: authUser.id, role: authUser.role, twoFactorEnabled: authUser.twoFactorEnabled })
         .from(authUser)
@@ -46,6 +54,9 @@ export async function setUserRole(principal: Principal | null, raw: unknown, met
         .for('update');
       if (!target) throw new ServiceError('NOT_FOUND', 'No such account.');
       if (target.role === role) return { userId, before: target.role, after: role, changed: false };
+      if (target.role === 'admin' && (await otherActiveAdmins(tx, target.id)) === 0) {
+        throw new ServiceError('FORBIDDEN', 'This is the last active administrator: give another account the admin role first.');
+      }
       if (isStaffRole(role) && !target.twoFactorEnabled) {
         throw new ServiceError('TWO_FACTOR_REQUIRED', 'The account must turn on two-factor authentication before it gets a staff role.');
       }

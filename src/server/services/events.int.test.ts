@@ -38,6 +38,7 @@ import {
 import { grantOrganizationPlan } from './organization-grants';
 import { carryOutDeletionFromCommandLine, requestAccountDeletion } from './privacy';
 import { createUser, member, meta, newLineage, principalOf, staff } from './relationships.test-support';
+import { settleNaming } from './naming.test-support';
 
 vi.mock('next/cache', () => ({
   cacheTag: () => undefined,
@@ -287,6 +288,19 @@ function lastSunday(year: number, month: number): string {
   return String(last.getUTCDate() - last.getUTCDay()).padStart(2, '0');
 }
 
+describe('time zones (review 2026-11-13)', () => {
+  it('an old zone name is stored under its current name, the form offers current names only, and the quota still counts', async () => {
+    const sifu = await proSifu('events-zone');
+    const made = await createEvent(sifu.principal, { title: 'Demo online zone evening', kind: 'seminar', startsAt: at('05-04', '18:00'), endsAt: at('05-04', '20:00'), online: true, timezone: 'Asia/Calcutta' }, meta);
+    const [row] = await getDb().select({ timezone: event.timezone }).from(event).where(eq(event.id, made.id));
+    expect(row?.timezone).toBe('Asia/Kolkata');
+    const editor = await eventEditor(sifu.principal, {});
+    expect(editor.timezones).toContain('Asia/Kolkata');
+    expect(editor.timezones).not.toContain('Asia/Calcutta');
+    expect(await codeOf(createEvent(sifu.principal, { ...seminar(at('05-11'), at('05-11', '17:00')), title: 'Demo May seminar' }, meta))).toBe('ok');
+  });
+});
+
 describe('who may publish', () => {
   it('Free Sifu and a Student account are refused with ENTITLEMENT_REQUIRED', async () => {
     const free = await member('events-free', { sifu: true });
@@ -328,6 +342,9 @@ describe('privacy of the public answers', () => {
     const visible = await member('events-visible');
     const hidden = await member('events-hidden');
     const created = await createEvent(sifu.principal, { ...seminar(at('12-01'), at('12-01', '12:00')), instructorIds: [visible.personId, hidden.personId] }, meta);
+    // Listed once they accept (review 2026-11-13, ADR 0088).
+    expect((await eventGet(null, { slug: created.slug })).instructors).toEqual([]);
+    expect(await settleNaming({ kind: 'event_instructor' })).toBe(2);
     expect((await eventGet(null, { slug: created.slug })).instructors.map((i) => i.slug).sort()).toEqual([hidden.slug, visible.slug].sort());
     await getDb().update(person).set({ visibility: 'involved_only' }).where(eq(person.id, hidden.personId));
     const page = await eventGet(null, { slug: created.slug });
@@ -358,6 +375,7 @@ describe('notices (DEFAULT M17, question 3)', () => {
     await relate(sifu.personId, pending.personId, 'pending_teacher');
     await relate(teacher.personId, arbitration.personId, 'in_arbitration');
     const created = await createEvent(sifu.principal, { ...seminar(at('03-12'), at('03-12', '12:00')), instructorIds: [teacher.personId] }, meta);
+    await settleNaming({ kind: 'event_instructor' });
     // The job was queued with the change, ids only.
     const jobs = await getDb().execute<{ data: unknown }>(sql`SELECT data FROM pgboss.job WHERE name = 'events.notify' AND data->>'eventId' = ${created.id}`);
     expect(jobs.rows.map((j) => j.data)).toEqual([{ eventId: created.id, change: 'published' }]);
