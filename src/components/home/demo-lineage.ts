@@ -7,7 +7,7 @@ import type { VerificationState } from '@/design/tokens';
 export interface DemoName {
   text: string;
   /** BCP 47 language tag of the name (plan §5.3). */
-  lang: 'zh-Hant' | 'zh-Hans' | 'bg';
+  lang: string;
 }
 
 export interface DemoPerson {
@@ -58,6 +58,45 @@ export const DEMO_HALL = {
   /** The hall of the cross-lineage teacher in the drawing. */
   otherHall: 'Silver Willow Hall',
 } as const;
+
+/**
+ * A line the home page draws (journey review 2026-11-26, P1-4; ADR 0078): a real public lineage
+ * from lineage.home, or DEMO_HERO when the record has none yet.
+ */
+export interface HeroPerson {
+  key: string;
+  /** The public profile; none for the fictional demo line. */
+  href?: string;
+  name: string;
+  original?: DemoName;
+  /** "Hong Kong · Sifu": the caption under the name. */
+  meta: string;
+  /** The year this person began training, or null when it is not recorded (or for the root). */
+  startYear: number | null;
+  living: boolean;
+}
+
+export interface HeroLine {
+  people: HeroPerson[];
+  /** The state of the link from each person to the next. */
+  states: VerificationState[];
+  /** The words of each link for screen readers ("Verified", "Traditional account"). */
+  words: string[];
+  caption: string;
+  /** The fictional line of this file, labelled as a demo. */
+  demo: boolean;
+  /** The explorer on this lineage, for a real line. */
+  explore?: { href: string; name: string };
+}
+
+/** The fictional line, for a record with no public lineage yet. */
+export const DEMO_HERO: HeroLine = {
+  people: DEMO_LINE.map((p) => ({ key: p.slug, name: p.name, original: p.original, meta: `${p.city} · ${p.role}`, startYear: p.startYear, living: p.living })),
+  states: DEMO_LINE_LINKS.map((l) => l.state),
+  words: DEMO_LINE_LINKS.map((l) => (l.state === 'verified' ? 'Verified' : 'Under review')),
+  caption: 'Foshan, 1868 → Sofia, 2019',
+  demo: true,
+};
 
 /** Lower-case, without accents, tone numbers, spaces or hyphens: "Laam fung" matches "Laam-fung". */
 export function normalizeQuery(text: string): string {

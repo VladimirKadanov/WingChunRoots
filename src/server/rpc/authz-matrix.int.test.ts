@@ -775,6 +775,7 @@ const ROWS: Row[] = [
   ),
   { path: 'lineage.subtree', make: async () => ({ input: { rootId: (await verifiedLink()).teacher.personId } }), expect: everyone },
   { path: 'lineage.start', make: noInput, expect: everyone },
+  { path: 'lineage.home', make: noInput, expect: everyone },
   { path: 'people.get', make: async () => ({ input: { slug: (await verifiedLink()).teacher.slug } }), expect: everyone },
   { path: 'people.students', make: async () => ({ input: { slug: (await verifiedLink()).teacher.slug } }), expect: everyone },
   // ADR 0045: the lineage card of a public member whose plan includes it is public; without the

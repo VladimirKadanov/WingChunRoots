@@ -415,6 +415,40 @@ function NextSteps({ steps, sifu }: { steps: NextStep[]; sifu: boolean }) {
   );
 }
 
+/**
+ * Journey review 2026-11-26 (P2-1, ADR 0079): the trial lessons the account asked for, at the top
+ * of the page while one waits or for 60 days after the school answered: the state in words.
+ */
+function TrialStatus({ trials }: { trials: NonNullable<DashboardOverview['student']>['trials'] }) {
+  if (trials.length === 0) return null;
+  return (
+    <section aria-labelledby="trial-status-heading" data-testid="trial-status" className="grid gap-2 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
+      <h2 id="trial-status-heading" className="font-display text-xl">
+        Your trial lessons
+      </h2>
+      <ul className="grid gap-1">
+        {trials.map((trial) => (
+          <li key={trial.id} data-status={trial.status} className="text-ui">
+            {trial.school.public ? (
+              <Link href={`/schools/${trial.school.slug}`} className="link">
+                {trial.school.name}
+              </Link>
+            ) : (
+              trial.school.name
+            )}
+            : <span className="font-semibold">{trial.statusLabel}</span>
+          </li>
+        ))}
+      </ul>
+      <p>
+        <Link href="/dashboard/trial-lessons" className="link inline-flex min-h-11 items-center text-sm">
+          See the replies
+        </Link>
+      </p>
+    </section>
+  );
+}
+
 /** For a student with a profile: where to say that they teach (the account type lives in Settings, Plan and billing). */
 function TeachPrompt() {
   return (
@@ -548,6 +582,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
           <div className="grid content-start gap-10">
             {pilotOutcome && !offer ? <FormMessage form={PILOT_ACCESS_FORM} state={pilotOutcome} single /> : null}
             {overview.staff ? <StaffWork staff={overview.staff} /> : null}
+            {overview.student ? <TrialStatus trials={overview.student.trials} /> : null}
             {overview.nextSteps.length > 0 && !stepsLater ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
             {!sifu && !staffOnly && overview.hasProfile && !overview.student?.waitingStudentRequests ? <TeachPrompt /> : null}
 

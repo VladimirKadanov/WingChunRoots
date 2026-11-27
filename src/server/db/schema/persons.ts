@@ -65,6 +65,9 @@ export const person = pgTable(
     // Journey review 2026-11-26 (P1-3, ADR 0077): the era of a historical record as the archive
     // words it ("d. 1901", "active 1850s to 1880s"); public. Living people have none.
     eraText: text('era_text'),
+    // Journey review 2026-11-26 (P2-1, ADR 0079): the member said "I'm new to Wing Chun" at
+    // onboarding; the dashboard keeps a beginner's steps until a teacher is named. Private.
+    newToWingChun: boolean('new_to_wing_chun').notNull().default(false),
     // M14: the current profile photo (person_photo, status active), or none. v_public_person
     // shows it only for a public person (docs/adr/0016-profile-photos.md).
     photoId: uuid('photo_id').references((): AnyPgColumn => personPhoto.id, { onDelete: 'set null' }),

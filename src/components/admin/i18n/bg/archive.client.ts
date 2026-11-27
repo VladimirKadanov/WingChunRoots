@@ -78,4 +78,6 @@ export const BG_ARCHIVE_CLIENT: AdminDict = {
   'Traditional account': 'Традиционен разказ',
   'Disputed by historians': 'Оспорвано от историци',
   'Shown to everyone after "According to", for example "the hall\'s oral history". Keep private notes in Source.': 'Показва се на всички след „According to“, например „the hall\'s oral history“ (на английски). Личните бележки остават в „Източник“.',
+  'Show this lineage on the home page': 'Покажи тази линия на началната страница',
+  'One lineage at a time: choosing this one takes the place of any other. With none chosen, the home page shows a different public lineage each day.': 'Една линия наведнъж: изборът на тази заменя всяка друга. Ако няма избрана, началната страница показва всеки ден различна публична линия.',
 };

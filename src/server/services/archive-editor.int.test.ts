@@ -188,6 +188,21 @@ describe('lineages', () => {
     expect(audits.map((a) => a.action)).toEqual(['lineage.create', 'lineage.update']);
     expect(audits[1]).toMatchObject({ role: 'admin', reason: 'A fictional correction.', after: { changed: { name: true, description: true, root: true }, rootPersonId: second.id } });
   });
+
+  it('shows one lineage on the home page: choosing one takes the place of the other (P1-4)', async () => {
+    const one = { ...(await lineageOf('Demo Archive Lineage Home One')), name: 'Demo Archive Lineage Home One' };
+    const two = { ...(await lineageOf('Demo Archive Lineage Home Two')), name: 'Demo Archive Lineage Home Two' };
+    const home = (l: { id: string; name: string }, featuredOnHome: boolean) => updateArchiveLineage(archivist.principal, { lineageId: l.id, name: l.name, featuredOnHome, reason: 'A fictional choice.' }, meta);
+    expect(await home(one, true)).toMatchObject({ changed: true });
+    expect((await getArchiveLineage(archivist.principal, { slug: one.slug })).featuredOnHome).toBe(true);
+    expect(await home(two, true)).toMatchObject({ changed: true });
+    expect((await getArchiveLineage(archivist.principal, { slug: one.slug })).featuredOnHome).toBe(false);
+    expect((await getArchiveLineage(archivist.principal, { slug: two.slug })).featuredOnHome).toBe(true);
+    expect(await home(two, true)).toMatchObject({ changed: false });
+    // Leaving the box out changes nothing.
+    expect(await updateArchiveLineage(archivist.principal, { lineageId: two.id, name: two.name, reason: 'Nothing.' }, meta)).toMatchObject({ changed: false });
+    expect(await home(two, false)).toMatchObject({ changed: true });
+  });
 });
 
 describe('links', () => {

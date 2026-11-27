@@ -179,7 +179,7 @@ export function WithdrawForm({
 }
 
 /** "Show my profile publicly" in one tap, beside a confirmed link that is not public yet (role replay 2026-11-25, P2-2). */
-export function PublishProfileForm({ action, page }: { action: Action; page: 'teachers' | 'students' | 'dashboard' }) {
+export function PublishProfileForm({ action, page }: { action: Action; page: 'teachers' | 'students' | 'dashboard' | 'invite' }) {
   const [state, formAction, pending] = useActionState(action, IDLE);
   const formId = useFormId('publish-profile');
   useFocusOnError(formId, state);

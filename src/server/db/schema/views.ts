@@ -77,6 +77,8 @@ export const vPublicEdge = pgView('v_public_edge', {
   // Journey review 2026-11-26 (P1-3, ADR 0077): an archive link's certainty and public source line.
   certainty: text('certainty'),
   publicSource: text('public_source'),
+  // P1-4 (ADR 0078): the lineage the home page draws.
+  lineageFeatured: boolean('lineage_featured').notNull(),
 }).existing();
 
 /**

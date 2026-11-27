@@ -256,7 +256,11 @@ test('@M00b fonts are self-hosted (no requests to fonts.googleapis.com or fonts.
     // page shows Cyrillic in display text (the home page's names), and then once.
     await expect(page.locator('link[rel="preload"][as="font"]'), `${route.path}: font preloads`).toHaveCount(2);
     const noto = loaded.filter((family) => family === 'Noto Serif Display');
-    if (route.path === '/') expect(noto, '/: the Cyrillic display face, once').toHaveLength(1);
+    // The home page's line is a real lineage (P1-4, ADR 0078): the face loads where its names are Cyrillic.
+    if (route.path === '/') {
+      const cyrillicNames = await page.locator('[data-row] [lang="bg"], [data-row] [lang="ru"], [data-row] [lang="uk"]').count();
+      expect(noto, '/: the Cyrillic display face, once where the line shows Cyrillic, else never').toHaveLength(cyrillicNames > 0 ? 1 : 0);
+    }
     if (route.path === '/legal/licenses') expect(noto, '/legal/licenses: no Cyrillic display text').toHaveLength(0);
 
     // Nor do the stylesheets name a Google host.

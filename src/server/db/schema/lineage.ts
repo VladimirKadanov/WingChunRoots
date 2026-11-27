@@ -45,11 +45,14 @@ export const lineage = pgTable(
     // DEFAULT D22: the root may be unknown or disputed, so it can be empty.
     rootPersonId: uuid('root_person_id').references(() => person.id, { onDelete: 'set null' }),
     description: text('description'),
+    /** Journey review 2026-11-26 (P1-4, ADR 0078): the lineage the home page draws; at most one. */
+    featuredOnHome: boolean('featured_on_home').notNull().default(false),
     ...timestamps(),
     deletedAt: deletedAt(),
   },
   (t) => [
     uniqueIndex('lineage_slug_key').on(t.slug),
+    uniqueIndex('lineage_featured_on_home_key').on(t.featuredOnHome).where(sql`${t.featuredOnHome}`),
     index('lineage_root_person_id_idx').on(t.rootPersonId),
     check('lineage_slug_format', sql`${t.slug} ~ ${sql.raw(`'${SLUG_PATTERN}'`)}`),
   ],

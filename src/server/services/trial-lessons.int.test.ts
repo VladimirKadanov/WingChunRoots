@@ -24,6 +24,7 @@ import { member, meta, staff } from './relationships.test-support';
 import { purgeOldTrialData } from './retention';
 import { schoolSchedule, updateSchoolSchedule } from './school-schedule';
 import { countSchoolEvent, schoolStats, trackSchoolEvent } from './school-stats';
+import { dashboardOverview } from './dashboard';
 import { mySchools, schoolGet } from './schools';
 import { answerTrial, closeTrial, declineTrial, myTrialInquiries, requestTrial, TRIAL_DAILY_LIMIT, trialInbox, trialOptions, withdrawTrial } from './trial-lessons';
 
@@ -125,6 +126,9 @@ describe('trial lesson requests: who may send one', () => {
     // The sender sees it, with the contact they chose.
     const mine = await myTrialInquiries(student.principal);
     expect(mine.inquiries.map((q) => [q.id, q.status, q.contactValue])).toEqual([[sent.id, 'open', '+000 000 0001']]);
+    // Journey review 2026-11-26 (P2-1): the dashboard home leads with it, the state in words.
+    const home = await dashboardOverview(student.principal);
+    expect(home.student?.trials).toEqual([{ id: sent.id, school: { slug: s.slug, name: expect.any(String), public: true }, status: 'open', statusLabel: 'Waiting for the school', createdAt: expect.any(String) }]);
   });
 
   it('ticks classes of the timetable: they open the preferred times, before what the sender typed (role replay P3-2)', async () => {

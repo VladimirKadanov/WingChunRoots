@@ -102,9 +102,12 @@ function clear(a: { x: number; y: number; width: number; height: number }, b: { 
 }
 
 const tabBar = (page: Page) => page.getByRole('navigation', { name: 'Main' });
-/** The living line's row of one person (by the exact Latin name). */
-const row = (page: Page, name: string) =>
-  page.locator('[data-row]').filter({ has: page.locator('[data-name]', { hasText: new RegExp(`^${name}$`) }) });
+/** The living line's rows, once the line (a real public lineage, P1-4) has streamed in. */
+async function lineRows(page: Page) {
+  const rows = page.locator('[data-row]');
+  await expect(rows.first()).toBeVisible();
+  return rows;
+}
 
 test.describe('@M00b phone', () => {
   test.use({ viewport: PHONE, hasTouch: true });
@@ -120,18 +123,19 @@ test.describe('@M00b phone', () => {
     await expect(skip).toBeInViewport();
   });
 
-  test('@M00b the first screen shows the line from Lo Laam-fung to So Chuk-ching with its seals', async ({ page }) => {
+  test('@M00b the first screen shows the search and Find a school, then the line of a real lineage (P1-4)', async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
     const limit = (await tabBar(page).boundingBox())!.y;
-    for (const name of ['Lo Laam-fung', 'Mak Kai-chung', 'So Chuk-ching']) {
-      const box = (await row(page, name).boundingBox())!;
-      expect(box.y + box.height, `${name}: above the tab bar`).toBeLessThanOrEqual(limit);
+    for (const target of [page.locator('[data-home-search]'), page.getByTestId('home-hero-schools')]) {
+      const box = (await target.boundingBox())!;
+      expect(box.y + box.height, 'above the tab bar').toBeLessThanOrEqual(limit);
     }
-    for (const index of [0, 1]) {
-      const seal = (await page.locator(`[data-ghost-seal="${index}"]`).boundingBox())!;
-      expect(seal.y + seal.height, `seal ${index}: above the tab bar`).toBeLessThanOrEqual(limit);
-    }
+    // The line follows them, from the lineage's recorded root, and each name opens the profile.
+    const rows = await lineRows(page);
+    expect((await page.locator('[data-home-search]').boundingBox())!.y).toBeLessThan((await rows.first().boundingBox())!.y);
+    await expect(rows.first().locator('[data-profile-link]')).toHaveAttribute('href', /^\/people\/demo-/);
+    await expect(page.getByTestId('home-line-explore')).toHaveAttribute('href', /^\/explore\?focus=.+&lineage=/);
   });
 
   test('@M00b a modal sheet opens at half height over a scrim; Expand and Collapse move it', async ({ page }) => {
@@ -501,6 +505,7 @@ test.describe('@M00b phone', () => {
     // The living line: rows do not overlap, and each node sits level with its name.
     await page.goto('/');
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    await lineRows(page);
     await expect
       .poll(() =>
         page.evaluate(() => {
@@ -516,7 +521,7 @@ test.describe('@M00b phone', () => {
             if (y < name.top - 1 || y > name.bottom + 1) problems.push(`node ${i} at ${y.toFixed(0)}, name ${name.top.toFixed(0)}-${name.bottom.toFixed(0)}`);
             // The spine keeps to its column, between the year and the name, as the text grows.
             const year = document.createRange();
-            year.selectNodeContents(row.querySelector('button > span')!);
+            year.selectNodeContents(row.querySelector('[data-year]')!);
             if (node.right > name.left - 1) problems.push(`node ${i} (to x ${node.right.toFixed(0)}) runs into the name at x ${name.left.toFixed(0)}`);
             if (year.getBoundingClientRect().right > node.left + 1) problems.push(`year ${i} runs into node ${i}`);
           });
@@ -801,6 +806,7 @@ test('@M00b from tablets to desktop no name in the line breaks inside a word', a
     await page.setViewportSize(viewport);
     await page.goto('/');
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    await lineRows(page);
     expect(await lineProblems(page), `${viewport.width}x${viewport.height}`).toEqual([]);
   }
 });
@@ -810,6 +816,7 @@ test('@M00b every row of the line has the same height and its year on the name\'
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/');
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    await lineRows(page);
     const rows = await page.evaluate(() =>
       [...document.querySelectorAll<HTMLElement>('[data-row]')].map((row) => {
         // The first baseline of an element: where a zero-size inline-block at its start sits.
@@ -824,7 +831,7 @@ test('@M00b every row of the line has the same height and its year on the name\'
         return {
           name: row.querySelector('[data-name]')!.textContent,
           height: row.getBoundingClientRect().height,
-          shift: baseline(row.querySelector('button > span')!) - baseline(row.querySelector('[data-name]')!),
+          shift: baseline(row.querySelector('[data-year]')!) - baseline(row.querySelector('[data-name]')!),
         };
       }),
     );
@@ -920,22 +927,26 @@ test('@M00b the Schools tab is current on the school finder once the page has hy
 test('@M00b tracing inks the line in its states over the pencil draft, also under reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
+  const rows = await lineRows(page);
+  const count = await rows.count();
+  expect(count, 'a line of at least three people').toBeGreaterThanOrEqual(3);
   const ink = page.locator('[data-layer="ink"] [data-state]');
   await expect(ink).toHaveCount(0);
-  await expect(page.locator('[data-layer="draft"] > *')).toHaveCount(7);
+  await expect(page.locator('[data-layer="draft"] > *')).toHaveCount(count - 1);
 
-  await row(page, 'So Chuk-ching').getByRole('button').click();
+  const third = (await rows.nth(2).locator('[data-name]').textContent())!;
+  await rows.nth(2).getByRole('button').click();
   await expect(ink).toHaveCount(2);
-  await expect(page.locator('[data-row] [aria-current="true"]')).toContainText('So Chuk-ching');
+  await expect(page.locator('[data-row] [aria-current="true"]')).toHaveAccessibleName(new RegExp(`^${third}`));
 
-  // "Trace this hall's line" traces to the newest student: every link, the last one under review.
-  await page.getByRole('link', { name: 'Trace this hall’s line' }).click();
-  await expect(ink).toHaveCount(7);
-  await expect(page.locator('[data-row] [aria-current="true"]')).toContainText('Georgi Maketov');
+  // Tracing to the newest person inks every link.
+  const last = (await rows.nth(count - 1).locator('[data-name]').textContent())!;
+  await rows.nth(count - 1).getByRole('button').click();
+  await expect(ink).toHaveCount(count - 1);
+  await expect(page.locator('[data-row] [aria-current="true"]')).toHaveAccessibleName(new RegExp(`^${last}`));
   await expect(page.locator('#demo-line')).toBeInViewport();
   const colours = await ink.evaluateAll((els) => els.map((el) => getComputedStyle(el).color));
   const draft = await page.locator('[data-layer="draft"]').evaluate((el) => getComputedStyle(el).color);
-  expect(new Set(colours).size, 'verified and under review differ').toBe(2);
   for (const colour of colours) expect(colour, 'inked, not the draft tone').not.toBe(draft);
   // The animations end at full opacity (reduced motion: at once).
   await expect.poll(() => ink.evaluateAll((els) => els.every((el) => getComputedStyle(el).opacity === '1'))).toBe(true);

@@ -91,6 +91,8 @@ export const onboardInput = z
       .union([z.literal('').transform(() => undefined), z.coerce.number().int()], { error: 'Enter the year as four digits, for example 2009.' })
       .optional(),
     showPublicly: z.boolean().default(false),
+    /** Journey review 2026-11-26 (P2-1, ADR 0079): "I'm new to Wing Chun"; private. */
+    newToWingChun: z.boolean().default(false),
   })
   .superRefine((input, ctx) => {
     const issue = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
@@ -343,6 +345,7 @@ export async function onboard(principal: Principal | null, raw: unknown, meta: R
           countryCode,
           placeId: input.placeId ?? null,
           trainingStartYear: input.trainingStartYear ?? null,
+          newToWingChun: input.newToWingChun,
         })
         .returning({ id: person.id, slug: person.slug, visibility: person.visibility });
       const personId = row!.id;

@@ -12,7 +12,7 @@ import { useActionState } from 'react';
 
 import { useAdminT } from '@/components/admin/i18n/client';
 import type { AdminT } from '@/components/admin/i18n/translate';
-import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
+import { CheckboxField, FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { TextAreaField } from '@/components/account/textarea-field';
 import { EvidenceUploader } from '@/components/evidence/uploader';
 import { pickWords } from '@/components/admin/pick-words';
@@ -100,7 +100,7 @@ export function EditLineageForm({
   lineage,
   initial,
 }: {
-  lineage: { id: string; slug: string; name: string; description: string | null; rootSlug: string | null };
+  lineage: { id: string; slug: string; name: string; description: string | null; rootSlug: string | null; featuredOnHome?: boolean };
   initial?: FormState | null;
 }) {
   const t = useAdminT();
@@ -114,6 +114,16 @@ export function EditLineageForm({
       <input type="hidden" name="lineageId" value={lineage.id} />
       <input type="hidden" name="slug" value={lineage.slug} />
       <LineageFields formId={formId} state={state} start={lineage} />
+      {/* Journey review 2026-11-26 (P1-4, ADR 0078): the lineage the home page draws. */}
+      <input type="hidden" name="featuredOnHomeShown" value="1" />
+      <CheckboxField
+        form={formId}
+        name="featuredOnHome"
+        label={t('Show this lineage on the home page')}
+        hint={t('One lineage at a time: choosing this one takes the place of any other. With none chosen, the home page shows a different public lineage each day.')}
+        state={state}
+        defaultChecked={lineage.featuredOnHome ?? false}
+      />
       <div>
         <SubmitButton pending={pending} pendingLabel={t('Saving…')} variant="secondary">
           {t('Save the lineage')}

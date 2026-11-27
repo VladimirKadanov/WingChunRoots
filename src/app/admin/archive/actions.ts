@@ -75,7 +75,7 @@ export async function createLineageAction(_previous: FormState, form: FormData):
 
 /** "Save the lineage" (archiveEditor.updateLineage). */
 export async function updateLineageAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const values = keepValues(form, ['lineageId', 'slug', 'name', 'description', 'rootSlug', 'reason']);
+  const values = keepValues(form, ['lineageId', 'slug', 'name', 'description', 'rootSlug', 'reason'], ['featuredOnHome']);
   const page = lineagePage(textValue(form, 'slug', 200));
   let changed = false;
   try {
@@ -84,6 +84,7 @@ export async function updateLineageAction(_previous: FormState, form: FormData):
       name: textValue(form, 'name', 300),
       description: textValue(form, 'description', 4000) || null,
       rootSlug: textValue(form, 'rootSlug', 200) || null,
+      ...(form.has('featuredOnHomeShown') ? { featuredOnHome: textValue(form, 'featuredOnHome', 4) === 'on' } : {}),
       reason: textValue(form, 'reason', 4000),
     });
     changed = result.changed;

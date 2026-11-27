@@ -212,6 +212,10 @@
                   "showPublicly": {
                     "default": false,
                     "type": "boolean"
+                  },
+                  "newToWingChun": {
+                    "default": false,
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -2203,6 +2207,9 @@
                           "lifeStatus": {
                             "type": "string"
                           },
+                          "historical": {
+                            "type": "boolean"
+                          },
                           "claimState": {
                             "type": "string",
                             "enum": [
@@ -2371,6 +2378,27 @@
                           },
                           "approvedByUnverifiedInstructor": {
                             "type": "boolean"
+                          },
+                          "certainty": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "documented",
+                                  "traditional",
+                                  "disputed"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "publicSource": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
@@ -2586,6 +2614,9 @@
                           "lifeStatus": {
                             "type": "string"
                           },
+                          "historical": {
+                            "type": "boolean"
+                          },
                           "claimState": {
                             "type": "string",
                             "enum": [
@@ -2754,6 +2785,27 @@
                           },
                           "approvedByUnverifiedInstructor": {
                             "type": "boolean"
+                          },
+                          "certainty": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "documented",
+                                  "traditional",
+                                  "disputed"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "publicSource": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
@@ -3001,6 +3053,9 @@
                           "lifeStatus": {
                             "type": "string"
                           },
+                          "historical": {
+                            "type": "boolean"
+                          },
                           "claimState": {
                             "type": "string",
                             "enum": [
@@ -3169,6 +3224,27 @@
                           },
                           "approvedByUnverifiedInstructor": {
                             "type": "boolean"
+                          },
+                          "certainty": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "documented",
+                                  "traditional",
+                                  "disputed"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "publicSource": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
@@ -3404,6 +3480,9 @@
                           "lifeStatus": {
                             "type": "string"
                           },
+                          "historical": {
+                            "type": "boolean"
+                          },
                           "claimState": {
                             "type": "string",
                             "enum": [
@@ -3572,6 +3651,27 @@
                           },
                           "approvedByUnverifiedInstructor": {
                             "type": "boolean"
+                          },
+                          "certainty": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "documented",
+                                  "traditional",
+                                  "disputed"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "publicSource": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
@@ -3821,6 +3921,185 @@
         }
       }
     },
+    "/lineage/home": {
+      "get": {
+        "operationId": "lineage.home",
+        "summary": "The home page's line: the chosen public lineage, or today's in the rotation, from its root down",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "lineage": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            "slug": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "slug",
+                            "name"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "people": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "original": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "text": {
+                                    "type": "string"
+                                  },
+                                  "lang": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "text",
+                                  "lang"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "city": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "startYear": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "living": {
+                            "type": "boolean"
+                          },
+                          "students": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "slug",
+                          "displayName",
+                          "original",
+                          "city",
+                          "startYear",
+                          "living",
+                          "students"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "verified",
+                              "in_arbitration"
+                            ]
+                          },
+                          "certainty": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "documented",
+                                  "traditional",
+                                  "disputed"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "status",
+                          "certainty"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "lineage",
+                    "people",
+                    "links"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person: missing, or not public and not visible to this session (one answer for both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/people/{slug}": {
       "get": {
         "operationId": "people.get",
@@ -3919,6 +4198,12 @@
                       ]
                     },
                     "bio": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "era": {
                       "type": [
                         "string",
                         "null"
@@ -4389,6 +4674,27 @@
                                 },
                                 "approvedByUnverifiedInstructor": {
                                   "type": "boolean"
+                                },
+                                "certainty": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "documented",
+                                        "traditional",
+                                        "disputed"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "publicSource": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
                                 }
                               },
                               "required": [
@@ -4733,6 +5039,27 @@
                                 },
                                 "approvedByUnverifiedInstructor": {
                                   "type": "boolean"
+                                },
+                                "certainty": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "documented",
+                                        "traditional",
+                                        "disputed"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "publicSource": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
                                 }
                               },
                               "required": [
@@ -5077,6 +5404,27 @@
                                 },
                                 "approvedByUnverifiedInstructor": {
                                   "type": "boolean"
+                                },
+                                "certainty": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "documented",
+                                        "traditional",
+                                        "disputed"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "publicSource": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
                                 }
                               },
                               "required": [
@@ -5419,6 +5767,9 @@
                               "lifeStatus": {
                                 "type": "string"
                               },
+                              "historical": {
+                                "type": "boolean"
+                              },
                               "claimState": {
                                 "type": "string",
                                 "enum": [
@@ -5587,6 +5938,27 @@
                               },
                               "approvedByUnverifiedInstructor": {
                                 "type": "boolean"
+                              },
+                              "certainty": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "documented",
+                                      "traditional",
+                                      "disputed"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "publicSource": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
                               }
                             },
                             "required": [
@@ -11508,6 +11880,9 @@
                       }
                     ]
                   },
+                  "featuredOnHome": {
+                    "type": "boolean"
+                  },
                   "reason": {
                     "anyOf": [
                       {
@@ -11686,6 +12061,17 @@
                       }
                     ]
                   },
+                  "era": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 120
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "reason": {
                     "anyOf": [
                       {
@@ -11801,6 +12187,26 @@
                       {
                         "type": "string",
                         "maxLength": 4000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "certainty": {
+                    "default": "documented",
+                    "type": "string",
+                    "enum": [
+                      "documented",
+                      "traditional",
+                      "disputed"
+                    ]
+                  },
+                  "publicSource": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 600
                       },
                       {
                         "type": "null"
@@ -11963,6 +12369,26 @@
                       {
                         "type": "string",
                         "maxLength": 4000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "certainty": {
+                    "default": "documented",
+                    "type": "string",
+                    "enum": [
+                      "documented",
+                      "traditional",
+                      "disputed"
+                    ]
+                  },
+                  "publicSource": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 600
                       },
                       {
                         "type": "null"

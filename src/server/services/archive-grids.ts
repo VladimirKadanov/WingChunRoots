@@ -150,6 +150,8 @@ export interface ArchiveLineageHead {
   description: string | null;
   root: ArchiveRecordRef | null;
   listed: boolean;
+  /** P1-4 (ADR 0078): the lineage the home page draws. */
+  featuredOnHome: boolean;
   /** Active links, the people on them, and those without a source or years. */
   links: number;
   people: number;
@@ -264,13 +266,13 @@ function depthCte(lineageIds: SQL): SQL {
     depth AS (SELECT lineage_id, person_id, min(depth) AS depth FROM walk GROUP BY lineage_id, person_id)`;
 }
 
-async function lineageBySlug(db: Executor, raw: string): Promise<{ id: string; slug: string; name: string; description: string | null; rootPersonId: string | null }> {
+async function lineageBySlug(db: Executor, raw: string): Promise<{ id: string; slug: string; name: string; description: string | null; rootPersonId: string | null; featuredOnHome: boolean }> {
   if (!SLUG.test(raw)) throw new ServiceError('NOT_FOUND', NO_LINEAGE);
-  const result = await db.execute<{ id: string; slug: string; name: string; description: string | null; root_person_id: string | null }>(sql`
-    SELECT id::text, slug, name, description, root_person_id::text FROM lineage WHERE slug = ${raw} AND deleted_at IS NULL`);
+  const result = await db.execute<{ id: string; slug: string; name: string; description: string | null; root_person_id: string | null; featured_on_home: boolean }>(sql`
+    SELECT id::text, slug, name, description, root_person_id::text, featured_on_home FROM lineage WHERE slug = ${raw} AND deleted_at IS NULL`);
   const row = result.rows[0];
   if (!row) throw new ServiceError('NOT_FOUND', NO_LINEAGE);
-  return { id: row.id, slug: row.slug, name: row.name, description: row.description, rootPersonId: row.root_person_id };
+  return { id: row.id, slug: row.slug, name: row.name, description: row.description, rootPersonId: row.root_person_id, featuredOnHome: row.featured_on_home };
 }
 
 /** The workspace header of a lineage: its root, whether the explorer lists it, and its figures. */
@@ -293,6 +295,7 @@ async function lineageHead(db: Executor, line: Awaited<ReturnType<typeof lineage
     description: line.description,
     root: line.rootPersonId ? (refs.get(line.rootPersonId) ?? null) : null,
     listed: listed.has(line.id),
+    featuredOnHome: line.featuredOnHome,
     links: f.links,
     people: f.people,
     needsWork: f.needs_work,

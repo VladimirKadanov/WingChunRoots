@@ -183,6 +183,13 @@ describe('account.onboard', () => {
     expect(publication[0]!.documentVersion).toBe(LEGAL_DOCUMENTS.privacy.version);
   });
 
+  it('keeps "I\'m new to Wing Chun" with the profile, private (P2-1)', async () => {
+    const { account, token } = await readyAccount('beginner');
+    expect((await call(token, 'POST', '/account/onboard', { primaryName: 'Demo New Beginner', newToWingChun: true })).status).toBe(200);
+    const [row] = await getDb().select({ newToWingChun: person.newToWingChun }).from(person).where(eq(person.claimedByUserId, account.id));
+    expect(row).toEqual({ newToWingChun: true });
+  });
+
   it('accepts the empty optional fields a web form sends', async () => {
     const { token } = await readyAccount('empty-fields');
     const result = await call(token, 'POST', '/account/onboard', {

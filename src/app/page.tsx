@@ -10,11 +10,10 @@ import { Suspense, type ReactNode } from 'react';
 import { BrandSeal } from '@/components/brand/brand-mark';
 import { HomeAccountLine, VisitorAccountLine } from '@/components/home/home-account';
 import { ArrowRightIcon, LineageIcon, LockIcon, PinIcon } from '@/components/icons';
-import { DEMO_HALL, DEMO_LINE } from '@/components/home/demo-lineage';
+import { DEMO_HALL } from '@/components/home/demo-lineage';
 import { HALL_TREE_KINDS, HALL_TREE_STATS, HallTree, HallTreeKey } from '@/components/home/hall-tree';
 import { ComingUpFallback, HomeComingUp } from '@/components/home/home-coming-up';
-import { LivingLine } from '@/components/home/living-line';
-import { TraceLineButton } from '@/components/home/trace-line';
+import { HeroFallback, HomeHero } from '@/components/home/home-hero';
 import { Legend } from '@/components/ink/legend';
 import { LegalLinks } from '@/components/legal/legal-links';
 import { LinkStroke, type LinkKind } from '@/components/ink/link-stroke';
@@ -75,32 +74,44 @@ function Mark({ art, title, children }: { art: ReactNode; title: ReactNode; chil
   );
 }
 
+const HERO = {
+  heading: (
+    <>
+      <p className="eyebrow mb-2 md:mb-3">A Wing Chun lineage record · demo</p>
+      {/* The brand seal stamps the end of the claim; it names the site for screen readers. */}
+      <h1 className="font-display text-hero text-fg">
+        Every teacher, every student, on the record
+        <BrandSeal
+          label="WingChunRoots"
+          size={28}
+          className="ml-[0.14em] inline-block size-[0.44em] -translate-y-[0.04em] -rotate-4 align-baseline"
+        />
+      </h1>
+    </>
+  ),
+  lede: (
+    <p className="max-w-[50ch] text-base text-fg-muted md:text-md">
+      WingChunRoots maps who taught whom, from the halls of Foshan to evening classes in Sofia. Every teacher–student link
+      carries its own evidence and its own seal.
+    </p>
+  ),
+  // P1-4 (ADR 0078): the other thing a visitor comes for, beside the search, on the first screen.
+  actions: (
+    <p className="mt-4">
+      <Link href="/schools" className={buttonVariants({ variant: 'secondary' })} data-testid="home-hero-schools">
+        <PinIcon size={18} />
+        Find a school near you
+      </Link>
+    </p>
+  ),
+};
+
 export default function HomePage() {
-  const newest = DEMO_LINE.length - 1;
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
-      <LivingLine
-        heading={
-          <>
-            <p className="eyebrow mb-2 md:mb-3">A Wing Chun lineage record · demo</p>
-            {/* The brand seal stamps the end of the claim; it names the site for screen readers. */}
-            <h1 className="font-display text-hero text-fg">
-              Every teacher, every student, on the record
-              <BrandSeal
-                label="WingChunRoots"
-                size={28}
-                className="ml-[0.14em] inline-block size-[0.44em] -translate-y-[0.04em] -rotate-4 align-baseline"
-              />
-            </h1>
-          </>
-        }
-        lede={
-          <p className="max-w-[50ch] text-base text-fg-muted md:text-md">
-            WingChunRoots maps who taught whom, from the halls of Foshan to evening classes in Sofia. Every teacher–student link
-            carries its own evidence and its own seal.
-          </p>
-        }
-      />
+      <Suspense fallback={<HeroFallback {...HERO} />}>
+        <HomeHero {...HERO} />
+      </Suspense>
 
       {/* The ways in (plan §5.5). The search is the hero's (LivingLine); this part adds what is on
           next and a school near you (role replay 2026-11-25, P3-4): one search box on the page. */}
@@ -271,10 +282,11 @@ export default function HomePage() {
               </dd>
             </div>
           </dl>
-          {/* The explorer opens in M05 (/explore). Until then the hall's line is traced above. */}
-          <TraceLineButton index={newest} className={buttonVariants({ variant: 'primary' })}>
-            Trace this hall’s line
-          </TraceLineButton>
+          {/* P1-4 (ADR 0078): the line at the top is a real lineage now; this hall is only an example. */}
+          <Link href="/explore" className={buttonVariants({ variant: 'primary' })}>
+            Explore the lineages
+            <ArrowRightIcon />
+          </Link>
         </div>
         <figure className="w-full max-w-[26rem] rounded-md border border-border-subtle bg-surface-1 p-2 [--seal-ground:var(--surface-1)] sm:p-3 md:p-4">
           <HallTree className="block h-auto w-full" />

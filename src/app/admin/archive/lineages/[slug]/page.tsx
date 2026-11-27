@@ -518,7 +518,7 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
 
         <Section id="details" title={t('Lineage details')}>
           <div className="max-w-[46rem]">
-            <EditLineageForm lineage={{ id: view.id, slug: view.slug, name: view.name, description: view.description, rootSlug: view.root?.slug ?? null }} initial={editResult} />
+            <EditLineageForm lineage={{ id: view.id, slug: view.slug, name: view.name, description: view.description, rootSlug: view.root?.slug ?? null, featuredOnHome: view.featuredOnHome }} initial={editResult} />
           </div>
         </Section>
       </div>

@@ -317,6 +317,8 @@ class Builder {
       name: `Demo Lineage ${key.toUpperCase()}`,
       rootPersonId: null,
       description: `${FICTIONAL_MARK}: a made-up lineage for tests and the local pilot.`,
+      // P1-4 (ADR 0078): lineage A is the one the home page draws, so the page is the same every day.
+      featuredOnHome: key === 'a',
       createdAt: at,
       updatedAt: at,
       deletedAt: null,
@@ -352,6 +354,7 @@ class Builder {
       birthDate: null,
       // Journey review 2026-11-26 (P1-3, ADR 0077): a fictional era for the oldest historical records.
       eraText: historical ? (opts.gen === 0 ? 'active 1850s to 1880s' : opts.gen === 1 ? 'active 1890s to 1920s' : null) : null,
+      newToWingChun: false,
       // M14: the demo photos are added by db:seed (src/server/db/seed-photos.ts), not here.
       photoId: null,
       takenDownAt: null,

@@ -152,6 +152,8 @@ export const updateLineageInput = z
     name: oneLine(LINEAGE_NAME_MAX),
     description: text(LINEAGE_DESCRIPTION_MAX),
     rootSlug: slugRef,
+    /** Journey review 2026-11-26 (P1-4, ADR 0078): draw this lineage on the home page (at most one). Absent: unchanged. */
+    featuredOnHome: z.boolean().optional(),
     reason: text(ARCHIVE_REASON_MAX),
   })
   .superRefine((input, ctx) => {
@@ -335,6 +337,8 @@ export interface ArchiveLineageView {
   description: string | null;
   root: ArchiveRecordRef | null;
   listed: boolean;
+  /** P1-4 (ADR 0078): the lineage the home page draws. */
+  featuredOnHome: boolean;
   links: ArchiveLinkView[];
 }
 
@@ -515,7 +519,7 @@ export async function getArchiveLineage(principal: Principal | null, raw: z.inpu
   if (!parsed.success) throw new ServiceError('NOT_FOUND', NO_LINEAGE);
   const db = getDb();
   const [row] = await db
-    .select({ id: lineage.id, slug: lineage.slug, name: lineage.name, description: lineage.description, rootPersonId: lineage.rootPersonId })
+    .select({ id: lineage.id, slug: lineage.slug, name: lineage.name, description: lineage.description, rootPersonId: lineage.rootPersonId, featuredOnHome: lineage.featuredOnHome })
     .from(lineage)
     .where(and(eq(lineage.slug, parsed.data.slug), isNull(lineage.deletedAt)));
   if (!row) throw new ServiceError('NOT_FOUND', NO_LINEAGE);
@@ -545,6 +549,7 @@ export async function getArchiveLineage(principal: Principal | null, raw: z.inpu
     description: row.description,
     root: row.rootPersonId ? (refs.get(row.rootPersonId) ?? null) : null,
     listed: listed.has(row.id),
+    featuredOnHome: row.featuredOnHome,
     links: links
       .filter((l) => refs.has(l.teacher) && refs.has(l.student))
       .map((l) => {
@@ -632,7 +637,7 @@ export async function updateArchiveLineage(principal: Principal | null, raw: Upd
   const outcome = await getDb().transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('lineage.create'))`);
     const [row] = await tx
-      .select({ id: lineage.id, slug: lineage.slug, name: lineage.name, description: lineage.description, rootPersonId: lineage.rootPersonId })
+      .select({ id: lineage.id, slug: lineage.slug, name: lineage.name, description: lineage.description, rootPersonId: lineage.rootPersonId, featuredOnHome: lineage.featuredOnHome })
       .from(lineage)
       .where(and(eq(lineage.id, input.lineageId), isNull(lineage.deletedAt)))
       .for('update');
@@ -642,17 +647,20 @@ export async function updateArchiveLineage(principal: Principal | null, raw: Upd
     if (root.error) fields.rootSlug = root.error;
     if (await nameTaken(tx, input.name!, row.id)) fields.name = 'Another lineage has this name.';
     if (Object.keys(fields).length > 0) throw new ServiceError('BAD_REQUEST', CHECK, fields);
-    const changed = { name: row.name !== input.name, description: row.description !== input.description, root: row.rootPersonId !== root.id };
-    if (!changed.name && !changed.description && !changed.root) return { slug: row.slug, changed: false, tags: [] as string[] };
-    await tx.update(lineage).set({ name: input.name!, description: input.description, rootPersonId: root.id, updatedAt: new Date() }).where(eq(lineage.id, row.id));
+    const featured = input.featuredOnHome ?? row.featuredOnHome;
+    const changed = { name: row.name !== input.name, description: row.description !== input.description, root: row.rootPersonId !== root.id, featuredOnHome: row.featuredOnHome !== featured };
+    if (!changed.name && !changed.description && !changed.root && !changed.featuredOnHome) return { slug: row.slug, changed: false, tags: [] as string[] };
+    // P1-4 (ADR 0078): one lineage on the home page; choosing this one takes it from any other.
+    if (changed.featuredOnHome && featured) await tx.update(lineage).set({ featuredOnHome: false }).where(eq(lineage.featuredOnHome, true));
+    await tx.update(lineage).set({ name: input.name!, description: input.description, rootPersonId: root.id, featuredOnHome: featured, updatedAt: new Date() }).where(eq(lineage.id, row.id));
     await writeAudit(tx, {
       action: 'lineage.update',
       actorUserId: p.user.id,
       actorRole: p.user.role,
       subjectType: 'lineage',
       subjectId: row.id,
-      before: { rootPersonId: row.rootPersonId },
-      after: { changed, rootPersonId: root.id, description: input.description ? { length: input.description.length } : null },
+      before: { rootPersonId: row.rootPersonId, featuredOnHome: row.featuredOnHome },
+      after: { changed, rootPersonId: root.id, featuredOnHome: featured, description: input.description ? { length: input.description.length } : null },
       reason: input.reason,
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,

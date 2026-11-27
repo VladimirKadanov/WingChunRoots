@@ -16,7 +16,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult, keepFormResult } from '@/server/forms/flash';
 import { formStateFromFailure, formStateFromRpcError, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { afterOnboarding, afterOnboardingFor, chosenAccountType, onboardingNext, onboardingPage } from './destination';
+import { afterOnboarding, afterOnboardingFor, choseBeginner, chosenAccountType, onboardingNext, onboardingPage } from './destination';
 
 const TEXT_FIELDS = ['primaryName', 'originalName', 'originalLang', 'jyutping', 'pinyin', 'countryCode', 'placeId', 'trainingStartYear', 'accountType', 'takesPart', 'next'];
 
@@ -72,6 +72,7 @@ async function onboard(form: FormData, next: string): Promise<FormState> {
       placeId: textValue(form, 'placeId', 64),
       trainingStartYear: textValue(form, 'trainingStartYear', 8),
       showPublicly: ticked(form, 'showPublicly'),
+      newToWingChun: choseBeginner(form),
     });
   } catch (error) {
     const code = rpcErrorCode(error);

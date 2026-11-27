@@ -358,6 +358,8 @@ import {
 } from '../services/organization-grants';
 import { exploreStartSchema } from '../dto/explore';
 import { exploreStart } from '../services/explore-start';
+import { homeLine } from '../services/home-line';
+import { homeLineSchema } from '../dto/home';
 import {
   ancestorsInput,
   egoInput,
@@ -621,6 +623,11 @@ export const router = {
       .route({ method: 'GET', path: '/lineage/start', summary: 'Public lineages with their public root: where the explorer starts' })
       .output(exploreStartSchema)
       .handler(({ context }) => exploreStart(context.meta)),
+    // Journey review 2026-11-26 (P1-4, ADR 0078): the home page's line of a real public lineage.
+    home: base
+      .route({ method: 'GET', path: '/lineage/home', summary: "The home page's line: the chosen public lineage, or today's in the rotation, from its root down" })
+      .output(homeLineSchema)
+      .handler(() => homeLine()),
   },
   people: {
     get: base

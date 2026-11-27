@@ -14,6 +14,7 @@ import { hasStaff2FA, requireUser } from '../auth/guards';
 import { isStaffRole, type Principal, type StaffRole } from '../auth/principal';
 import { getDb } from '../db';
 import {
+  ACTIVE_RELATIONSHIP_STATUSES,
   lineage,
   person,
   personClaim,
@@ -33,7 +34,7 @@ import { administersOrganization } from './account';
 import { listNotifications, type NotificationList } from './notifications';
 import { type NextStep, nextSteps } from './next-steps';
 import { listingLabel } from './school-activity';
-import { openTrialCounts } from './trial-lessons';
+import { openTrialCounts, TRIAL_STATUS_LABELS, type TrialStatus } from './trial-lessons';
 import { INSTRUCTOR_LABELS, instructorStatus, openPilotRequest, type PilotRequestView, type PlanSummary, planSummary } from './plans';
 
 export interface PersonRef {
@@ -123,6 +124,36 @@ export function offerText(key: FeatureKey, current: number, limit: number, from:
   };
 }
 
+/**
+ * Journey review 2026-11-26 (P2-1): a trial lesson the account asked for, on the dashboard home
+ * while it waits or for 60 days after the school answered.
+ */
+export interface OwnTrialItem {
+  id: string;
+  school: { slug: string; name: string; public: boolean };
+  status: TrialStatus;
+  statusLabel: string;
+  createdAt: string;
+}
+
+/** The account's recent trial lesson requests (P2-1): open ones, and others for 60 days; three at most. */
+async function recentTrials(db: Executor, userId: string): Promise<OwnTrialItem[]> {
+  const result = await db.execute<{ id: string; slug: string; name: string; public: boolean; status: TrialStatus; created_at: Date | string }>(sql`
+    SELECT t.id, s.slug, s.name, v.id IS NOT NULL AS public, t.status, t.created_at
+      FROM trial_inquiry t JOIN school s ON s.id = t.school_id LEFT JOIN v_public_school v ON v.id = s.id
+     WHERE t.sender_user_id = ${userId}::uuid AND t.status <> 'withdrawn'
+       AND (t.status = 'open' OR t.created_at > now() - interval '60 days')
+     ORDER BY (t.status = 'open') DESC, t.created_at DESC, t.id DESC
+     LIMIT 3`);
+  return result.rows.map((r) => ({
+    id: r.id,
+    school: { slug: r.slug, name: r.name, public: r.public },
+    status: r.status,
+    statusLabel: TRIAL_STATUS_LABELS[r.status],
+    createdAt: new Date(r.created_at).toISOString(),
+  }));
+}
+
 export interface DashboardOverview {
   accountType: 'student' | 'sifu';
   instructor: { status: 'not_instructor' | 'unverified' | 'verified'; label: string };
@@ -146,7 +177,7 @@ export interface DashboardOverview {
    * claimed record starts as Student, so a Student account sees the requests that wait for it and
    * the schools that list it as an instructor; it answers them once it is a Sifu account.
    */
-  student: { teachers: TeacherItem[]; requests: RequestItem[]; waitingStudentRequests: number; schools: SchoolItem[] } | null;
+  student: { teachers: TeacherItem[]; requests: RequestItem[]; waitingStudentRequests: number; schools: SchoolItem[]; trials: OwnTrialItem[] } | null;
   sifu: {
     requests: StudentRequestItem[];
     students: { approved: number; limit: number | null };
@@ -312,7 +343,7 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   const db = getDb();
   const subject = { kind: 'user' as const, userId: p.user.id };
   const [own] = await db
-    .select({ id: person.id, slug: person.slug, visibility: person.visibility, photoId: person.photoId })
+    .select({ id: person.id, slug: person.slug, visibility: person.visibility, photoId: person.photoId, newToWingChun: person.newToWingChun })
     .from(person)
     .where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)));
   const looks = { profilePublic: own?.visibility === 'public', hasPhoto: Boolean(own?.photoId) };
@@ -360,6 +391,7 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
     let requests: RequestItem[] = [];
     let waitingStudentRequests = 0;
     let schools: SchoolItem[] = [];
+    const trials = await recentTrials(db, p.user.id);
     if (own) {
       const rows = await db
         .select({
@@ -405,14 +437,15 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       requests = requests.slice(0, 50);
       [waitingStudentRequests, schools] = await Promise.all([waitingRequests(db, own.id), ownSchools(db, p.user.id, own.id)]);
     }
-    const steps = nextSteps({ accountType: 'student', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: teachers.length + requests.length, schools: 0, ...looks });
-    return { ...base, student: { teachers, requests, waitingStudentRequests, schools }, sifu: null, nextSteps: steps };
+    const steps = nextSteps({ accountType: 'student', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: teachers.length + requests.length, schools: 0, trials: trials.length, beginner: own?.newToWingChun === true, ...looks });
+    return { ...base, student: { teachers, requests, waitingStudentRequests, schools, trials }, sifu: null, nextSteps: steps };
   }
 
   // Sifu.
   let requests: StudentRequestItem[] = [];
   let waiting = 0;
   let schools: SchoolItem[] = [];
+  let ownTeachers = 0;
   if (own) {
     const rows = await db
       .select({ id: teachingRelationship.id, studentId: teachingRelationship.studentPersonId, lineage: lineage.name, createdAt: teachingRelationship.createdAt, updatedAt: teachingRelationship.updatedAt })
@@ -432,9 +465,15 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       waitingDays: Math.max(0, Math.floor((now - r.updatedAt.getTime()) / 86_400_000)),
     }));
     schools = await ownSchools(db, p.user.id, own.id);
+    // P2-3: the Sifu's own teachers, for "Name your teacher".
+    const [mine] = await db
+      .select({ n: count() })
+      .from(teachingRelationship)
+      .where(and(eq(teachingRelationship.studentPersonId, own.id), inArray(teachingRelationship.status, [...ACTIVE_RELATIONSHIP_STATUSES])));
+    ownTeachers = mine?.n ?? 0;
   }
 
   const { approved, limit, upgrade } = await approvalOffer(db, p.user.id, waiting);
-  const steps = nextSteps({ accountType: 'sifu', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: 0, schools: schools.length, ...looks });
+  const steps = nextSteps({ accountType: 'sifu', instructor: status, hasProfile: Boolean(own), staffOnly: (staff !== null || organizationOnly) && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: ownTeachers, schools: schools.length, students: approved + waiting, ...looks });
   return { ...base, student: null, sifu: { requests, students: { approved, limit }, schools, upgrade }, nextSteps: steps };
 }
