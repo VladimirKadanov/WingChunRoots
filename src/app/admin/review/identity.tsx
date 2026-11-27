@@ -127,7 +127,7 @@ export function IdentitySection({ caseId, identity, codeResults, t }: { caseId: 
                       </span>
                       {code.channel === 'page' && !code.confirmed && identity.can.checkCode ? (
                         <div className="max-w-[34rem]">
-                          <CheckCodeForm caseId={caseId} codeId={code.id} initial={codeResults.get(code.id) ?? null} />
+                          <CheckCodeForm caseId={caseId} codeId={code.id} label={t('I saw the code on the page')} initial={codeResults.get(code.id) ?? null} />
                         </div>
                       ) : null}
                     </li>

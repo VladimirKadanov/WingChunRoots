@@ -481,8 +481,8 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
               {t('Is the report credible? Holding the profile changes nothing that the public sees except an “Identity under review” line; an administrator decides the report afterwards.')}
             </p>
             <div className="grid max-w-[40rem] gap-3">
-              <TriageForm caseId={view.id} outcome="hold" idempotencyKey={randomUUID()} initial={holdResult} />
-              <TriageForm caseId={view.id} outcome="close" idempotencyKey={randomUUID()} initial={closeResult} />
+              <TriageForm caseId={view.id} outcome="hold" idempotencyKey={randomUUID()} initial={holdResult} text={{ label: t('Hold the profile'), reason: t('Internal note'), hint: t('Optional. Only reviewers read it. The profile is held for 30 days: nobody can rename, hide, delete or hand it over. Both sides are told, and have 14 days to bring proof.') }} />
+              <TriageForm caseId={view.id} outcome="close" idempotencyKey={randomUUID()} initial={closeResult} text={{ label: t('Close the report'), reason: t('Reason'), hint: t('Required. The reporter reads it. Nothing changes for the profile, and its account is never told.') }} />
             </div>
           </Section>
         ) : null}
@@ -504,8 +504,8 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             </div>
           ) : null}
           <div className="grid max-w-[40rem] gap-3">
-            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={decisions.verify} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} takeDownOption={view.kind === 'profile_report' && view.subject?.takeDown?.allowed === true && !view.subject.takeDown.held} lifeStatusChoice={view.kind === 'historical_claim' && view.teacherRecord?.lifeStatus === 'unknown' ? lifeStatusChoice(t) : undefined} identityOption={view.identity && !view.identity.reportedSuspended ? 'suspend' : undefined} /> : null}
-            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={decisions.reject} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} identityOption={view.identity ? 'unsettled' : undefined} /> : null}
+            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={decisions.verify} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} takeDownOption={view.kind === 'profile_report' && view.subject?.takeDown?.allowed === true && !view.subject.takeDown.held} lifeStatusChoice={view.kind === 'historical_claim' && view.teacherRecord?.lifeStatus === 'unknown' ? lifeStatusChoice(t) : undefined} identityOption={view.identity && !view.identity.reportedSuspended ? { name: 'suspend', label: t('Also suspend the account that held the profile'), hint: t('Suggested. Untick it when the account looks like a mistake rather than an impostor. You can lift a suspension from the account page.') } : undefined} /> : null}
+            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={decisions.reject} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} identityOption={view.identity ? { name: 'unsettled', label: t('The proof could not settle it either way'), hint: t('Both sides read “could not be settled” rather than “not upheld”. The reporter may report the profile again later with new proof.') } : undefined} /> : null}
             {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} text={decisions.needs_info} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
           </div>
           {!view.can.verify && !view.can.reject && !view.can.needsInfo && !view.can.assignSelf && !view.decideNote ? (

@@ -409,7 +409,8 @@ export default async function PartyCasePage({ params, searchParams }: { params: 
                   ? 'A short video (MP4 or WebM, up to 50 MB) of you saying your name and today’s date, or JPEG, PNG, WebP or PDF up to 20 MB.'
                   : 'JPEG, PNG, WebP or PDF, up to 20 MB each. A file added to a case stays with it.'
               }
-              video={Boolean(c.identity)}
+              // ADR 0088: an impersonation report's case also takes a short MP4 or WebM video, up to 50 MB.
+              {...(c.identity ? { accept: 'image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/webm', maxMb: 50 } : {})}
             />
           ) : null}
         </section>

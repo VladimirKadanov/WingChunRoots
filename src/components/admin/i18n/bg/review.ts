@@ -646,4 +646,14 @@ export const BG_REVIEW: AdminDict = {
   'Required. Both sides read it on their case page and can add proof.': 'Задължително. Двете страни го четат на страницата на случая си и могат да добавят доказателства.',
   'Your question was sent to both sides. The case waits for their answers.': 'Въпросът ви е изпратен на двете страни. Случаят чака отговорите им.',
   'An administrator decides an impersonation report. A moderator or an administrator makes the first check. You can add notes.': 'Администратор решава сигнал за представяне за друг. Първата проверка прави модератор или администратор. Можете да добавяте бележки.',
+  // ADR 0088: impersonation reports, the words the case card sends to its client forms.
+  'Also suspend the account that held the profile': 'Спри също акаунта, който държеше профила',
+  'Suggested. Untick it when the account looks like a mistake rather than an impostor. You can lift a suspension from the account page.': 'Препоръчително. Махнете отметката, ако акаунтът изглежда като грешка, а не самозванец. Спирането може да се отмени от страницата на акаунта.',
+  'The proof could not settle it either way': 'Доказателствата не решават въпроса нито в едната, нито в другата посока',
+  'Both sides read “could not be settled” rather than “not upheld”. The reporter may report the profile again later with new proof.': 'Двете страни четат „не можа да бъде решен“ вместо „не се уважава“. Подателят може по-късно да подаде нов сигнал с нови доказателства.',
+  'Hold the profile': 'Задръж профила',
+  'Close the report': 'Закрий сигнала',
+  'Optional. Only reviewers read it. The profile is held for 30 days: nobody can rename, hide, delete or hand it over. Both sides are told, and have 14 days to bring proof.': 'По избор. Четат я само проверяващите. Профилът се задържа за 30 дни: никой не може да го преименува, скрие, изтрие или прехвърли. Двете страни са уведомени и имат 14 дни за доказателства.',
+  'Required. The reporter reads it. Nothing changes for the profile, and its account is never told.': 'Задължително. Подателят я чете. За профила нищо не се променя и акаунтът му никога не се уведомява.',
+  'I saw the code on the page': 'Видях кода на страницата',
 };

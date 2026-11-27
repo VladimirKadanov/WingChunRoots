@@ -129,6 +129,13 @@ const decisionWords = (t: AdminT) =>
     },
   }) as const satisfies Record<Decision, DecideText & { variant: 'primary' | 'danger' | 'secondary' }>;
 
+/** ADR 0088: the box of an impersonation report's decision, in the page's language. */
+export interface IdentityOptionText {
+  name: 'suspend' | 'unsettled';
+  label: string;
+  hint: string;
+}
+
 /** One decision on a case: verify, refuse with a reason, or ask for more information. */
 /** The words of a decision for the case's kind (M10b: review.get `decisions`); the claim's by default. */
 export interface DecideText {
@@ -172,9 +179,10 @@ export function DecideForm({
   /**
    * ADR 0088 (an impersonation report): on "Uphold", suspend the account that held the profile
    * (decision 5: the administrator chooses, the box is ticked in advance); on "Do not uphold",
-   * "could not be settled" in place of "not upheld".
+   * "could not be settled" in place of "not upheld". The words come from the server page, so that
+   * they travel in the page, not in the control panel's client dictionary of every /admin route.
    */
-  identityOption?: 'suspend' | 'unsettled';
+  identityOption?: IdentityOptionText;
 }) {
   const t = useAdminT();
   const [state, action, pending] = useActionState(decideCaseAction, initial ?? IDLE);
@@ -212,25 +220,7 @@ export function DecideForm({
             state={state}
           />
         ) : null}
-        {identityOption === 'suspend' ? (
-          <CheckboxField
-            form={formId}
-            name="suspend"
-            defaultChecked
-            label={t('Also suspend the account that held the profile')}
-            hint={t('Suggested. Untick it when the account looks like a mistake rather than an impostor. You can lift a suspension from the account page.')}
-            state={state}
-          />
-        ) : null}
-        {identityOption === 'unsettled' ? (
-          <CheckboxField
-            form={formId}
-            name="unsettled"
-            label={t('The proof could not settle it either way')}
-            hint={t('Both sides read “could not be settled” rather than “not upheld”. The reporter may report the profile again later with new proof.')}
-            state={state}
-          />
-        ) : null}
+        {identityOption ? <CheckboxField form={formId} name={identityOption.name} defaultChecked={identityOption.name === 'suspend'} label={identityOption.label} hint={identityOption.hint} state={state} /> : null}
         <div>
           <Button pending={pending} label={text.label} pendingLabel={text.pending} variant={text.variant} />
         </div>
@@ -593,7 +583,14 @@ export function TakeDownForm({
  * profile" when the report is credible (its account is told what is claimed, never who reported);
  * "Close the report" when it is not, with the reason the reporter reads.
  */
-export function TriageForm({ caseId, outcome, idempotencyKey, initial }: { caseId: string; outcome: 'hold' | 'close'; idempotencyKey: string; initial?: FormState | null }) {
+/** ADR 0088: the words of a first-check form, translated by the server page (see IdentityOptionText). */
+export interface TriageText {
+  label: string;
+  reason: string;
+  hint: string;
+}
+
+export function TriageForm({ caseId, outcome, idempotencyKey, text, initial }: { caseId: string; outcome: 'hold' | 'close'; idempotencyKey: string; text: TriageText; initial?: FormState | null }) {
   const t = useAdminT();
   const [state, action, pending] = useActionState(triageIdentityAction, initial ?? IDLE);
   const generatedId = useFormId(triageForm(outcome));
@@ -603,7 +600,7 @@ export function TriageForm({ caseId, outcome, idempotencyKey, initial }: { caseI
   return (
     <details open={state.status === 'error' || undefined} className="group rounded-sm border border-border-strong" data-testid={`triage-${outcome}`}>
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-sm px-4 py-2 font-semibold hover:bg-surface-3 [&::-webkit-details-marker]:hidden">
-        <span>{hold ? t('Hold the profile') : t('Close the report')}…</span>
+        <span>{text.label}…</span>
         <ChevronDownIcon size={18} className="shrink-0 text-fg-muted transition-transform duration-(--duration-fast) group-open:rotate-180" />
       </summary>
       <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-3 px-4 pt-1 pb-4">
@@ -611,21 +608,9 @@ export function TriageForm({ caseId, outcome, idempotencyKey, initial }: { caseI
         <input type="hidden" name="caseId" value={caseId} />
         <input type="hidden" name="outcome" value={outcome} />
         <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
-        <TextAreaField
-          form={formId}
-          name="reason"
-          label={hold ? t('Internal note') : t('Reason')}
-          optional={hold}
-          maxLength={2000}
-          hint={
-            hold
-              ? t('Optional. Only reviewers read it. The profile is held for 30 days: nobody can rename, hide, delete or hand it over. Both sides are told, and have 14 days to bring proof.')
-              : t('Required. The reporter reads it. Nothing changes for the profile, and its account is never told.')
-          }
-          state={state}
-        />
+        <TextAreaField form={formId} name="reason" label={text.reason} optional={hold} maxLength={2000} hint={text.hint} state={state} />
         <div>
-          <Button pending={pending} label={hold ? t('Hold the profile') : t('Close the report')} pendingLabel={t('Saving…')} variant={hold ? 'ink' : 'danger'} />
+          <Button pending={pending} label={text.label} pendingLabel={t('Saving…')} variant={hold ? 'ink' : 'danger'} />
         </div>
       </form>
     </details>
@@ -633,7 +618,7 @@ export function TriageForm({ caseId, outcome, idempotencyKey, initial }: { caseI
 }
 
 /** ADR 0088: "I saw the code on the page" of a code a side posted on its school's page (an administrator). */
-export function CheckCodeForm({ caseId, codeId, initial }: { caseId: string; codeId: string; initial?: FormState | null }) {
+export function CheckCodeForm({ caseId, codeId, label, initial }: { caseId: string; codeId: string; label: string; initial?: FormState | null }) {
   const t = useAdminT();
   const [state, action, pending] = useActionState(checkIdentityCodeAction, initial ?? IDLE);
   const generatedId = useFormId(checkCodeForm(codeId));
@@ -645,7 +630,7 @@ export function CheckCodeForm({ caseId, codeId, initial }: { caseId: string; cod
       <input type="hidden" name="caseId" value={caseId} />
       <input type="hidden" name="codeId" value={codeId} />
       <div>
-        <Button pending={pending} label={t('I saw the code on the page')} pendingLabel={t('Saving…')} />
+        <Button pending={pending} label={label} pendingLabel={t('Saving…')} />
       </div>
     </form>
   );
