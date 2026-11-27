@@ -11,6 +11,10 @@
 //   refused at start (checkBillingSettings, called by src/instrumentation.ts through
 //   src/server/auth/startup.ts and by the worker), and wherever the adapter is made.
 //
+// - STRIPE_TEST_CLOCKS: `true` puts every new Stripe customer on its own Stripe test clock, so the
+//   admin test clock (/admin/billing/<id>) can move its subscription. Such a subscription renews only
+//   when the clock is moved, so it is off unless set. Not a secret.
+//
 // Messages name the setting, never its value.
 
 import { createHmac } from 'node:crypto';
@@ -55,6 +59,11 @@ export function stripeWebhookSecret(env: Env = process.env): string {
   const secret = (env.STRIPE_WEBHOOK_SECRET ?? '').trim();
   if (!STRIPE_WEBHOOK_SECRET.test(secret)) throw new BillingConfigError('STRIPE_WEBHOOK_SECRET must be the signing secret of a Stripe test webhook endpoint (whsec_…).');
   return secret;
+}
+
+/** STRIPE_TEST_CLOCKS: whether new Stripe customers get their own test clock (off unless `true`). */
+export function stripeTestClocks(env: Env = process.env): boolean {
+  return ['true', '1', 'on', 'yes'].includes((env.STRIPE_TEST_CLOCKS ?? '').trim().toLowerCase());
 }
 
 /** The HMAC key of the test provider's events: its own setting, else derived from MAIL_SEAL_KEY. */

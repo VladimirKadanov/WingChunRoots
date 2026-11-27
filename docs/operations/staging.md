@@ -140,14 +140,15 @@ BACKUP_AGE_IDENTITY=~/wcr-age-key.txt scripts/restore-drill.sh backups/<име>.
 2. В `.env` на сървъра (`nano ~/wingchunroots/.env` като `deploy`), никога в чат или в git:
    - `BILLING_PROVIDER=stripe`;
    - `STRIPE_SECRET_KEY=sk_test_…` (**Developers → API keys → Secret key**);
-   - `STRIPE_WEBHOOK_SECRET=whsec_…` (**Signing secret** на създадения endpoint).
+   - `STRIPE_WEBHOOK_SECRET=whsec_…` (**Signing secret** на създадения endpoint);
+   - по желание `STRIPE_TEST_CLOCKS=true`: всеки нов клиент получава свой тестов часовник на Stripe и **Test clock** в `/admin/billing/<id>` работи и за Stripe. Такъв абонамент се подновява само когато часовникът се мести ([ADR 0088](../adr/0088-stripe-schedules-clocks-yearly.md)).
 
    Публичният ключ (`pk_test_…`) не трябва: приложението праща купувача към страницата на Stripe, без Stripe.js в браузъра.
 3. `deploy/staging/staging.sh deploy`: Compose пресъздава `web` и `worker` с новите стойности.
 
 Caddy пуска без паролата на сайта само `POST /api/billing/webhook`: Stripe не може да прати паролата, а маршрутът сам проверява подписа `Stripe-Signature` на всяко събитие (400 без валиден подпис) и отказва събития с `livemode: true`. `staging.sh deploy` рестартира Caddy, когато `Caddyfile` се е променил.
 
-Плаща се с тестовите карти на Stripe, например `4242 4242 4242 4242`, произволна бъдеща дата и произволен CVC. Тестовият часовник в `/admin/billing/<id>` работи само с тестовия доставчик. Смяната на месечен към годишен план на федерация в края на периода не се поддържа със Stripe (`docs/plan/questions/M23.md`, въпрос 2). За връщане към тестовия доставчик махнете `BILLING_PROVIDER=stripe` и пуснете `deploy` пак.
+Плаща се с тестовите карти на Stripe, например `4242 4242 4242 4242`, произволна бъдеща дата и произволен CVC. Карта, която се приема и после отказва при подновяване: `4000 0000 0000 0341`. Смяна в края на периода (например федерация от годишно към месечно) е subscription schedule в Stripe. За връщане към тестовия доставчик махнете `BILLING_PROVIDER=stripe` и пуснете `deploy` пак.
 
 ## Ежедневни команди
 

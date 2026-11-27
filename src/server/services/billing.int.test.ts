@@ -121,7 +121,7 @@ describe('checkout', () => {
     const sifu = await member('m22-buyer', { sifu: true });
     expect(await planOf(sifu.account.id)).toBe('free_sifu');
     const before = await myBilling(sifu.principal);
-    expect(before.offers.map((o) => `${o.planCode}/${o.interval}`)).toEqual(['pro_sifu/month']);
+    expect(before.offers.map((o) => `${o.planCode}/${o.interval}`)).toEqual(['pro_sifu/month', 'pro_sifu/year']);
     expect(before.testModeLabel).toBe('Test mode, no real charge');
 
     const started = await startCheckout(sifu.principal, { planCode: 'pro_sifu' }, meta);
@@ -394,7 +394,7 @@ describe('the lifecycle', () => {
     // An ended subscription cannot be resumed or moved; a new checkout is allowed again.
     await expect(resumeSubscription(sifu.principal, { subscriptionId: subscription.id }, meta)).rejects.toMatchObject({ code: 'CONFLICT' });
     await expect(moveTestClock(admin.principal, { subscriptionId: subscription.id, step: 'period_end' }, meta)).rejects.toMatchObject({ code: 'CONFLICT' });
-    expect((await myBilling(sifu.principal)).offers.map((o) => o.planCode)).toEqual(['pro_sifu']);
+    expect((await myBilling(sifu.principal)).offers.map((o) => o.planCode)).toEqual(['pro_sifu', 'pro_sifu']);
   });
 
   it('a renewal with the "fails at renewal" card: past due, access for the 7-day grace, then the plan ends', async () => {
@@ -504,7 +504,7 @@ describe('the demo data (D20)', () => {
     const sifu = await myBilling(await byEmail('demo-free-sifu-5@example.test'));
     expect(sifu.plan.code).toBe('free_sifu');
     expect(sifu.subscription).toMatchObject({ status: 'canceled', cancelAtPeriodEnd: true, planCode: 'pro_sifu', canResume: false });
-    expect(sifu.offers.map((o) => o.planCode)).toEqual(['pro_sifu']);
+    expect(sifu.offers.map((o) => o.planCode)).toEqual(['pro_sifu', 'pro_sifu']);
     // demo-pro-sifu-8 keeps its test plan only (the M08 downgrade test revokes it).
     const pro = await myBilling(await byEmail('demo-pro-sifu-8@example.test'));
     expect(pro.subscription).toBeNull();

@@ -11,3 +11,9 @@ const PLAN_CODE = /^[a-z_]{1,40}$/;
 /** The id of one change form: its plan and billing period (only known words, never anything else typed). */
 export const changePlanFormId = (planCode: string, interval: string) =>
   `${CHANGE_PLAN_FORM}-${PLAN_CODE.test(planCode) ? planCode : 'plan'}-${interval === 'year' ? 'year' : 'month'}`;
+/**
+ * The id of one checkout form: an account's monthly offer keeps the plain id; its yearly offer
+ * (owner decision 2026-11-27) and an organization's two offers (M23) name the billing period.
+ */
+export const checkoutFormId = (interval: string, organization: boolean) =>
+  !organization && interval !== 'year' ? CHECKOUT_FORM : `${CHECKOUT_FORM}-${interval === 'year' ? 'year' : 'month'}`;

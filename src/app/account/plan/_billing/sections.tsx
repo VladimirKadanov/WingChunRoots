@@ -23,7 +23,7 @@ import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { CancelForm, CheckoutForm, ConfirmingRefresh, ResumeForm } from './forms';
 import { SubscriptionChanges } from './changes';
-import { CANCEL_CHANGE_FORM, CANCEL_FORM, changePlanFormId, CHECKOUT_FORM, RESUME_FORM } from './form-ids';
+import { CANCEL_CHANGE_FORM, CANCEL_FORM, changePlanFormId, CHECKOUT_FORM, checkoutFormId, RESUME_FORM } from './form-ids';
 
 const PAGE = '/account/plan';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -46,8 +46,9 @@ export async function BillingSections({ principal, requestHeaders, query }: { pr
   if (!mine) return <LoadError {...BILLING_LOAD_ERROR} retryHref={PAGE} />;
 
   const outcome = one(query.outcome);
-  const [checkoutState, cancelState, resumeState] = await Promise.all([
+  const [checkoutState, yearlyCheckoutState, cancelState, resumeState] = await Promise.all([
     readFormResult(CHECKOUT_FORM, outcome),
+    readFormResult(checkoutFormId('year', false), outcome),
     readFormResult(CANCEL_FORM, outcome),
     readFormResult(RESUME_FORM, outcome),
   ]);
@@ -148,7 +149,7 @@ export async function BillingSections({ principal, requestHeaders, query }: { pr
                 Choose a paid plan
               </h2>
               {mine.offers.map((offer) => (
-                <CheckoutForm key={`${offer.planCode}-${offer.interval}`} offer={offer} testModeLabel={mine.testModeLabel} chosen={offer.planCode === wanted} initial={checkoutState} />
+                <CheckoutForm key={`${offer.planCode}-${offer.interval}`} offer={offer} testModeLabel={mine.testModeLabel} chosen={offer.planCode === wanted} initial={offer.interval === 'year' ? yearlyCheckoutState : checkoutState} />
               ))}
             </section>
           ) : null}

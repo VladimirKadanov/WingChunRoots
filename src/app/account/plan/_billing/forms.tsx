@@ -14,7 +14,7 @@ import { useActionState, useEffect, useState } from 'react';
 import { FormMessage, SubmitButton, useFocusOnError } from '@/components/account/fields';
 import { IDLE, type FormState } from '@/lib/form-state';
 import { cancelChangeAction, cancelSubscriptionAction, changePlanAction, resumeSubscriptionAction, startCheckoutAction } from './actions';
-import { CANCEL_CHANGE_FORM, CANCEL_FORM, changePlanFormId, CHECKOUT_FORM, RESUME_FORM } from './form-ids';
+import { CANCEL_CHANGE_FORM, CANCEL_FORM, changePlanFormId, checkoutFormId, RESUME_FORM } from './form-ids';
 
 export interface OfferView {
   planCode: string;
@@ -23,6 +23,7 @@ export interface OfferView {
   price: string;
   priceLabel: string;
   summary: string;
+  saving?: string | null;
 }
 
 /** One paid plan this account may choose, with its proposed price and the test-mode label. */
@@ -42,9 +43,9 @@ export function CheckoutForm({
   note?: string;
 }) {
   const [state, action, pending] = useActionState(startCheckoutAction, initial ?? IDLE);
-  // One offer per account type (its paid plan, monthly), so one fixed id for the outcome without
-  // JavaScript; an organization's two offers (M23: monthly and yearly) each get their own.
-  const formId = organizationId ? `${CHECKOUT_FORM}-${offer.interval}` : CHECKOUT_FORM;
+  // A fixed id per offer for the outcome without JavaScript: an account's monthly offer keeps the
+  // plain id, its yearly one (owner decision 2026-11-27) and an organization's two (M23) name the period.
+  const formId = checkoutFormId(offer.interval, Boolean(organizationId));
   useFocusOnError(formId, state);
   return (
     <form
@@ -52,7 +53,7 @@ export function CheckoutForm({
       action={action}
       noValidate
       aria-busy={pending || undefined}
-      data-testid={organizationId ? `offer-${offer.planCode}-${offer.interval}` : `offer-${offer.planCode}`}
+      data-testid={organizationId || offer.interval === 'year' ? `offer-${offer.planCode}-${offer.interval}` : `offer-${offer.planCode}`}
       className={`grid gap-3 rounded-sm border p-4 ${chosen ? 'border-2 border-fg' : 'border-border-strong'}`}
     >
       <FormMessage form={formId} state={state} single />
@@ -61,18 +62,19 @@ export function CheckoutForm({
       {organizationId ? <input type="hidden" name="organizationId" value={organizationId} /> : null}
       <h3 className="font-display text-2xl">
         {offer.planName}
-        {organizationId ? <span className="text-fg-muted">, {offer.interval === 'year' ? 'yearly' : 'monthly'}</span> : null}
+        {organizationId || offer.interval === 'year' ? <span className="text-fg-muted">, {offer.interval === 'year' ? 'yearly' : 'monthly'}</span> : null}
       </h3>
       <p className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
         <span className="font-display text-xl tabular">{offer.price}</span>
         <span className="text-sm text-fg-muted">{offer.priceLabel}</span>
       </p>
       <p className="max-w-[52ch] text-ui text-fg-muted">{offer.summary}</p>
+      {offer.saving ? <p className="max-w-[52ch] text-ui">{offer.saving}</p> : null}
       {note ? <p className="max-w-[52ch] text-ui">{note}</p> : null}
       <p className="text-sm font-semibold">{testModeLabel}. You can cancel at any time; the plan then runs to the end of the period.</p>
       <div>
         <SubmitButton pending={pending} pendingLabel="Opening the checkout…">
-          {organizationId ? `Choose ${offer.interval === 'year' ? 'yearly' : 'monthly'} billing` : `Choose ${offer.planName}`}
+          {organizationId ? `Choose ${offer.interval === 'year' ? 'yearly' : 'monthly'} billing` : offer.interval === 'year' ? `Choose ${offer.planName} yearly` : `Choose ${offer.planName}`}
         </SubmitButton>
       </div>
     </form>

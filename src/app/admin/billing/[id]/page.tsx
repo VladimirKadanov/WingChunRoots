@@ -152,7 +152,7 @@ export default async function AdminSubscriptionPage({ params, searchParams }: { 
             </h2>
             <p className="max-w-[60ch] text-sm text-fg-muted">
               {t(
-                'Moves this subscription on the test provider as if time had passed: a renewal (paid, or failed with the card that fails at renewal), the end of a cancelled subscription, or the end of the grace period. Audited.',
+                'Moves this subscription at the payment provider as if time had passed (with Stripe, its test clock): a renewal (paid, or failed with a card that fails at renewal), the end of a cancelled subscription, or the end of the grace period. Audited.',
               )}
             </p>
             <TestClockForm subscriptionId={sub.id} steps={view.testClock.steps.map((s) => ({ step: s.step, label: stepLabel(t, s.step) }))} initial={initial} />

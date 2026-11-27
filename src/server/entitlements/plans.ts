@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-25.1';
+export const PLAN_MATRIX_VERSION = '2026-11-27.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -59,7 +59,12 @@ export interface PlanDefinition {
 export const FREE_SIFU_STUDENT_LIMIT = 5;
 
 // DEFAULT D09: $4 / $19 / $99 a month and $990 a year for a federation, as working proposals only.
-const proposal = (monthlyUsd: number, yearlyUsd: number | null = null): PlanPrice => ({ monthlyUsd, yearlyUsd, status: 'working proposal' });
+/**
+ * Owner decision 2026-11-27 (matrix 2026-11-27.1): a year of a paid plan costs 10 monthly prices,
+ * two months free.
+ */
+export const YEARLY_MONTHS_CHARGED = 10;
+const proposal = (monthlyUsd: number): PlanPrice => ({ monthlyUsd, yearlyUsd: monthlyUsd > 0 ? monthlyUsd * YEARLY_MONTHS_CHARGED : null, status: 'working proposal' });
 
 export const PLANS: Readonly<Record<PlanCode, PlanDefinition>> = {
   free_student: {
@@ -111,7 +116,7 @@ export const PLANS: Readonly<Record<PlanCode, PlanDefinition>> = {
     audience: 'organization',
     rank: 0,
     availability: 'planned',
-    price: proposal(99, 990),
+    price: proposal(99),
     summary: 'Branch administration, bulk import, certification and analytics for an organization.',
   },
 };
@@ -668,11 +673,11 @@ export const GRANTABLE_PLANS: readonly PlanCode[] = ['premium_student', 'pro_sif
  */
 export const ORGANIZATION_GRANTABLE_PLANS: readonly PlanCode[] = ['federation'];
 
-/** "$19 a month", "$99 a month or $990 a year", and "Free" for a plan without a price. */
+/** "$19 a month or $190 a year (two months free)", and "Free" for a plan without a price. */
 export function formatPrice(price: PlanPrice): string {
   if (price.monthlyUsd === 0) return 'Free';
   const monthly = `$${price.monthlyUsd} a month`;
-  return price.yearlyUsd === null ? monthly : `${monthly} or $${price.yearlyUsd} a year`;
+  return price.yearlyUsd === null ? monthly : `${monthly} or $${price.yearlyUsd} a year (two months free)`;
 }
 
 // --- Billing in test mode (M22; docs/adr/0025-billing.md) --------------------------------------------
@@ -684,7 +689,7 @@ export type BillingInterval = 'month' | 'year';
 
 /**
  * M22 (DEFAULT D09): what a checkout of `code` charges in test mode, in US cents: the proposed
- * monthly price, or the proposed yearly price where the matrix names one (Federation). Null for a
+ * monthly price, or the yearly price (10 monthly prices, owner decision 2026-11-27). Null for a
  * free plan or an interval the plan has no price for.
  */
 export function billingPrice(code: PlanCode, interval: BillingInterval): { amountCents: number; currency: 'usd' } | null {
@@ -725,6 +730,9 @@ export const FEDERATION_BENEFITS_NOW: readonly string[] = [
 export const INTERVAL_WORDS: Readonly<Record<BillingInterval, string>> = { month: 'a month', year: 'a year' };
 
 /** "$19.00" (cents of US dollars); another currency reads "19.00 EUR". */
+/** The yearly offer's line: what a year saves against twelve monthly payments, in plain words. */
+export const YEARLY_SAVING_NOTE = 'Two months free compared with paying monthly.';
+
 export function formatAmount(cents: number, currency: string): string {
   const value = (cents / 100).toFixed(2);
   return currency.toLowerCase() === 'usd' ? `$${value}` : `${value} ${currency.toUpperCase()}`;

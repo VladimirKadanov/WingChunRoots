@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { BillingConfigError, billingProviderName, checkBillingSettings, stripeSecretKey, testWebhookSecret } from './config';
 import { redactEvent } from './redact';
 import { signPayload, verifySignature, WEBHOOK_TOLERANCE_SECONDS } from './signature';
-import { createStripeProvider, formEncode, normalizeStripeEvent, stripeStatus } from './stripe';
+import { addStripeInterval, createStripeProvider, formEncode, normalizeStripeEvent, stripeStatus, subscriptionFromStripe } from './stripe';
 import { addInterval, normalizeTestEvent, prorate } from './test-provider';
 import { WebhookSignatureError } from './types';
 
@@ -213,11 +213,12 @@ describe('the Stripe adapter', () => {
     answer = { id: 'sub_Demo0001', object: 'subscription', livemode: true };
     await expect(stripe.cancelAtPeriodEnd('sub_Demo0001')).rejects.toMatchObject({ code: 'refused' });
     const cancel = calls.at(-1)!;
+    // A cancellation reads the subscription first (its schedule goes before it); the live answer stops it there.
     expect(cancel.url).toBe('https://api.stripe.com/v1/subscriptions/sub_Demo0001');
-    expect(String(cancel.init.body)).toBe('cancel_at_period_end=true');
+    expect(cancel.init.method).toBe('GET');
   });
 
-  it('M23: a checkout during a trial sets trial_end and plan_code; a change now prorates; a change at the period end is refused', async () => {
+  it('M23: a checkout during a trial sets trial_end and plan_code; a change now prorates', async () => {
     const calls: { url: string; init: RequestInit }[] = [];
     let answer: Record<string, unknown> = { id: 'cs_test_Demo0003', url: 'https://checkout.stripe.com/c/pay/cs_test_Demo0003', livemode: false };
     const stripe = createStripeProvider({
@@ -265,10 +266,138 @@ describe('the Stripe adapter', () => {
     expect(post.get('items[0][id]')).toBe('si_Demo0002');
     expect(post.get('items[0][price_data][unit_amount]')).toBe('99000');
     expect(post.get('metadata[plan_code]')).toBe('federation');
-    const before = calls.length;
-    await expect(stripe.changePlan('sub_Demo0002', { ...change, interval: 'month', amountCents: 9900, when: 'period_end' })).rejects.toMatchObject({ code: 'unsupported' });
-    // Only the GET of the current state; nothing was changed.
-    expect(calls.slice(before).every((c) => (c.init.method ?? 'GET') === 'GET')).toBe(true);
+  });
+
+  it('M23: a change at the period end is a subscription schedule of two phases, and taking it back releases it', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const start = 1794470400;
+    const end = 1826006400;
+    const subscription = (extra: Record<string, unknown> = {}) => ({
+      id: 'sub_Demo0003',
+      object: 'subscription',
+      livemode: false,
+      status: 'active',
+      customer: 'cus_Demo0003',
+      cancel_at_period_end: false,
+      schedule: null,
+      metadata: { checkout_ref: '0190a5c0-0000-7000-8000-00000000fed2', plan_code: 'federation' },
+      items: { data: [{ id: 'si_Demo0003', quantity: 1, price: { id: 'price_Demo0003', product: 'prod_Demo0003', recurring: { interval: 'year' } }, current_period_start: start, current_period_end: end }] },
+      ...extra,
+    });
+    let current = subscription();
+    const stripe = createStripeProvider({
+      env: { STRIPE_SECRET_KEY: fakeKey('sk_test'), STRIPE_WEBHOOK_SECRET: fakeKey('whsec') },
+      now: () => new Date((start + 86_400) * 1000),
+      fetch: async (url, init) => {
+        calls.push({ url, init });
+        let answer: Record<string, unknown> = current;
+        if (url.endsWith('/subscription_schedules')) answer = { id: 'sub_sched_Demo0003', object: 'subscription_schedule', livemode: false, phases: [{ start_date: start, end_date: end, items: [{ price: 'price_Demo0003', quantity: 1 }] }] };
+        else if (url.includes('/subscription_schedules/')) answer = { id: 'sub_sched_Demo0003', object: 'subscription_schedule', livemode: false };
+        else if ((init.method ?? 'GET') === 'POST') {
+          const form = new URLSearchParams(String(init.body));
+          const plan = form.get('metadata[scheduled_plan_code]');
+          if (plan) current = subscription({ schedule: plan === 'none' ? null : 'sub_sched_Demo0003', metadata: { ...current.metadata, scheduled_plan_code: plan, scheduled_interval: form.get('metadata[scheduled_interval]') } });
+          answer = current;
+        }
+        return new Response(JSON.stringify(answer), { status: 200, headers: { 'content-type': 'application/json' } });
+      },
+    });
+    const snap = await stripe.changePlan('sub_Demo0003', { planCode: 'federation', planName: 'Federation', interval: 'month', amountCents: 9900, currency: 'usd', when: 'period_end' });
+    expect(snap).toMatchObject({ interval: 'year', scheduledChange: { planCode: 'federation', interval: 'month' } });
+    const create = calls.find((c) => c.url.endsWith('/subscription_schedules'))!;
+    expect(String(create.init.body)).toBe('from_subscription=sub_Demo0003');
+    const update = calls.find((c) => c.url.endsWith('/subscription_schedules/sub_sched_Demo0003'))!;
+    const form = new URLSearchParams(String(update.init.body));
+    expect(form.get('end_behavior')).toBe('release');
+    expect(form.get('proration_behavior')).toBe('none');
+    // The current price until the period end, untouched.
+    expect(form.get('phases[0][start_date]')).toBe(String(start));
+    expect(form.get('phases[0][end_date]')).toBe(String(end));
+    expect(form.get('phases[0][items][0][price]')).toBe('price_Demo0003');
+    expect(form.get('phases[0][metadata][scheduled_plan_code]')).toBe('federation');
+    // Then the new price, from a new period; when it starts, nothing is scheduled any more.
+    expect(form.get('phases[1][items][0][price_data][unit_amount]')).toBe('9900');
+    expect(form.get('phases[1][items][0][price_data][recurring][interval]')).toBe('month');
+    expect(form.get('phases[1][items][0][price_data][product]')).toBe('prod_Demo0003');
+    expect(form.get('phases[1][billing_cycle_anchor]')).toBe('phase_start');
+    expect(form.get('phases[1][end_date]')).toBe(String(Math.floor(addStripeInterval(new Date(end * 1000), 'month').getTime() / 1000)));
+    expect(addStripeInterval(new Date('2027-01-31T08:00:00Z'), 'month').toISOString()).toBe('2027-02-28T08:00:00.000Z');
+    expect(form.get('phases[1][metadata][scheduled_plan_code]')).toBe('none');
+    expect(form.get('phases[1][metadata][plan_code]')).toBe('federation');
+    // Nothing is charged now: no change of the subscription's items.
+    expect(calls.some((c) => String(c.init.body ?? '').includes('items[0][id]'))).toBe(false);
+
+    // The webhook reads the scheduled change from the metadata; none once it runs or is taken back.
+    expect(subscriptionFromStripe(current, 1, new Date()).scheduledChange).toEqual({ planCode: 'federation', interval: 'month' });
+    expect(subscriptionFromStripe(subscription(), 1, new Date()).scheduledChange).toBeUndefined();
+
+    calls.length = 0;
+    const back = await stripe.cancelScheduledChange('sub_Demo0003');
+    expect(back.scheduledChange).toBeNull();
+    expect(calls.map((c) => `${c.init.method ?? 'GET'} ${c.url.replace('https://api.stripe.com/v1', '')}`)).toEqual([
+      'GET /subscriptions/sub_Demo0003',
+      'POST /subscription_schedules/sub_sched_Demo0003/release',
+      'POST /subscriptions/sub_Demo0003',
+    ]);
+    expect(new URLSearchParams(String(calls[2]!.init.body)).get('metadata[scheduled_plan_code]')).toBe('none');
+  });
+
+  it('STRIPE_TEST_CLOCKS: a new customer gets its own test clock, which the admin test clock moves past the period end', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const end = 1797148800;
+    const answers: Record<string, Record<string, unknown>> = {
+      '/test_helpers/test_clocks': { id: 'clock_Demo0001', object: 'test_helpers.test_clock', livemode: false },
+      '/customers': { id: 'cus_Demo0004', object: 'customer', livemode: false },
+      '/checkout/sessions': { id: 'cs_test_Demo0004', url: 'https://checkout.stripe.com/c/pay/cs_test_Demo0004', livemode: false },
+      '/subscriptions/sub_Demo0004?expand[]=customer': {
+        id: 'sub_Demo0004',
+        object: 'subscription',
+        livemode: false,
+        status: 'active',
+        customer: { id: 'cus_Demo0004', object: 'customer', test_clock: 'clock_Demo0001' },
+        cancel_at_period_end: false,
+        metadata: { plan_code: 'pro_sifu' },
+        items: { data: [{ id: 'si_Demo0004', price: { product: 'prod_Demo0004', recurring: { interval: 'month' } }, current_period_start: 1794470400, current_period_end: end }] },
+      },
+      '/test_helpers/test_clocks/clock_Demo0001': { id: 'clock_Demo0001', object: 'test_helpers.test_clock', livemode: false, status: 'ready', frozen_time: 1794470400 },
+      '/test_helpers/test_clocks/clock_Demo0001/advance': { id: 'clock_Demo0001', object: 'test_helpers.test_clock', livemode: false, status: 'advancing' },
+    };
+    const env = { STRIPE_SECRET_KEY: fakeKey('sk_test'), STRIPE_WEBHOOK_SECRET: fakeKey('whsec'), STRIPE_TEST_CLOCKS: 'true' };
+    const stripe = createStripeProvider({
+      env,
+      fetch: async (url, init) => {
+        calls.push({ url, init });
+        return new Response(JSON.stringify(answers[url.replace('https://api.stripe.com/v1', '')] ?? {}), { status: 200, headers: { 'content-type': 'application/json' } });
+      },
+    });
+    const checkoutId = '0190a5c0-0000-7000-8000-00000000c10c';
+    await stripe.createCheckout({
+      checkoutId,
+      planCode: 'pro_sifu',
+      planName: 'Professional Sifu',
+      interval: 'month',
+      amountCents: 1900,
+      currency: 'usd',
+      customerId: null,
+      successUrl: 'http://localhost:3000/account/plan#outcome',
+      cancelUrl: 'http://localhost:3000/account/plan#outcome',
+      expiresAt: new Date(Date.now() + 60 * 60_000),
+    });
+    expect(calls.map((c) => c.url.replace('https://api.stripe.com/v1', ''))).toEqual(['/test_helpers/test_clocks', '/customers', '/checkout/sessions']);
+    const customer = new URLSearchParams(String(calls[1]!.init.body));
+    expect(customer.get('test_clock')).toBe('clock_Demo0001');
+    // No name or e-mail address of the account.
+    expect([...customer.keys()].sort()).toEqual(['metadata[checkout_ref]', 'test_clock']);
+    expect(new URLSearchParams(String(calls[2]!.init.body)).get('customer')).toBe('cus_Demo0004');
+
+    calls.length = 0;
+    await stripe.advanceClock!('sub_Demo0004', 'period_end');
+    const advance = calls.at(-1)!;
+    expect(advance.url).toBe('https://api.stripe.com/v1/test_helpers/test_clocks/clock_Demo0001/advance');
+    expect(String(advance.init.body)).toBe(`frozen_time=${end + 2 * 3600}`);
+
+    // Without the setting there is no test clock, and Checkout makes the customer.
+    expect(createStripeProvider({ env: { ...env, STRIPE_TEST_CLOCKS: '' } }).advanceClock).toBeUndefined();
   });
 
   it('cannot be made with a live key', () => {
