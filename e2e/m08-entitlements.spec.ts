@@ -762,13 +762,13 @@ test('@M08 notifications: marking one read updates the count at once, and markin
     }
     await route.continue();
   });
-  await page.getByRole('button', { name: 'Mark as read (Pilot plan added: Professional Sifu)' }).click();
+  await page.getByRole('button', { name: 'Mark as read (Test plan added: Professional Sifu)' }).click();
   await expect(count).toHaveText('1 unread', { timeout: 1_000 });
   await expect(headerLink).toHaveText('1 unread notification', { timeout: 1_000 });
   expect(posted, 'the Server Action is still held').toBe(1);
   // A polite announcement, and the focus moves on to the next unread item (a11y-webview-3).
   await expect(page.getByTestId('notifications-status')).toHaveText('Marked as read. 1 unread.');
-  await expect(page.getByRole('button', { name: 'Mark as read (Pilot plan ended: Professional Sifu)' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Mark as read (Test plan ended: Professional Sifu)' })).toBeFocused();
   // The optimistic count already reads "1 unread", so it cannot tell that the write landed: wait
   // for the Server Action's answer before reloading, or the reload can cancel it or beat it.
   const answered = page.waitForResponse(
@@ -810,7 +810,7 @@ test('@M08 notifications: a failed "Mark as read" says so, puts the item back an
   );
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  const button = page.getByRole('button', { name: 'Mark as read (Pilot plan added: Professional Sifu)' });
+  const button = page.getByRole('button', { name: 'Mark as read (Test plan added: Professional Sifu)' });
   await button.click();
   const status = page.getByTestId('notifications-status');
   await expect(status).toHaveText('Could not mark it as read. Check your connection and try again.');

@@ -6,6 +6,7 @@
 
 import { cx } from '@/lib/cx';
 import type { OrganizationPageDto } from '@/server/dto/organizations';
+import { countryName } from '@/lib/regions';
 
 const W = 320;
 const H = 200;
@@ -50,7 +51,7 @@ export function CityMap({ cities, className }: { cities: readonly City[]; classN
         {placed.map(({ city }, i) => (
           <li key={i} className="flex items-baseline justify-between gap-3 border-b border-border-subtle py-1.5" data-testid="organization-city">
             <span>
-              {city.name}, {city.countryCode}
+              {city.name}, {countryName(city.countryCode) ?? city.countryCode}
             </span>
             <span className="text-fg-muted">{city.schools === 1 ? '1 school' : `${city.schools} schools`}</span>
           </li>

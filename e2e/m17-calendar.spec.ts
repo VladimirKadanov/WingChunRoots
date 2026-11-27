@@ -68,7 +68,7 @@ test('@M17 the calendar lists the upcoming events by month and filters them with
   // A plain GET form sends its empty fields too; the page reads only what is set.
   await expect(page).toHaveURL(/\/events\?country=GB&kind=camp(&|$)/);
   expect(await slugs(page)).toEqual(['demo-spring-camp-london']);
-  await expect(page.getByTestId('event-count')).toHaveText('1 event match these filters.');
+  await expect(page.getByTestId('event-count')).toHaveText('1 event matches these filters.');
   // On a phone the filters stay folded; the button counts them and each one set is a chip that clears it.
   if (await page.getByTestId('filters').locator(':scope > summary').isVisible()) {
     await expect(page.getByTestId('filters').locator(':scope > summary')).toContainText('Filters · 2');

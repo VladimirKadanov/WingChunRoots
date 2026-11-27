@@ -50,6 +50,7 @@ import {
   testPay,
 } from './billing';
 import { applyPendingBillingEvents, paidSubscription } from './billing.test-support';
+import { createGrant } from './grants';
 import { setAccountType } from './plans';
 import { carryOutDeletionFromCommandLine, requestAccountDeletion } from './privacy';
 import { member, meta, newLineage, staff } from './relationships.test-support';
@@ -149,6 +150,17 @@ describe('checkout', () => {
     expect(after.subscription!.invoices).toHaveLength(1);
     // A second checkout while the subscription is live is refused.
     await expect(startCheckout(sifu.principal, { planCode: 'pro_sifu' }, meta)).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  it('journey review P3-5: a plan given by the team is said so and not offered for sale', async () => {
+    const sifu = await member('p3-5-given', { sifu: true });
+    const admin = await staff('p3-5-admin', 'admin');
+    await createGrant(admin.principal, { email: sifu.account.email, planCode: 'pro_sifu', reason: 'P3-5 test (fictional)' }, meta);
+    const mine = await myBilling(sifu.principal);
+    expect(mine.grantNote).toBe('Professional Sifu is active, given by the WingChunRoots team, so there is nothing you need to buy.');
+    expect(mine.offers.map((o) => o.planCode)).not.toContain('pro_sifu');
+    const free = await member('p3-5-free', { sifu: true });
+    expect((await myBilling(free.principal)).grantNote).toBeNull();
   });
 
   it('a declined test card creates no subscription, sends no event and leaves the checkout open', async () => {

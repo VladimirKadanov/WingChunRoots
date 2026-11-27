@@ -218,7 +218,7 @@ export function EventForm({ editor, publishAs, cityQuery, initial }: EventFormPr
       </div>
 
       <div className={cx(hydrated && where === 'city' && 'hidden')}>
-        <SelectField form={form} name="timezone" label={LABELS.timezone} state={state} autoComplete="off" defaultValue={values?.timezone ?? current?.timezone ?? 'UTC'}>
+        <SelectField form={form} name="timezone" label={LABELS.timezone} state={state} autoComplete="off" defaultValue={values?.timezone ?? current?.timezone ?? editor.defaultTimezone}>
           {editor.timezones.map((z) => (
             <option key={z} value={z}>
               {z.replaceAll('_', ' ')}

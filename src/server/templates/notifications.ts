@@ -201,10 +201,10 @@ const planGranted: NotificationTemplate<PlanGranted> = {
     const later = startsAt !== null && createdAt !== undefined && Date.parse(startsAt) > createdAt.getTime();
     const from = later ? ` from ${formatDay(startsAt)}` : '';
     return {
-      title: `Pilot plan added: ${PLANS[planCode].name}`,
+      title: `Test plan added: ${PLANS[planCode].name}`,
       body: [
         {
-          text: `An administrator gave your account ${PLANS[planCode].name} for the pilot${from}${endsAt ? `, ${untilPlanEnd(endsAt)}` : ''}. No payment is involved.`,
+          text: `An administrator gave your account ${PLANS[planCode].name} as a test${from}${endsAt ? `, ${untilPlanEnd(endsAt)}` : ''}. No payment is involved.`,
         },
       ],
       action: SEE_YOUR_PLAN,
@@ -220,14 +220,14 @@ const planRevoked: NotificationTemplate<{ planCode: PlanCode }> = {
     return { planCode: grantablePlan('plan.revoked', payloadObject('plan.revoked', payload).planCode) };
   },
   render: ({ planCode }) => ({
-    title: `Pilot plan ended: ${PLANS[planCode].name}`,
+    title: `Test plan ended: ${PLANS[planCode].name}`,
     body: [
       {
         // A Student plan approves nobody, so only a Sifu plan speaks of approvals (DEFAULT D06/D08).
         text:
           PLANS[planCode].audience === 'sifu'
-            ? `An administrator ended your pilot plan ${PLANS[planCode].name}. Every confirmed link stays confirmed and public; only new approvals above your plan's limit wait.`
-            : `An administrator ended your pilot plan ${PLANS[planCode].name}. Your profile and every confirmed link stay as they are.`,
+            ? `An administrator ended your test plan ${PLANS[planCode].name}. Every confirmed link stays confirmed and public; only new approvals above your plan's limit wait.`
+            : `An administrator ended your test plan ${PLANS[planCode].name}. Your profile and every confirmed link stay as they are.`,
       },
     ],
     action: SEE_YOUR_PLAN,
@@ -1216,8 +1216,8 @@ const planExpiring: NotificationTemplate<PlanEndNotice> = {
           action: SEE_YOUR_BILLING,
         }
       : {
-          title: `Your pilot plan has an end date: ${PLANS[planCode].name}`,
-          body: [{ text: `Your pilot plan ${PLANS[planCode].name} runs ${untilPlanEnd(endsAt)}. After that your account has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
+          title: `Your test plan has an end date: ${PLANS[planCode].name}`,
+          body: [{ text: `Your test plan ${PLANS[planCode].name} runs ${untilPlanEnd(endsAt)}. After that your account has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
           action: SEE_YOUR_PLAN,
         },
   sample: { grantId: '0190a5c0-0000-7000-8000-0000000000f1', planCode: 'pro_sifu', endsAt: '2027-01-01T00:00:00.000Z', nextPlanCode: 'free_sifu' },
@@ -1235,8 +1235,8 @@ const planExpired: NotificationTemplate<PlanEndNotice> = {
           action: SEE_YOUR_BILLING,
         }
       : {
-          title: `Pilot plan ended: ${PLANS[planCode].name}`,
-          body: [{ text: `Your pilot plan ${PLANS[planCode].name} ran ${untilPlanEnd(endsAt)}. Your account now has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
+          title: `Test plan ended: ${PLANS[planCode].name}`,
+          body: [{ text: `Your test plan ${PLANS[planCode].name} ran ${untilPlanEnd(endsAt)}. Your account now has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
           action: SEE_YOUR_PLAN,
         },
   sample: { grantId: '0190a5c0-0000-7000-8000-0000000000f2', planCode: 'premium_student', endsAt: '2027-01-01T00:00:00.000Z', nextPlanCode: 'free_student' },

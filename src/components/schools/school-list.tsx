@@ -17,6 +17,7 @@ import { Emblem } from '@/components/ink/ink-art';
 import { cx } from '@/lib/cx';
 import type { SchoolPinDto } from '@/server/dto/schools';
 import { CityRingMark, ExactPinMark } from './marks';
+import { countryName } from '@/lib/regions';
 
 export const EXACT_LABEL = 'Exact location';
 export const CITY_ONLY_LABEL = 'Private club, by invitation';
@@ -100,7 +101,7 @@ export function SchoolList({ schools, selectedId = null, onShow, className }: Sc
               </div>
             </div>
             <p className="text-sm text-fg-muted">
-              {school.city}, {school.countryCode}
+              {school.city}, {countryName(school.countryCode) ?? school.countryCode}
             </p>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <LocationTag precision={school.precision} />

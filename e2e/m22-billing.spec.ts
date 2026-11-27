@@ -88,7 +88,7 @@ test('@M22 a Sifu pays Professional Sifu in test mode, cancels, and keeps its re
     // The page streams after its shell (status 200), so the API answers for the status.
     expect((await other.page.request.get(`/api/v1/billing/test-checkout/${checkoutId}`)).status()).toBe(404);
     await other.page.goto(`/billing/test-checkout/${checkoutId}`);
-    await expect(visible(other.page.getByRole('heading', { name: 'This page is not drawn yet' }))).toBeVisible();
+    await expect(visible(other.page.getByRole('heading', { name: 'Page not found' }))).toBeVisible();
     await expect(other.page.getByTestId('test-pay-form')).toHaveCount(0);
   } finally {
     await other.context.close();

@@ -243,7 +243,7 @@ describe('notification templates', () => {
 
   it('the plan notifications promise no payment and keep confirmed links (M08)', () => {
     const granted = renderNotification('plan.granted', { planCode: 'pro_sifu', endsAt: '2026-12-31T00:00:00.000Z' });
-    expect(granted.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('for the pilot, until 30 December 2026. No payment is involved.');
+    expect(granted.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('as a test, until 30 December 2026. No payment is involved.');
     expect(granted.action).toEqual({ label: 'See your plan', href: '/account/plan' });
     const revoked = renderNotification('plan.revoked', { planCode: 'pro_sifu' });
     expect(revoked.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('Every confirmed link stays confirmed and public');
@@ -261,11 +261,11 @@ describe('notification templates', () => {
         .join('');
     const later = { planCode: 'pro_sifu', startsAt: '2027-01-01T00:00:00.000Z', endsAt: '2027-02-01T00:00:00.000Z' };
     expect(text(later, new Date('2026-10-19T10:00:00Z'))).toBe(
-      'An administrator gave your account Professional Sifu for the pilot from 1 January 2027, until 31 January 2027. No payment is involved.',
+      'An administrator gave your account Professional Sifu as a test from 1 January 2027, until 31 January 2027. No payment is involved.',
     );
     // Given today from 00:00 UTC: it is the account's plan already.
     const now = { planCode: 'pro_sifu', startsAt: '2026-10-19T00:00:00.000Z', endsAt: null };
-    expect(text(now, new Date('2026-10-19T10:00:00Z'))).toBe('An administrator gave your account Professional Sifu for the pilot. No payment is involved.');
+    expect(text(now, new Date('2026-10-19T10:00:00Z'))).toBe('An administrator gave your account Professional Sifu as a test. No payment is involved.');
     // A row from before the start was stored: no start, no "from".
     expect(text({ planCode: 'pro_sifu', endsAt: null }, new Date('2026-10-19T10:00:00Z'))).not.toContain(' from ');
   });

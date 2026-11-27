@@ -137,6 +137,11 @@ export async function BillingSections({ principal, requestHeaders, query }: { pr
             ) : null}
           </section>
 
+          {mine.grantNote ? (
+            <p className="max-w-[60ch] text-ui" data-testid="billing-grant-note">
+              {mine.grantNote}
+            </p>
+          ) : null}
           {mine.offers.length > 0 ? (
             <section aria-labelledby="offers-heading" className="grid gap-4">
               <h2 id="offers-heading" className="font-display text-2xl">

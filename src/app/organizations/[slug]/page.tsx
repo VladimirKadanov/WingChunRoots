@@ -176,7 +176,7 @@ export default async function OrganizationPage({ params }: Props) {
                           {school.name}
                         </Link>
                         <p className="text-sm text-fg-muted">
-                          {school.city}, {school.countryCode}
+                          {school.city}, {countryName(school.countryCode) ?? school.countryCode}
                         </p>
                       </div>
                     </li>

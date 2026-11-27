@@ -595,7 +595,7 @@ describe('grants.* (admin with a verified second factor)', () => {
     expect(row!.payload).toMatchObject({ planCode: 'pro_sifu', startsAt: `${inDays(30)}T00:00:00.000Z`, endsAt: `${inDays(60)}T00:00:00.000Z` });
     const list = (await v1(sifu.token, 'GET', '/notifications')).data as { items: { template: string; body: { text?: string }[] }[] };
     const text = list.items.find((item) => item.template === 'plan.granted')!.body.map((segment) => segment.text ?? '').join('');
-    expect(text).toContain(`for the pilot from ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${inDays(30)}T00:00:00Z`))}`);
+    expect(text).toContain(`as a test from ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${inDays(30)}T00:00:00Z`))}`);
     expect((await v1(sifu.token, 'GET', '/plans/mine')).data).toMatchObject({ plan: { code: 'free_sifu' } });
   });
 });
@@ -641,7 +641,7 @@ describe('notifications.*', () => {
     const list = await v1(a.token, 'GET', '/notifications');
     expect(list.status).toBe(200);
     expect(list.data.unread).toBe(2);
-    expect((list.data.items as { title: string }[])[0]!.title).toBe('Pilot plan ended: Premium Student');
+    expect((list.data.items as { title: string }[])[0]!.title).toBe('Test plan ended: Premium Student');
 
     // Another account's id matches nothing and says nothing about it.
     const other = await v1(a.token, 'POST', '/notifications/mark-read', { ids: [b1!.id] });

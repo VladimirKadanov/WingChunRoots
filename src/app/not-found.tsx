@@ -1,5 +1,5 @@
-// The page for addresses that are not on the record (404): a mistyped address, or a page the
-// pilot has not opened, so the copy says plainly what exists today.
+// The page for addresses that are not on the record (404): a mistyped address or a page that
+// moved, with Search, Home and Schools (journey review P3-2).
 //
 // A person's address that shows nobody to this viewer (missing, malformed or hidden) also lands
 // here: src/proxy.ts rewrites it to an address no route uses and marks the request
@@ -12,7 +12,6 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 
-import { ArrowLeftIcon } from '@/components/icons';
 import { LinkStroke } from '@/components/ink/link-stroke';
 import { PersonNotFound } from '@/components/lineage/person-not-found';
 import { buttonVariants } from '@/components/ui/button';
@@ -30,19 +29,22 @@ export const metadata: Metadata = {
 
 export default async function NotFound() {
   if ((await headers()).get(NOT_ON_RECORD_HEADER) === 'person') return <PersonNotFound />;
+  // Journey review P3-2: a plain "Page not found" with the three ways on.
   return (
     <div className="mx-auto grid max-w-content content-start gap-5 px-page pt-12 pb-16 md:pt-20">
       <LinkStroke kind="unconfirmed" width={120} />
-      <p className="eyebrow">404 · Not on the record</p>
-      <h1 className="max-w-[16ch] font-display text-section">This page is not drawn yet</h1>
-      <p className="max-w-[56ch] text-fg-muted">
-        The address may be mistyped, or the page may open later in the pilot. The home page shows a demo lineage, the lineage
-        explorer draws the record, and the school finder shows the schools on a map.
-      </p>
-      <div>
+      <p className="eyebrow">404</p>
+      <h1 className="max-w-[16ch] font-display text-section">Page not found</h1>
+      <p className="max-w-[56ch] text-fg-muted">The address may be mistyped, or the page has moved.</p>
+      <div className="flex flex-wrap gap-3">
+        <Link href="/explore" className={buttonVariants({ variant: 'primary' })}>
+          Search
+        </Link>
         <Link href="/" className={buttonVariants({ variant: 'secondary' })}>
-          <ArrowLeftIcon />
-          Back to Explore
+          Home
+        </Link>
+        <Link href="/schools" className={buttonVariants({ variant: 'secondary' })}>
+          Schools
         </Link>
       </div>
     </div>
