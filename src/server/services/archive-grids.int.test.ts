@@ -116,6 +116,9 @@ describe('archive grids', () => {
     const other = await record('Demo Grid Foundr', { originalName: '演示网祖', originalLang: 'zh-Hans' });
     const byChinese = await archivePeople(archivist.principal, { show: 'duplicates', q: '演示網祖' });
     expect(byChinese.rows.map((r) => r.record.id).sort()).toEqual([root.id, other.id].sort());
+    // Each one names only the records it shares a spelling with, not every duplicate on the page.
+    expect(byChinese.rows.find((r) => r.record.id === other.id)!.duplicateOf.map((d) => d.slug)).toEqual([root.slug]);
+    expect(duplicates.rows.find((r) => r.record.id === twin.id)!.duplicateOf.map((d) => d.slug)).toEqual([a.slug]);
     expect((await archivePeople(archivist.principal, { show: 'duplicates', q: 'grid beta' })).rows).toEqual([]);
     expect((await archivePeople(archivist.principal, { lineage: 'demo-no-such-lineage' })).rows).toEqual([]);
   });

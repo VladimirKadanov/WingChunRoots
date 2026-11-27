@@ -62,8 +62,8 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return NextResponse.next();
   }
   // Journey review P2-10 (ADR 0086): the address of a record merged into another one answers with a
-  // permanent redirect to the kept record, while that one is public. Only the page addresses: the
-  // data forms of the two paths keep the not-on-record answer.
+  // permanent redirect to the kept record, while that one is public (the page and its data forms
+  // alike, which Next.js passes here with the page's own path).
   if (request.nextUrl.pathname.startsWith('/people/')) {
     try {
       const target = await withinDeadline(mergedRecordTarget(slug), PERSON_CHECK_BUDGET_MS);

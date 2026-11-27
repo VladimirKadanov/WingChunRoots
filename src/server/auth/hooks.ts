@@ -504,12 +504,16 @@ export const afterHook = createAuthMiddleware(async (ctx) => {
   }
 
   if (ctx.path === '/verify-email') {
+    const change = requestScope()?.emailChange;
+    // A changed address confirmed in the browser where the member is signed in: Better Auth answers
+    // with that same session, which is the member's own and stays.
+    const ownSession = change ? await ctx.getSignedCookie(ctx.context.authCookies.sessionToken.name, ctx.context.secret) : null;
+    const keepsOwnSession = Boolean(ownSession) && ownSession === ctx.context.newSession?.session.token;
     // The session of the first confirmation stays only in the browser that signed up.
-    if (succeeded(returned) && (await keepConfirmationSessionInSignUpBrowser(ctx)) === 'kept') {
+    if (succeeded(returned) && !keepsOwnSession && (await keepConfirmationSessionInSignUpBrowser(ctx)) === 'kept') {
       const email = ctx.context.newSession?.user.email;
       if (email) await rememberDevice(ctx, email);
     }
-    const change = requestScope()?.emailChange;
     if (change && succeeded(returned)) await afterEmailChange(ctx, change);
     return;
   }

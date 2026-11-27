@@ -58,7 +58,8 @@ export async function reportMissingLineage(principal: Principal | null, raw: unk
       subjectType: 'lineage',
       // No lineage exists yet: the subject is the account that asked (its id only).
       subjectId: p.user.id,
-      after: { name, notifiedStaff: staff.length },
+      // Never the typed name, which often names a person (CLAUDE.md §6): the staff notice carries it.
+      after: { nameLength: name.length, notifiedStaff: staff.length },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });

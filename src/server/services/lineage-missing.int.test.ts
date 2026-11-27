@@ -35,7 +35,9 @@ describe('lineage.reportMissing', () => {
     }
     expect(await getDb().select().from(notification).where(and(eq(notification.userId, m.account.id), eq(notification.template, 'lineage.missing')))).toHaveLength(0);
     const [audit] = await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'lineage.missing_report'), eq(auditLog.actorUserId, m.account.id)));
-    expect(audit?.after).toMatchObject({ name: 'Demo Lineage of the North' });
+    expect(audit?.after).toMatchObject({ nameLength: 'Demo Lineage of the North'.length });
+    // The typed name may name a person: never in the audit row (CLAUDE.md §6).
+    expect(JSON.stringify(audit)).not.toContain('Demo Lineage of the North');
     for (let i = 1; i < LINEAGE_REPORTS_PER_DAY; i += 1) await reportMissingLineage(m.principal, { name: `Demo Lineage ${i}` }, meta);
     await expect(reportMissingLineage(m.principal, { name: 'Demo Lineage Six' }, meta)).rejects.toMatchObject({ code: 'TOO_MANY_REQUESTS' });
     await expect(reportMissingLineage(m.principal, { name: ' ' }, meta)).rejects.toMatchObject({ code: 'BAD_REQUEST' });

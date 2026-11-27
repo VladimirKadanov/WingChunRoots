@@ -87,6 +87,8 @@ describe('sign-in settings', () => {
     const row = await userRow(owner.id);
     expect(row?.email).toBe(to);
     expect(row?.emailVerified).toBe(true);
+    // Confirmed in the browser where the member is signed in: that session stays.
+    expect((await authFetch(browser, '/get-session', { method: 'GET' })).data).not.toBeNull();
     expect(await noticeTargets(owner.id)).toEqual(expect.arrayContaining([to, owner.email]));
     const [audit] = await getDb()
       .select()

@@ -17,6 +17,11 @@
 //     the result (plan §6.3) and the global verify lock is held, as for any verified link;
 //   - its names become other spellings of the kept record (the primary one an alias), except the ones
 //     it already has; the search keys of both are written again (M07);
+//   - a biography moves in a language the kept record has none in; the kept record's own stays;
+//   - a confirmed link that moved makes its two people public (publication.ts), so a kept record
+//     that had no confirmed link yet shows the merged one's;
+//   - a link the kept record has but that still waits (a request or a claim) and that the merged
+//     record has confirmed refuses the merge: decide it first;
 //   - a lineage rooted on it is rooted on the kept record; the lineages are recomputed (worker);
 //   - person_redirect keeps the old address, and older addresses that pointed at it follow;
 //   - an audit row with ids and counts only (plan §6.4), never a name.
@@ -28,7 +33,7 @@ import { writeAudit } from '../audit';
 import type { Principal } from '../auth/principal';
 import { EXPLORE_START_TAG, invalidatePublic, lineageTag, personTag } from '../cache';
 import { getDb } from '../db';
-import { evidenceLink, lineage, lineageMembership, person, personName, personRedirect, teachingRelationship } from '../db/schema';
+import { evidenceLink, lineage, lineageMembership, person, personBio, personName, personRedirect, teachingRelationship } from '../db/schema';
 import { ACTIVE_RELATIONSHIP_STATUSES, PUBLIC_RELATIONSHIP_STATUSES } from '../db/schema/common';
 import { enqueue } from '../jobs/outbox';
 import { QUEUE } from '../jobs/queues';
@@ -36,6 +41,7 @@ import { writePersonKeys } from '../search/store';
 import { ARCHIVE_REASON_MAX, requireArchiveEditor } from './archive-editor';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
+import { publishPeople } from './publication';
 import { CYCLE_MESSAGE, publicTags, recordEvent, VERIFY_LOCK } from './relationships';
 
 const CHECK = 'Check the highlighted fields.';
@@ -142,12 +148,16 @@ export async function mergeArchiveRecord(principal: Principal | null, raw: Merge
       .from(teachingRelationship)
       .where(and(or(eq(teachingRelationship.teacherPersonId, into.id), eq(teachingRelationship.studentPersonId, into.id)), inArray(teachingRelationship.status, [...ACTIVE_RELATIONSHIP_STATUSES])));
     const pairKey = (t: string, s: string, l: string) => `${t}|${s}|${l}`;
-    const kept = new Set(intoLinks.map((l) => pairKey(l.teacherPersonId, l.studentPersonId, l.lineageId)));
+    // Only an established link of the kept record replaces a copy; a waiting one would be kept over a
+    // confirmed link, so a collision with one refuses the merge until it is decided.
+    const kept = new Set(intoLinks.filter((l) => established(l.status)).map((l) => pairKey(l.teacherPersonId, l.studentPersonId, l.lineageId)));
+    const waiting = new Set(intoLinks.filter((l) => !established(l.status)).map((l) => pairKey(l.teacherPersonId, l.studentPersonId, l.lineageId)));
     let hasPrimary = intoLinks.some((l) => l.studentPersonId === into.id && l.isDisplayPrimary && established(l.status));
     const tags = new Set<string>([personTag(from.id), personTag(into.id), lineageTag(from.id), lineageTag(into.id), EXPLORE_START_TAG]);
     const lineageIds = new Set<string>();
     let movedLinks = 0;
     let endedLinks = 0;
+    const toPublish = new Set<string>();
     const now = new Date();
     for (const l of links) {
       for (const tag of await publicTags(tx, l)) tags.add(tag);
@@ -155,6 +165,7 @@ export async function mergeArchiveRecord(principal: Principal | null, raw: Merge
       const teacherId = l.teacherPersonId === from.id ? into.id : l.teacherPersonId;
       const studentId = l.studentPersonId === from.id ? into.id : l.studentPersonId;
       const key = pairKey(teacherId, studentId, l.lineageId);
+      if (active(l.status) && waiting.has(key)) throw new ServiceError('CONFLICT', MERGE_PENDING, { intoSlug: MERGE_PENDING });
       if (active(l.status) && kept.has(key)) {
         // The kept record has this link already: this copy ends, with its history.
         await tx.update(teachingRelationship).set({ status: 'revoked', isDisplayPrimary: false, statusReason: 'merge', updatedAt: now }).where(eq(teachingRelationship.id, l.id));
@@ -170,6 +181,11 @@ export async function mergeArchiveRecord(principal: Principal | null, raw: Merge
       }
       await tx.update(teachingRelationship).set({ teacherPersonId: teacherId, studentPersonId: studentId, isDisplayPrimary, updatedAt: now }).where(eq(teachingRelationship.id, l.id));
       if (active(l.status)) kept.add(key);
+      // A confirmed link makes its two people public (publication.ts), the kept record included.
+      if (l.status === 'verified') {
+        toPublish.add(teacherId);
+        toPublish.add(studentId);
+      }
       movedLinks += 1;
     }
     // The cycle check on the result (plan §6.3): the kept record never reaches itself.
@@ -203,6 +219,12 @@ export async function mergeArchiveRecord(principal: Principal | null, raw: Merge
       movedNames += 1;
     }
     const keys = await writePersonKeys(tx, into.id);
+    // Biographies: the merged record's text, in a language the kept record has none in.
+    const bios = await tx
+      .update(personBio)
+      .set({ personId: into.id, updatedAt: now })
+      .where(and(eq(personBio.personId, from.id), sql`NOT EXISTS (SELECT 1 FROM person_bio k WHERE k.person_id = ${into.id}::uuid AND k.lang = ${personBio.lang})`))
+      .returning({ id: personBio.id });
     await writePersonKeys(tx, from.id);
 
     const evidence = await tx.update(evidenceLink).set({ personId: into.id }).where(eq(evidenceLink.personId, from.id)).returning({ id: evidenceLink.id });
@@ -212,6 +234,7 @@ export async function mergeArchiveRecord(principal: Principal | null, raw: Merge
     await tx.update(personRedirect).set({ personId: into.id }).where(eq(personRedirect.personId, from.id));
     await tx.insert(personRedirect).values({ fromSlug: from.slug, personId: into.id }).onConflictDoUpdate({ target: personRedirect.fromSlug, set: { personId: into.id } });
     await tx.update(person).set({ deletedAt: now, updatedAt: now }).where(eq(person.id, from.id));
+    for (const id of await publishPeople(tx, [...toPublish])) tags.add(personTag(id));
     for (const id of lineageIds) tags.add(lineageTag(id));
 
     await writeAudit(tx, {
@@ -220,7 +243,7 @@ export async function mergeArchiveRecord(principal: Principal | null, raw: Merge
       actorRole: p.user.role,
       subjectType: 'person',
       subjectId: from.id,
-      after: { archiveEditor: true, intoPersonId: into.id, movedLinks, endedLinks, movedNames, evidence: evidence.length, rootedLineages: rooted.length, searchKeys: keys },
+      after: { archiveEditor: true, intoPersonId: into.id, movedLinks, endedLinks, movedNames, bios: bios.length, evidence: evidence.length, rootedLineages: rooted.length, searchKeys: keys },
       reason: input.reason,
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,

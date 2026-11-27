@@ -1206,12 +1206,14 @@ async function writeInstructors(db: Executor, schoolId: string, ownId: string, o
 /** P3-10: each newly invited member is told (in the Schools category). */
 async function tellInvited(tx: Transaction, schoolId: string, name: string, invited: readonly string[]): Promise<void> {
   if (invited.length === 0) return;
+  const invitedAt = Date.now();
   const accounts = await tx
     .select({ userId: person.claimedByUserId })
     .from(person)
     .where(and(inArray(person.id, [...invited]), isNull(person.deletedAt)));
   for (const a of accounts) {
-    if (a.userId) await notify(tx, a.userId, 'school.instructor-invited', { schoolId, name }, { key: `school.instructor-invited:${schoolId}:${a.userId}` });
+    // One notice per invitation: a member who declined and is invited again hears of it again.
+    if (a.userId) await notify(tx, a.userId, 'school.instructor-invited', { schoolId, name }, { key: `school.instructor-invited:${schoolId}:${a.userId}:${invitedAt}` });
   }
 }
 

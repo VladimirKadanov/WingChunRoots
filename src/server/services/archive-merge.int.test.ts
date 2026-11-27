@@ -95,6 +95,26 @@ describe('archive merge', () => {
     expect(JSON.stringify(audit.rows[0])).not.toContain('Demo Merge');
   });
 
+  it('makes a kept record without links public and moves the biography in a language it lacks', async () => {
+    const teacher = await record('Demo Merge Bio Teacher');
+    const twin = await record('Demo Merge Bio Twin');
+    const kept = await record('Demo Merge Bio Kept');
+    const line = await createArchiveLineage(archivist.principal, { name: 'Demo Merge Bio Lineage', rootSlug: teacher.slug, reason: 'A fictional lineage.' }, meta);
+    await link(line.id, teacher.slug, twin.slug);
+    await getDb().execute(sql`INSERT INTO person_bio (person_id, lang, body) VALUES (${twin.id}::uuid, 'en', 'A fictional biography.'), (${twin.id}::uuid, 'bg', 'Измислена биография.'), (${kept.id}::uuid, 'bg', 'Своя биография.')`);
+    const visibility = async () => (await getDb().execute<{ v: string }>(sql`SELECT visibility AS v FROM person WHERE id = ${kept.id}::uuid`)).rows[0]?.v;
+    expect(await visibility()).not.toBe('public');
+
+    await mergeArchiveRecord(archivist.principal, { fromSlug: twin.slug, intoSlug: kept.slug, reason: 'The same fictional student, entered twice.' }, meta);
+    expect(await visibility()).toBe('public');
+    expect(await mergedRecordTarget(twin.slug)).toBe(kept.slug);
+    const bios = await getDb().execute<{ lang: string; body: string }>(sql`SELECT lang, body FROM person_bio WHERE person_id = ${kept.id}::uuid ORDER BY lang`);
+    expect(bios.rows).toEqual([
+      { lang: 'bg', body: 'Своя биография.' },
+      { lang: 'en', body: 'A fictional biography.' },
+    ]);
+  });
+
   it('refuses a member’s record, two linked records, the same record and other roles', async () => {
     const a = await record('Demo Merge Linked A');
     const b = await record('Demo Merge Linked B');

@@ -108,8 +108,10 @@ export interface ArchivePersonRow {
   lineages: { slug: string; name: string }[];
   teachers: number;
   students: number;
-  /** Another record has the same primary name. */
+  /** Another record shares a spelling with this one. */
   duplicate: boolean;
+  /** Those records, when they are kept by the archive (a merge's possible targets), by address. */
+  duplicateOf: { slug: string; name: string }[];
 }
 
 export interface ArchivePeopleList {
@@ -468,13 +470,27 @@ export async function archivePeople(principal: Principal | null, raw: ArchivePeo
         FROM person p WHERE p.id IN (${ids(pageIds)})`);
     for (const r of rows.rows) facts.set(r.person_id, { teachers: r.teachers, students: r.students, lineages: r.lineages ?? [] });
   }
+  // The records each duplicate on the page shares a spelling with (the same match as dup above).
+  const pairs = new Map<string, { slug: string; name: string }[]>();
+  const dupIds = result.rows.filter((r) => r.duplicate).map((r) => r.id);
+  if (dupIds.length > 0) {
+    const rows = await db.execute<{ person_id: string; slug: string; name: string }>(sql`
+      SELECT DISTINCT k.person_id::text AS person_id, op.slug, opn.value AS name
+        FROM person_name_key k
+        JOIN person_name_key o ON o.key = k.key AND o.person_id <> k.person_id AND (k.source = 'name' OR o.source = 'name')
+        JOIN person op ON op.id = o.person_id AND op.deleted_at IS NULL AND op.stewardship <> 'self' AND op.claimed_by_user_id IS NULL
+        JOIN person_name opn ON opn.person_id = op.id AND opn.is_primary
+       WHERE k.person_id IN (${ids(dupIds)})
+       ORDER BY 1, opn.value, op.slug`);
+    for (const r of rows.rows) pairs.set(r.person_id, [...(pairs.get(r.person_id) ?? []), { slug: r.slug, name: r.name }]);
+  }
   const total = result.rows[0]?.total ?? 0;
   return {
     rows: result.rows
       .filter((r) => refs.has(r.id))
       .map((r) => {
         const f = facts.get(r.id) ?? { teachers: 0, students: 0, lineages: [] };
-        return { record: refs.get(r.id)!, lineages: f.lineages, teachers: f.teachers, students: f.students, duplicate: r.duplicate };
+        return { record: refs.get(r.id)!, lineages: f.lineages, teachers: f.teachers, students: f.students, duplicate: r.duplicate, duplicateOf: pairs.get(r.id) ?? [] };
       }),
     total,
     page: input.page,

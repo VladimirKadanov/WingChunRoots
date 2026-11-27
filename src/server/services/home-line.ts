@@ -69,6 +69,10 @@ async function cachedHomeLine(day: number): Promise<HomeLineDto> {
   const links: HomeLineDto['links'] = [];
   const years: (number | null)[] = [null];
   const students = new Map<string, number>();
+  // The root's own count: the steps below read only a few of its students.
+  const rootStudents = await db.execute<{ n: number }>(sql`
+    SELECT count(*)::int AS n FROM v_public_edge x WHERE x.teacher_person_id = ${chosen.root_id}::uuid AND x.lineage_id = ${chosen.id}::uuid`);
+  students.set(chosen.root_id, rootStudents.rows[0]?.n ?? 0);
   while (ids.length < HOME_LINE_MAX) {
     const current = ids[ids.length - 1]!;
     const next = await db.execute<StepRow>(sql`
@@ -79,7 +83,6 @@ async function cachedHomeLine(day: number): Promise<HomeLineDto> {
        ORDER BY students DESC, e.is_display_primary DESC, e.student_person_id
        LIMIT ${HOME_LINE_MAX + 1}`);
     const step = next.rows.find((r) => !ids.includes(r.id));
-    if (!students.has(current)) students.set(current, next.rows.length);
     if (!step) break;
     ids.push(step.id);
     students.set(step.id, step.students);

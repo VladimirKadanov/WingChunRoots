@@ -124,11 +124,9 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
   const chip = (show: Show) => peopleHref({ ...filters, show }, 1, '#people');
   // The outcome sentence around the new record's address (kept whole, so each language orders it its own way).
   const [mergedBefore = '', mergedAfter = ''] = t('Merged. The old address now opens the kept record, {address}.').split('{address}');
-  // Only a record the archive keeps is merged, into another one of the same possible duplicates.
+  // Only a record the archive keeps is merged, into a record that shares a spelling with it.
   const mergeChoices = (slug: string) =>
-    filters.show === 'duplicates'
-      ? list.rows.filter((r) => r.duplicate && r.record.slug !== slug && r.record.stewardship !== 'self').map((r) => ({ slug: r.record.slug, label: `${r.record.name.value} · ${r.record.slug}` }))
-      : [];
+    filters.show === 'duplicates' ? (list.rows.find((r) => r.record.slug === slug)?.duplicateOf ?? []).map((d) => ({ slug: d.slug, label: `${d.name} · ${d.slug}` })) : [];
   const [createdBefore = '', createdAfter = ''] = t('The record is created, with the address {address}. It is not public yet: add a link to show it.').split('{address}');
 
   return (
