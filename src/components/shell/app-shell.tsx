@@ -11,12 +11,19 @@ import { BrandMark } from '@/components/brand/brand-mark';
 import { AccountEntry, AccountSlot } from './account-entry';
 import { DEMO_NOTICE } from './demo-notice';
 import { FocusInView } from './focus-in-view';
-import { NavLinks, NavList } from './nav-links';
+import { NavLinks, NavList, TabTail } from './nav-links';
 import { SearchField, SearchHost } from './search-trigger';
+import { SessionTabTail } from './tab-tail';
 import { TabBarRoom } from './tab-bar-room';
 import { ThemeMenu } from './theme-menu';
 
 export function AppShell({ children }: { children: ReactNode }) {
+  // Journey review P2-8 (ADR 0084): the last two phone tabs follow the session (Me when signed in).
+  const tabTail = (
+    <Suspense fallback={<TabTail signedIn={false} />}>
+      <SessionTabTail />
+    </Suspense>
+  );
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[var(--rail-w)_minmax(0,1fr)] print:block print:min-h-0">
       {/* Hidden above the top edge, whatever the safe-area inset: in a full-screen webview the
@@ -67,8 +74,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <SearchField variant="rail" />
           </div>
           <div className="flex flex-1 md:hidden">
-            <Suspense fallback={<NavList variant="tabs" pathname={null} />}>
-              <NavLinks variant="tabs" />
+            <Suspense fallback={<NavList variant="tabs" pathname={null} tail={tabTail} />}>
+              <NavLinks variant="tabs" tail={tabTail} />
             </Suspense>
           </div>
           <div className="hidden md:block">

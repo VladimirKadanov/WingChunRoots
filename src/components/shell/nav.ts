@@ -9,6 +9,10 @@
 // already leads to the dashboard, the profile and the settings, and shows "Sign in" without a
 // session, so a Me tab only repeated it.
 //
+// Journey review P2-8 (docs/adr/0084-me-tab.md): signed in, the phone tabs are Home, Lineage,
+// Schools, Events and Me (the dashboard, with the unread count); Organizations moves into the
+// account menu. Signed out, and in the side rail, the five destinations stay as they are.
+//
 // DEFAULT M17 (question 4): Events is a fifth tab of its own, after Schools and Organizations,
 // rather than a section inside another tab.
 
@@ -17,7 +21,7 @@ export interface NavItem {
   label: string;
   /** The label of the phone tab, where the full one does not fit (the rail shows `label`). */
   tabLabel?: string;
-  icon: 'home' | 'lineage' | 'schools' | 'organizations' | 'events';
+  icon: 'home' | 'lineage' | 'schools' | 'organizations' | 'events' | 'me';
   /** Paths that mark this tab as current. */
   match: (pathname: string) => boolean;
   /** False until the destination exists: no prefetch of a page that is not built yet. */
@@ -38,3 +42,12 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { href: '/events', label: 'Events', icon: 'events', match: (p) => p === '/events' || p.startsWith('/events/'), built: true },
 ];
+
+/** P2-8: the signed-in fifth tab on phones. */
+export const ME_ITEM: NavItem = {
+  href: '/dashboard',
+  label: 'Me',
+  icon: 'me',
+  match: (p) => p === '/dashboard' || p.startsWith('/dashboard/') || p === '/account' || p.startsWith('/account/'),
+  built: true,
+};

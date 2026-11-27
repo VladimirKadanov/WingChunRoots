@@ -50,7 +50,7 @@ function SignedOut({ variant }: { variant: AccountVariant }) {
 }
 
 /** One read per request: the phone bar and the side rail both render the entry (CSS shows one). */
-const loadMenu = cache(async () => {
+export const loadMenu = cache(async () => {
   const principal = await getRequestPrincipal();
   if (!principal) return null;
   return serverClient(await headers(), principal).account.menu();

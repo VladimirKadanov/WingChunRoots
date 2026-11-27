@@ -82,7 +82,7 @@ function YourPremium({ links, plan }: { links: { passportHref: string; familyHre
     { href: links.cardHref, title: 'Your lineage card', text: 'Your line from the roots, to share, print or save as a PDF.' },
   ];
   return (
-    <section aria-labelledby="your-premium-heading" className="mt-8 rounded-md border border-border-subtle bg-surface-1 p-5" data-testid="your-premium">
+    <section aria-labelledby="your-premium-heading" className="mt-3 rounded-md border border-border-subtle bg-surface-1 p-5" data-testid="your-premium">
       <h2 id="your-premium-heading" className="font-display text-xl">
         Your {plan}
       </h2>
@@ -546,38 +546,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
           <h1 className="mt-2 text-feature [overflow-wrap:anywhere]">
             {primary ? <NameLine primary={primary.value} original={original} /> : <span className="font-display">Your dashboard</span>}
           </h1>
-          <dl className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
-            <div className="grid gap-0.5">
-              <dt className="text-sm text-fg-muted">Account type</dt>
-              <dd data-testid="account-type" className="text-ui font-semibold">
-                {sifu ? 'Sifu' : 'Student'}
-              </dd>
-            </div>
-            {sifu ? (
-              <div className="grid gap-0.5">
-                <dt className="text-sm text-fg-muted">Shown as</dt>
-                <dd data-testid="shown-as" className="text-ui font-semibold">
-                  {instructorBadge ? <StatusBadge state={instructorBadge} label={overview.instructor.label} /> : overview.instructor.label}
-                </dd>
-              </div>
-            ) : null}
-            <div className="grid gap-0.5">
-              <dt className="text-sm text-fg-muted">Plan</dt>
-              <dd data-testid="plan-name" className="text-ui font-semibold">
-                {overview.plan.name}
-                {overview.until ? <span className="font-normal text-fg-muted"> {untilPlanEnd(overview.until)}</span> : null}
-              </dd>
-            </div>
-          </dl>
-          <p className="mt-3 flex flex-wrap gap-x-5 text-sm">
-            <Link href="/plans" className="link inline-flex min-h-11 items-center">
-              Compare plans
-            </Link>
-            <UnreadLink />
-          </p>
         </header>
-
-        {overview.premium ? <YourPremium links={overview.premium} plan={overview.plan.name} /> : null}
 
         <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-x-14">
           <div className="grid content-start gap-10">
@@ -641,6 +610,46 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
               <StudentLists overview={overview} />
             )}
             {overview.nextSteps.length > 0 && stepsLater ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
+            {/* Journey review P2-8 (ADR 0084): what waits for an answer comes first; the account
+                type and the plan come last. */}
+            <section aria-labelledby="your-account-heading" className="grid content-start gap-3 border-t border-border-subtle pt-6" data-testid="your-account">
+              <h2 id="your-account-heading" className="font-display text-2xl">
+                Your account
+              </h2>
+            <dl className="flex flex-wrap gap-x-10 gap-y-3">
+              {/* P2-5: an organization's admin without a profile is not asked about an account type. */}
+              {overview.organizationOnly ? null : (
+                <div className="grid gap-0.5">
+                  <dt className="text-sm text-fg-muted">Account type</dt>
+                  <dd data-testid="account-type" className="text-ui font-semibold">
+                    {sifu ? 'Sifu' : 'Student'}
+                  </dd>
+                </div>
+              )}
+              {sifu ? (
+                <div className="grid gap-0.5">
+                  <dt className="text-sm text-fg-muted">Shown as</dt>
+                  <dd data-testid="shown-as" className="text-ui font-semibold">
+                    {instructorBadge ? <StatusBadge state={instructorBadge} label={overview.instructor.label} /> : overview.instructor.label}
+                  </dd>
+                </div>
+              ) : null}
+              <div className="grid gap-0.5">
+                <dt className="text-sm text-fg-muted">Plan</dt>
+                <dd data-testid="plan-name" className="text-ui font-semibold">
+                  {overview.plan.name}
+                  {overview.until ? <span className="font-normal text-fg-muted"> {untilPlanEnd(overview.until)}</span> : null}
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-3 flex flex-wrap gap-x-5 text-sm">
+              <Link href="/plans" className="link inline-flex min-h-11 items-center">
+                Compare plans
+              </Link>
+              <UnreadLink />
+            </p>
+              {overview.premium ? <YourPremium links={overview.premium} plan={overview.plan.name} /> : null}
+            </section>
           </div>
           <Notifications allHref="/dashboard/notifications" />
         </div>
