@@ -648,7 +648,8 @@ test("@M11 the school page links to the instructor's profile, list view and expl
   await expect(page.getByRole('heading', { level: 1, name: 'Demo Two Lineages Kwoon Berlin' })).toBeVisible();
   const page_ = visible(page.getByTestId('school-page'));
   await expect(page_).toHaveAttribute('data-precision', 'exact');
-  await expect(page_).toContainText('Berlin, DE');
+  // Journey review P3-6: the country by its name, not its code.
+  await expect(page_).toContainText('Berlin, Germany');
   await expect(page_.getByTestId('school-email')).toHaveAttribute('href', 'mailto:demo-school-two-lineages@example.test');
   const instructor = visible(page.locator('[data-testid="school-instructor"][data-slug="demo-two-lineages"]'));
   await expect(instructor.getByTestId('instructor-profile')).toHaveAttribute('href', '/people/demo-two-lineages');

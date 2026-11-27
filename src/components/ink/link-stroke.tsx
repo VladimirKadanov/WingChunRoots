@@ -1,3 +1,7 @@
+// No React Compiler memoisation: a small drawing from its props, and its cache code would grow
+// the explorer's script (journey review P1-3, the bundle budget).
+'use no memo';
+
 // A short sample of a link's stroke for legends and badges, in the state's colour. The states
 // have three renderings (ADR 0006): the ink geometry of src/design/ink.ts that the home page and
 // the lineage pages draw; the explorer's ink along its routes (canvasInk in canvas-ink.ts, drawn by

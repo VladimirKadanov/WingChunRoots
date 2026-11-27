@@ -846,7 +846,11 @@ test('@M00b the headline never puts a word on a line of its own, from 320 to 192
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/');
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
-    const lines = await page.locator('main h1').evaluate((h1) => {
+    // P1-4 (ADR 0078): the hero streams in over its fallback; measure the headline once it has.
+    const headline = page.locator('main h1').filter({ visible: true });
+    await expect(headline).toHaveCount(1);
+    await expect(page.locator('main h1')).toHaveCount(1);
+    const lines = await headline.evaluate((h1) => {
       const byTop = new Map<number, string[]>();
       const walker = document.createTreeWalker(h1, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {

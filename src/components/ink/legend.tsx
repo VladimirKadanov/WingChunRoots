@@ -1,3 +1,7 @@
+// No React Compiler memoisation: a static list drawn from its props, and its cache code would
+// grow the explorer's script (journey review P1-3, the bundle budget).
+'use no memo';
+
 // The always-visible legend (from the Constellation prototype): every link state as its stroke,
 // its seal and its name, so the drawing never depends on colour (plan §4.6). Shared by the home
 // page, the lineage screens (M04) and the explorer (M05); a screen may name a state in its own
