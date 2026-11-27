@@ -27,6 +27,9 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/account/security/actions.ts#verifySessionAction': { auth: ['/two-factor/verify-totp', '/two-factor/verify-backup-code'] },
   'src/app/account/security/actions.ts#newBackupCodesAction': { auth: ['/two-factor/generate-backup-codes'] },
   'src/app/account/security/actions.ts#disableTwoFactorAction': { auth: ['/two-factor/disable'] },
+  'src/app/account/security/actions.ts#changePasswordAction': { auth: ['/change-password'] },
+  'src/app/account/security/actions.ts#changeEmailAction': { auth: ['/change-email'] },
+  'src/app/account/security/actions.ts#signOutOtherDevicesAction': { auth: ['/revoke-other-sessions'] },
   'src/app/onboarding/actions.ts#onboardAction': { rpc: ['consent.record', 'account.onboard', 'account.setType'] },
   'src/app/onboarding/actions.ts#confirmConsentsAction': { rpc: ['consent.record'] },
   // M08: plans, test plans and notifications.

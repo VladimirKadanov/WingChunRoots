@@ -18,7 +18,7 @@ import { emailValue, keepValues, looksLikeEmail, textValue } from '@/lib/form-da
 import type { FormState } from '@/lib/form-state';
 import { ridesInConfirmationLink } from '@/lib/invitation-path';
 import { safeNextPath } from '@/server/auth/guards';
-import { confirmationEmail } from '@/server/auth/tokens';
+import { confirmationClaims, confirmationEmail } from '@/server/auth/tokens';
 import { authAction, principalFromSetCookies } from '@/server/auth/web';
 import { formResult, rememberSignInEmail } from '@/server/forms/flash';
 import { serverClient } from '@/server/rpc/server';
@@ -64,8 +64,16 @@ async function confirmEmail(form: FormData, next: string): Promise<FormState> {
       ...(refused ? { values: { link: 'refused' } } : {}),
     };
   }
-  // The browser that signed up is signed in now: on to where a sign-in goes.
+  // Journey review P2-4 (ADR 0081): a link that changed the address. Signed in here, the security
+  // page says so; anywhere else the sign-in form starts with the new address.
+  const changedTo = (confirmationClaims(token) as { updateTo?: unknown } | null)?.updateTo;
   const principal = await principalFromSetCookies(result.setCookies);
+  if (typeof changedTo === 'string') {
+    if (principal) redirect('/account/security?emailChanged=1');
+    await rememberSignInEmail(changedTo.toLowerCase());
+    redirect('/sign-in?emailChanged=1');
+  }
+  // The browser that signed up is signed in now: on to where a sign-in goes.
   if (principal) {
     const { path } = await serverClient(await headers(), principal).account.landing({ next: next || undefined });
     redirect(path);

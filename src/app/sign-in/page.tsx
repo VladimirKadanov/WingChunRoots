@@ -24,6 +24,8 @@ const NOTICES = {
   verified: 'Address confirmed. Sign in to continue.',
   reset: 'Password changed, and every other session has ended. Sign in with the new password.',
   'signed-out': 'You are signed out.',
+  // Journey review P2-4 (ADR 0081): a confirmed new address, from a browser that was not signed in.
+  emailChanged: 'New address confirmed. Sign in with it from now on.',
 } as const;
 
 /**
@@ -55,7 +57,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
     >
       {notice ? <Notice>{NOTICES[notice]}</Notice> : null}
       {notice === 'signed-out' ? <ForgetRecentSearches /> : null}
-      <SignInForm next={next} email={notice === 'verified' ? email : null} initial={initial} />
+      <SignInForm next={next} email={notice === 'verified' || notice === 'emailChanged' ? email : null} initial={initial} />
       <FormFooter>
         <p>
           New here?{' '}
