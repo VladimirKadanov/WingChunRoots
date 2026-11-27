@@ -504,8 +504,8 @@ export async function namingQueue(principal: Principal | null): Promise<{ reques
   requireStaff2FA(principal, ['archivist', 'admin']);
   const { rows } = await getDb().execute<ViewRow & { asked_by: string | null }>(sql`
     SELECT ${VIEW_COLUMNS},
-           (SELECT coalesce((SELECT n.value FROM person p JOIN person_name n ON n.person_id = p.id AND n.is_primary
-                              WHERE p.claimed_by_user_id = r.asked_by_user_id AND p.deleted_at IS NULL LIMIT 1), 'An account')) AS asked_by
+           (SELECT n.value FROM person p JOIN person_name n ON n.person_id = p.id AND n.is_primary
+             WHERE p.claimed_by_user_id = r.asked_by_user_id AND p.deleted_at IS NULL LIMIT 1) AS asked_by
       FROM naming_request r LEFT JOIN person pe ON pe.id = r.person_id
      WHERE r.status = 'in_review' ORDER BY r.created_at, r.id LIMIT 200`);
   return { requests: rows.map((r) => ({ ...toView(r), askedBy: r.asked_by })) };

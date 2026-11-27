@@ -20,6 +20,7 @@ import {
   removeOrganizationAdminAction,
   requestOrganizationSchoolAction,
   updateOrganizationAction,
+  withdrawOrganizationRequestAction,
 } from './actions';
 import { ADD_ADMIN_FORM, ADD_MEMBER_FORM, DETAILS_FORM, REQUEST_SCHOOL_FORM } from './form-ids';
 import { type Country, LABELS, type Option, OrganizationFields, type OrganizationValues } from './organization-fields';
@@ -80,7 +81,7 @@ export function AddAdminForm({ organizationId, initial }: { organizationId: stri
     <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-4" data-testid="organization-add-admin">
       <FormMessage form={formId} state={state} single />
       <input type="hidden" name="organizationId" value={organizationId} />
-      <TextField form={formId} name="email" type="email" label="E-mail of the account" state={state} autoComplete="off" inputMode="email" maxLength={320} hint="The account must exist already. An admin manages the details, members and schools; only an owner adds or removes admins." className="max-w-[28rem]" />
+      <TextField form={formId} name="email" type="email" label="E-mail of the account" state={state} autoComplete="off" inputMode="email" maxLength={320} hint="The account at this address gets an invitation and becomes an admin once it accepts, within 14 days. An admin manages the details, members and schools; only an owner adds or removes admins." className="max-w-[28rem]" />
       <div>
         <SubmitButton pending={pending} pendingLabel="Adding…" variant="secondary">
           Add admin
@@ -99,7 +100,7 @@ export function AddMemberForm({ organizationId, roles, initial }: { organization
     <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-4" data-testid="organization-add-member">
       <FormMessage form={formId} state={state} labels={{ personSlug: 'Public profile', role: 'Role', startsOn: 'Member since' }} />
       <input type="hidden" name="organizationId" value={organizationId} />
-      <TextField form={formId} name="personSlug" label="Public profile" state={state} autoComplete="off" maxLength={300} translate="no" placeholder="/people/…" hint="Find them by name, or paste the address of their public profile. Only public people are listed." className="max-w-[32rem]" />
+      <TextField form={formId} name="personSlug" label="Public profile" state={state} autoComplete="off" maxLength={300} translate="no" placeholder="/people/…" hint="Find them by name, or paste the address of their public profile. Only public people are listed, once they accept (a record without an account, once the archive team agrees)." className="max-w-[32rem]" />
       {/* Role replay 2026-11-25 (P2-4): choose the person by name instead of typing an address. */}
       <SearchPick
         inputId={fieldId(formId, 'personSlug')}
@@ -150,6 +151,7 @@ const ROW_ACTIONS = {
   admin: removeOrganizationAdminAction,
   member: endOrganizationMemberAction,
   school: endOrganizationSchoolAction,
+  request: withdrawOrganizationRequestAction,
 } as const;
 
 /** A row's one-button form: remove an admin (or leave), end a membership, withdraw or end a school link. */

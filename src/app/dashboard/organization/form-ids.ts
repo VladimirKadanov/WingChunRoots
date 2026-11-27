@@ -10,6 +10,6 @@ export const ADD_ADMIN_FORM = 'organization-add-admin';
 export const ADD_MEMBER_FORM = 'organization-add-member';
 export const REQUEST_SCHOOL_FORM = 'organization-request-school';
 /** A row's one-button form (remove an admin, end a membership, end a school link). */
-export const rowForm = (kind: 'admin' | 'member' | 'school', id: string) => `organization-${kind}-${id}`;
+export const rowForm = (kind: 'admin' | 'member' | 'school' | 'request', id: string) => `organization-${kind}-${id}`;
 /** A school link's answer on /dashboard/schools (accept, refuse or end). */
 export const linkForm = (id: string) => `organization-link-${id}`;

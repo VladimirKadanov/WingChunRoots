@@ -2948,6 +2948,14 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/organization/actions.ts#removeOrganizationAdminAction', row: 'organizations.removeAdmin', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/organization/actions.ts#addOrganizationMemberAction', row: 'organizations.addMember', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/organization/actions.ts#endOrganizationMemberAction', row: 'organizations.endMember', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/actions.ts#withdrawOrganizationRequestAction', row: 'organizations.withdrawRequest', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/naming/actions.ts#answerNamingAction', row: 'naming.answer', form: (i) => ({ id: String(i.id), answer: 'accept' }), roles: ['anonymous', 'member', 'party', 'owner'] },
+  {
+    action: 'src/app/admin/archive/naming/actions.ts#reviewNamingAction',
+    row: 'naming.review',
+    form: (i) => ({ id: String(i.id), decision: 'decline', reason: String(i.reason) }),
+    roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'],
+  },
   { action: 'src/app/dashboard/organization/actions.ts#requestOrganizationSchoolAction', row: 'organizations.requestSchool', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/organization/actions.ts#endOrganizationSchoolAction', row: 'organizations.endSchoolLink', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   // M21: the trial lesson request form, the inbox's answers and the schedule form.
