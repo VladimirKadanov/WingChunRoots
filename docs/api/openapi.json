@@ -14164,7 +14164,7 @@
                         "null"
                       ]
                     },
-                    "addressLine": {
+                    "streetAddress": {
                       "type": [
                         "string",
                         "null"
@@ -14626,7 +14626,7 @@
                     "websiteUrl",
                     "contactEmail",
                     "contactPhone",
-                    "addressLine",
+                    "streetAddress",
                     "forms",
                     "lastActivityOn",
                     "instructors",

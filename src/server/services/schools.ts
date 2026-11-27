@@ -675,7 +675,7 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
     websiteUrl: row.website_url,
     contactEmail: row.contact_email,
     contactPhone: row.contact_phone,
-    addressLine: row.address_line,
+    streetAddress: row.address_line,
     forms: row.forms_taught.filter((f): f is keyof typeof SCHOOL_FORM_LABELS => f in SCHOOL_FORM_LABELS).map((key) => ({ key, label: SCHOOL_FORM_LABELS[key] })),
     lastActivityOn: last.toISOString().slice(0, 10),
     instructors: instructors.map((i) => {

@@ -227,13 +227,13 @@ describe('listing a school', () => {
     const [kept] = await getDb().select({ addressLine: school.addressLine }).from(school).where(eq(school.id, created.id));
     expect(kept!.addressLine).toBe(address);
     await getDb().update(school).set({ status: 'active' }).where(eq(school.id, created.id));
-    expect((await schoolGet(null, { slug: created.slug })).addressLine).toBe(address);
+    expect((await schoolGet(null, { slug: created.slug })).streetAddress).toBe(address);
     // Switched to city only: the line is dropped, never kept for a later switch back.
     await updateSchool(pro.principal, { ...base, id: created.id, locationPrivacy: 'city_only', addressLine: address }, meta);
     await getDb().update(school).set({ status: 'active' }).where(eq(school.id, created.id));
     const [after] = await getDb().select({ addressLine: school.addressLine }).from(school).where(eq(school.id, created.id));
     expect(after!.addressLine).toBeNull();
-    expect((await schoolGet(null, { slug: created.slug })).addressLine).toBeNull();
+    expect((await schoolGet(null, { slug: created.slug })).streetAddress).toBeNull();
     // And the view never shows a line a city-only school holds.
     await getDb().update(school).set({ addressLine: address }).where(eq(school.id, created.id));
     const view = await getDb().execute<{ address_line: string | null }>(sql`SELECT address_line FROM v_public_school WHERE id = ${created.id}::uuid`);

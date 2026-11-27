@@ -72,7 +72,7 @@ function jsonLd(school: SchoolPageDto): Record<string, unknown> {
     ...(school.description ? { description: school.description } : {}),
     address: {
       '@type': 'PostalAddress',
-      ...(school.addressLine ? { streetAddress: school.addressLine } : {}),
+      ...(school.streetAddress ? { streetAddress: school.streetAddress } : {}),
       addressLocality: school.city,
       addressCountry: school.countryCode,
     },
@@ -182,9 +182,9 @@ export default async function SchoolPage({ params }: Props) {
           {school.city}, {countryName(school.countryCode) ?? school.countryCode}
         </p>
         {/* Journey review P2-7 (ADR 0083): the owner's address line, only with the exact pin. */}
-        {school.addressLine ? (
+        {school.streetAddress ? (
           <address className="text-ui not-italic [overflow-wrap:anywhere]" data-testid="school-address">
-            {school.addressLine}
+            {school.streetAddress}
           </address>
         ) : null}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
