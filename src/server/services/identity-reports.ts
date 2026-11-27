@@ -1007,6 +1007,8 @@ export interface IdentityProofSummary {
   vouching: string;
   channel: string;
   files: number;
+  /** The same in numbers, for the control panel's own words (ADR 0043). */
+  counts: { asked: number; answered: number; teachersYes: number; peersYes: number; independent: boolean; noes: number; codes: number; confirmedCodes: number };
 }
 
 export interface IdentityCaseView {
@@ -1070,6 +1072,7 @@ async function proofOf(db: Executor, caseId: string, side: IdentitySide, vouches
     vouching: noes > 0 ? `${vouching} · ${noes} said no` : vouching,
     channel: confirmed > 0 ? `Confirmed (${confirmed})` : codes.length > 0 ? 'Asked, not confirmed yet' : 'None',
     files: files?.n ?? 0,
+    counts: { asked: vouches.length, answered: vouches.filter((v) => v.answer !== null).length, teachersYes: teachers, peersYes: peers.length, independent, noes, codes: codes.length, confirmedCodes: confirmed },
   };
 }
 

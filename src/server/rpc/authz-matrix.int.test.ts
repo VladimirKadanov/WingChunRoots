@@ -49,6 +49,7 @@ import { requestPilotAccess } from '../services/plans';
 import { approveRelationship, rejectRelationship, requestTeacher } from '../services/relationships';
 import { assignReviewCase, decideReviewCase } from '../services/review';
 import { askTeacherToConfirm } from '../services/claim-confirmations';
+import { addIdentityCode, askIdentityVouch, fileIdentityReport, triageIdentityReport } from '../services/identity-reports';
 import { requestProfileClaim } from '../services/profile-claims';
 import { addArchiveLink, createArchiveLineage, createArchiveRecord } from '../services/archive-editor';
 import { reportLineage } from '../services/disputes';
@@ -576,6 +577,55 @@ async function claimWithTeacher(opts: { asked?: boolean } = {}) {
   const claim = await requestProfileClaim(claimant.principal, { personId: record.id, note: 'A fictional note for the reviewers.', idempotencyKey: key() }, meta);
   const confirmationId = opts.asked ? (await askTeacherToConfirm(world.admin.principal, { caseId: claim.caseId, relationshipId: rel!.id }, meta)).id : null;
   return { teacher, claimant, caseId: claim.caseId, relationshipId: rel!.id, confirmationId };
+}
+
+/**
+ * ADR 0088: a public profile run by the `party`, reported by an account without a profile (the
+ * `owner`) as pretending to be them; held after the moderators' check when `held`. With `teacher`,
+ * the profile has a verified teacher with an account of 400 days (who may vouch).
+ */
+async function identityCase(opts: { held?: boolean; teacher?: boolean } = {}) {
+  const subject = await actor('id-subject', { sifu: true });
+  const reporter = await actor('id-reporter', { noPerson: true });
+  const { caseId } = await fileIdentityReport(reporter.principal, { personId: subject.personId!, route: 'vouching', details: 'A fictional reason: this profile is mine.', idempotencyKey: key() }, meta);
+  if (opts.held) await triageIdentityReport(world.moderator.principal, { caseId, outcome: 'hold', reason: null, idempotencyKey: key() }, meta);
+  let teacher: Actor | null = null;
+  if (opts.teacher) {
+    teacher = await actor('id-teacher', { sifu: true });
+    await getDb().update(authUser).set({ createdAt: new Date(Date.now() - 400 * 86_400_000) }).where(eq(authUser.id, teacher.id));
+    const lineageId = await newLineage('m13-authz-identity');
+    await getDb().insert(teachingRelationship).values({ teacherPersonId: teacher.personId!, studentPersonId: subject.personId!, lineageId, status: 'verified', visibility: 'public' });
+  }
+  return { subject, reporter, caseId, teacher };
+}
+
+/** ADR 0088: a held report whose reporter asked the profile's teacher to vouch. */
+async function identityVouch() {
+  const c = await identityCase({ held: true, teacher: true });
+  const { id } = await askIdentityVouch(c.reporter.principal, { caseId: c.caseId, slug: c.teacher!.slug!, kind: 'teacher', message: 'A fictional message.' }, meta);
+  return { ...c, vouchId: id };
+}
+
+/** ADR 0088: a code the reporter of a held report asked for, and (e-mail) the six digits sent. */
+async function identityCodeOf(channel: 'email' | 'page') {
+  const c = await identityCase({ held: true });
+  const address = `office-${(addresses += 1)}@demo-school-${randomBytes(3).toString('hex')}.example.test`;
+  const { code } = await addIdentityCode(c.reporter.principal, { caseId: c.caseId, channel, target: channel === 'email' ? address : 'https://demo-school.example.test/news' }, meta);
+  let digits = '000000';
+  if (channel === 'email') {
+    const rows = await getDb().execute<{ data: EmailSendJob }>(sql`
+      SELECT j.data FROM pgboss.job j JOIN email_delivery d ON d.id::text = j.data ->> 'deliveryId'
+       WHERE j.name = 'email.send' AND d.template = 'identity-code' AND d.to_email = ${address}
+       ORDER BY d.created_at DESC LIMIT 1`);
+    digits = (jobTemplateData(rows.rows[0]!.data) as { code: string }).code;
+  }
+  return { ...c, codeId: code.id, digits };
+}
+
+/** ADR 0088: one open report per account, three in 30 days: the world's accounts file again in each row. */
+async function noIdentityReports(who: Who): Promise<void> {
+  const a = worldActor(who);
+  if (a) await getDb().execute(sql`UPDATE identity_report SET status = 'closed', created_at = now() - interval '60 days' WHERE reporter_user_id = ${a.id}::uuid`);
 }
 
 /**
@@ -1339,6 +1389,82 @@ const ROWS: Row[] = [
       return { owner: c.claimant, input: { caseId: c.caseId, relationshipId: c.relationshipId } };
     },
     expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  // ADR 0088: impersonation reports. Any signed-in account may report a profile another account
+  // runs; a moderator or an administrator makes the first check; the two sides prove; the vouch is
+  // the asked person's alone; an administrator confirms a code seen on a page.
+  {
+    path: 'identity.get',
+    make: async () => {
+      const subject = await actor('id-get');
+      return { owner: subject, input: { slug: subject.slug } };
+    },
+    expect: { ...own(), owner: 'ok' },
+  },
+  {
+    path: 'identity.report',
+    make: async (who) => {
+      await noIdentityReports(who);
+      const subject = await actor('id-reported');
+      return { owner: subject, input: { personId: subject.personId, route: 'vouching', details: 'A fictional reason: this profile is mine.', idempotencyKey: key() } };
+    },
+    expect: { ...own(), owner: 'CONFLICT' },
+  },
+  {
+    path: 'identity.triage',
+    make: async () => {
+      const c = await identityCase();
+      return { owner: c.reporter, party: c.subject, input: { caseId: c.caseId, outcome: 'hold', idempotencyKey: key() } };
+    },
+    expect: { ...staffOnly({ moderator: 'ok', admin: 'ok' }), owner: 'FORBIDDEN', party: 'FORBIDDEN' },
+  },
+  {
+    path: 'identity.askVouch',
+    make: async () => {
+      const c = await identityCase({ held: true, teacher: true });
+      return { owner: c.reporter, party: c.subject, input: { caseId: c.caseId, slug: c.teacher!.slug, kind: 'teacher', message: 'A fictional message.' } };
+    },
+    expect: { ...own('NOT_FOUND'), owner: 'ok', party: 'ok' },
+  },
+  {
+    path: 'identity.addCode',
+    make: async () => {
+      const c = await identityCase({ held: true });
+      return { owner: c.reporter, party: c.subject, input: { caseId: c.caseId, channel: 'page', target: 'https://demo-school.example.test/news' } };
+    },
+    expect: { ...own('NOT_FOUND'), owner: 'ok', party: 'ok' },
+  },
+  {
+    path: 'identity.confirmCode',
+    make: async () => {
+      const c = await identityCodeOf('email');
+      return { owner: c.reporter, party: c.subject, input: { codeId: c.codeId, code: c.digits } };
+    },
+    expect: { ...own('NOT_FOUND'), owner: 'ok', party: 'NOT_FOUND' },
+  },
+  {
+    path: 'identity.checkCode',
+    make: async () => {
+      const c = await identityCodeOf('page');
+      return { owner: c.reporter, party: c.subject, input: { codeId: c.codeId } };
+    },
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN', party: 'FORBIDDEN' },
+  },
+  {
+    path: 'identityVouches.get',
+    make: async () => {
+      const c = await identityVouch();
+      return { owner: c.teacher!, party: c.reporter, input: { id: c.vouchId } };
+    },
+    expect: { ...own('NOT_FOUND'), owner: 'ok', party: 'NOT_FOUND' },
+  },
+  {
+    path: 'identityVouches.answer',
+    make: async () => {
+      const c = await identityVouch();
+      return { owner: c.teacher!, party: c.reporter, input: { id: c.vouchId, answer: 'yes', note: 'A fictional note.' } };
+    },
+    expect: { ...own('NOT_FOUND'), owner: 'ok', party: 'NOT_FOUND' },
   },
   {
     path: 'claimConfirmations.get',
@@ -2839,6 +2965,14 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/admin/review/actions.ts#decideCaseAction', row: 'review.decide', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'] },
   { action: 'src/app/admin/review/actions.ts#addNoteAction', row: 'review.note', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'moderator'] },
   { action: 'src/app/admin/review/actions.ts#askTeacherAction', row: 'review.askTeacher', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'moderator'] },
+  // ADR 0088: impersonation reports.
+  { action: 'src/app/people/[slug]/identity/actions.ts#reportIdentityAction', row: 'identity.report', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/admin/review/actions.ts#triageIdentityAction', row: 'identity.triage', form: same, roles: ['anonymous', 'member', 'owner', 'party', 'archivist', 'adminNo2fa', 'moderator'] },
+  { action: 'src/app/admin/review/actions.ts#checkIdentityCodeAction', row: 'identity.checkCode', form: same, roles: ['anonymous', 'owner', 'moderator', 'adminNo2fa', 'admin'] },
+  { action: 'src/app/dashboard/cases/[id]/actions.ts#askVouchAction', row: 'identity.askVouch', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/cases/[id]/actions.ts#addCodeAction', row: 'identity.addCode', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/cases/[id]/actions.ts#confirmCodeAction', row: 'identity.confirmCode', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/vouches/[id]/actions.ts#answerVouchAction', row: 'identityVouches.answer', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/confirmations/[id]/actions.ts#answerConfirmationAction', row: 'claimConfirmations.answer', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/admin/review/actions.ts#arbitrateAction', row: 'review.arbitrate', form: same, roles: ['anonymous', 'member', 'owner', 'archivist', 'adminNo2fa', 'moderator'] },
   // M14: a moderator's "Remove photo" on a case card; the owner's own removal is the same procedure.

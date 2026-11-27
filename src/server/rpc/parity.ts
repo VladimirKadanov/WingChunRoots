@@ -69,6 +69,9 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/admin/review/actions.ts#addNoteAction': { rpc: ['review.note'] },
   'src/app/admin/review/actions.ts#askTeacherAction': { rpc: ['review.askTeacher'] },
   'src/app/admin/review/actions.ts#archiveUpdateAction': { rpc: ['archive.update'] },
+  // ADR 0088: impersonation reports (the first check, a code seen on a page).
+  'src/app/admin/review/actions.ts#triageIdentityAction': { rpc: ['identity.triage'] },
+  'src/app/admin/review/actions.ts#checkIdentityCodeAction': { rpc: ['identity.checkCode'] },
   // M26: the archive editor (docs/adr/0034-archive-editor.md).
   'src/app/admin/archive/actions.ts#createLineageAction': { rpc: ['archiveEditor.createLineage'] },
   'src/app/admin/archive/actions.ts#updateLineageAction': { rpc: ['archiveEditor.updateLineage'] },
@@ -181,5 +184,11 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/succession/actions.ts#requestSuccessionAction': { rpc: ['succession.request'] },
   'src/app/people/[slug]/dispute/actions.ts#reportLineageAction': { rpc: ['disputes.report'] },
   'src/app/dashboard/cases/[id]/actions.ts#appealDecisionAction': { rpc: ['appeals.create'] },
+  // ADR 0088: impersonation reports (filing, a side's proof, a voucher's answer).
+  'src/app/people/[slug]/identity/actions.ts#reportIdentityAction': { rpc: ['identity.report'] },
+  'src/app/dashboard/cases/[id]/actions.ts#askVouchAction': { rpc: ['identity.askVouch'] },
+  'src/app/dashboard/cases/[id]/actions.ts#addCodeAction': { rpc: ['identity.addCode'] },
+  'src/app/dashboard/cases/[id]/actions.ts#confirmCodeAction': { rpc: ['identity.confirmCode'] },
+  'src/app/dashboard/vouches/[id]/actions.ts#answerVouchAction': { rpc: ['identityVouches.answer'] },
   'src/app/people/[slug]/record/actions.ts#proposeRecordAction': { rpc: ['records.propose'] },
 };

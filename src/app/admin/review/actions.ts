@@ -23,7 +23,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { type FormPlace, formResult, postedByReact } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { ARBITRATE_FORM, ARCHIVE_FORM, askTeacherForm, type AssignMode, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from './form-ids';
+import { ARBITRATE_FORM, ARCHIVE_FORM, askTeacherForm, type AssignMode, assignForm, checkCodeForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM, triageForm } from './form-ids';
 import { translateState } from './text';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -107,6 +107,10 @@ export async function decideCaseAction(_previous: FormState, form: FormData): Pr
   // status asks for ("established" or "not_established"); empty for every other decision.
   const deceasedSent = textValue(form, 'deceased', 20);
   const deceased = deceasedSent === 'established' || deceasedSent === 'not_established' ? deceasedSent : null;
+  // ADR 0088 (an impersonation report): suspend the account that held the profile, on an upheld
+  // report (decision 5, the box is ticked in advance); "could not be settled", on one not upheld.
+  const suspend = decision === 'verify' && textValue(form, 'suspend', 4) === 'on';
+  const unsettled = decision === 'reject' && textValue(form, 'unsettled', 4) === 'on';
   const page = casePage(caseId);
   try {
     await (await client()).review.decide({
@@ -118,11 +122,13 @@ export async function decideCaseAction(_previous: FormState, form: FormData): Pr
       ...(schoolVersion ? { schoolVersion } : {}),
       ...(organizationVersion ? { organizationVersion } : {}),
       ...(deceased ? { deceased } : {}),
+      ...(suspend ? { suspend: true } : {}),
+      ...(unsettled ? { unsettled: true } : {}),
     });
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
-    const state = formStateFromFailure(error, { caseId, decision, reason, ...(takeDown ? { takeDown: 'on' } : {}), ...(deceased ? { deceased } : {}) });
+    const state = formStateFromFailure(error, { caseId, decision, reason, ...(takeDown ? { takeDown: 'on' } : {}), ...(deceased ? { deceased } : {}), ...(decision === 'verify' ? { suspend: suspend ? 'on' : 'off' } : {}), ...(unsettled ? { unsettled: 'on' } : {}) });
     return refused({ form: `${DECIDE_FORM}-${decision}`, page, anchor: outcomeTarget(`${DECIDE_FORM}-${decision}`, state, true) }, state);
   }
   redirect(doneAt(page, decision === 'verify' ? 'verified' : decision === 'reject' ? 'refused' : 'asked'));
@@ -160,6 +166,44 @@ export async function askTeacherAction(_previous: FormState, form: FormData): Pr
     return refused({ form: formId, page, anchor: outcomeTarget(formId, state, true) }, state);
   }
   redirect(doneAt(page, 'teacher-asked'));
+}
+
+/**
+ * ADR 0088: the moderators' first check of an impersonation report (identity.triage): "Hold the
+ * profile" (the report is credible) or "Close the report" with the reason the reporter reads.
+ */
+export async function triageIdentityAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const caseId = textValue(form, 'caseId', 40);
+  const outcome = textValue(form, 'outcome', 10) === 'close' ? 'close' : 'hold';
+  const reason = textValue(form, 'reason', 4000);
+  const page = casePage(caseId);
+  const formId = triageForm(outcome);
+  try {
+    await (await client()).identity.triage({ caseId, outcome, reason: reason || null, idempotencyKey: key(form) });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
+    const state = formStateFromFailure(error, { caseId, outcome, reason });
+    return refused({ form: formId, page, anchor: outcomeTarget(formId, state, true) }, state);
+  }
+  redirect(doneAt(page, outcome === 'hold' ? 'identity-held' : 'identity-closed'));
+}
+
+/** ADR 0088: "I saw the code on the page" (identity.checkCode; an administrator). */
+export async function checkIdentityCodeAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const caseId = textValue(form, 'caseId', 40);
+  const codeId = textValue(form, 'codeId', 40);
+  const page = casePage(caseId);
+  const formId = checkCodeForm(UUID.test(codeId) ? codeId : 'none');
+  try {
+    await (await client()).identity.checkCode({ codeId });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
+    const state = formStateFromFailure(error, { caseId, codeId });
+    return refused({ form: formId, page, anchor: outcomeTarget(formId, state, true) }, state);
+  }
+  redirect(doneAt(page, 'identity-code-checked'));
 }
 
 /** "Save the record" of the archival edit (archive.update; an archivist or an administrator). */

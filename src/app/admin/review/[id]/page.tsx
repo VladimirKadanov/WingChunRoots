@@ -30,8 +30,9 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { askTeacherForm, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from '../form-ids';
-import { AskTeacherForm, AssignForm, DecideForm, NoteForm, RemoveGalleryPhotoForm, RemovePhotoForm, TakeDownForm } from '../forms';
+import { askTeacherForm, assignForm, checkCodeForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM, triageForm } from '../form-ids';
+import { AskTeacherForm, AssignForm, DecideForm, NoteForm, RemoveGalleryPhotoForm, RemovePhotoForm, TakeDownForm, TriageForm } from '../forms';
+import { IdentitySection } from '../identity';
 import { lifeStatusChoice } from '../life-status-choice';
 import { ListingSection } from '../listing';
 import { OrganizationSection } from '../organization';
@@ -74,6 +75,10 @@ const doneText = (t: AdminT): Record<string, string> => ({
   // Review 2026-11: moderation.takeDown and moderation.restore from the case of a reported profile.
   'taken-down': t('The record is off the public pages. Your reason is in the audit log and on this case, and the owner, if there is one, was sent it.'),
   restored: t('The record is back. The change and your reason are in the audit log and on this case, and the owner, if there is one, was told.'),
+  // ADR 0088: an impersonation report's first check (identity.triage) and a code seen (identity.checkCode).
+  'identity-held': t('The profile is held. Both sides were told and have 14 days to bring proof; an administrator decides.'),
+  'identity-closed': t('The report is closed. The reporter was sent your reason; nothing changed for the profile.'),
+  'identity-code-checked': t('The code is confirmed as seen on the page.'),
   // M10b: review.arbitrate opens the dispute here.
   arbitrated: t('The relationship is in arbitration. Public pages show it as “Disputed”, and both people were sent your reason and asked for evidence.'),
 });
@@ -162,8 +167,10 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     readFormResult(SCHOOL_PHOTO_REMOVE_FORM, query.outcome),
     readFormResult(TAKEDOWN_FORM, query.outcome),
     readFormResult(RESTORE_FORM, query.outcome),
+    readFormResult(triageForm('hold'), query.outcome),
+    readFormResult(triageForm('close'), query.outcome),
   ]);
-  const [assignResult, unassignResult, chooseResult, noteResult, verifyResult, rejectResult, askResult, photoResult, galleryResult, schoolPhotoResult, takeDownResult, restoreResult] = results.map((state) =>
+  const [assignResult, unassignResult, chooseResult, noteResult, verifyResult, rejectResult, askResult, photoResult, galleryResult, schoolPhotoResult, takeDownResult, restoreResult, holdResult, closeResult] = results.map((state) =>
     state ? translateState(t, state) : state,
   );
   // ADR 0067: a refused "Ask <teacher> to confirm" comes back to that teacher's form.
@@ -172,6 +179,15 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     if (c.ask) continue;
     const state = await readFormResult(askTeacherForm(c.relationshipId), query.outcome);
     if (state) askTeacherResults.set(c.relationshipId, translateState(t, state));
+  }
+  // ADR 0088: a refused "I saw the code on the page" comes back to that code's form.
+  const codeResults = new Map<string, NonNullable<typeof assignResult>>();
+  for (const side of view.identity ? [view.identity.sides.reporter, view.identity.sides.reported] : []) {
+    for (const code of side.codes) {
+      if (code.channel !== 'page' || code.confirmed) continue;
+      const state = await readFormResult(checkCodeForm(code.id), query.outcome);
+      if (state) codeResults.set(code.id, translateState(t, state));
+    }
   }
   const decisions = { verify: decisionText(t, view.decisions.verify), reject: decisionText(t, view.decisions.reject), needs_info: decisionText(t, view.decisions.needs_info) };
   const decided = typeof query.done === 'string' && Object.hasOwn(DECIDED, query.done) ? DECIDED[query.done as keyof typeof DECIDED] : null;
@@ -273,6 +289,8 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             ) : null}
           </Section>
         ) : null}
+
+        {view.identity ? <IdentitySection caseId={view.id} identity={view.identity} codeResults={codeResults} t={t} /> : null}
 
         {/* Role replay 2026-11-25 (P3-8, ADR 0067): the record's verified teachers who have an account. */}
         {view.confirmations.length > 0 ? (
@@ -457,6 +475,18 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
         </div>
 
         <aside aria-label={t('What you can do on this case')} className="grid min-w-0 content-start gap-6 lg:row-start-1 lg:col-start-2">
+        {view.identity?.can.triage ? (
+          <Section id="triage" title={t('First check')} boxed>
+            <p className="max-w-[60ch] text-ui text-fg-muted">
+              {t('Is the report credible? Holding the profile changes nothing that the public sees except an “Identity under review” line; an administrator decides the report afterwards.')}
+            </p>
+            <div className="grid max-w-[40rem] gap-3">
+              <TriageForm caseId={view.id} outcome="hold" idempotencyKey={randomUUID()} initial={holdResult} />
+              <TriageForm caseId={view.id} outcome="close" idempotencyKey={randomUUID()} initial={closeResult} />
+            </div>
+          </Section>
+        ) : null}
+
         <Section id="actions" title={t('Decision')} boxed>
           {view.decideNote ? (
             <p className="max-w-[60ch] text-ui text-fg-muted" data-testid="decide-note">
@@ -474,8 +504,8 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             </div>
           ) : null}
           <div className="grid max-w-[40rem] gap-3">
-            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={decisions.verify} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} takeDownOption={view.kind === 'profile_report' && view.subject?.takeDown?.allowed === true && !view.subject.takeDown.held} lifeStatusChoice={view.kind === 'historical_claim' && view.teacherRecord?.lifeStatus === 'unknown' ? lifeStatusChoice(t) : undefined} /> : null}
-            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={decisions.reject} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
+            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={decisions.verify} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} takeDownOption={view.kind === 'profile_report' && view.subject?.takeDown?.allowed === true && !view.subject.takeDown.held} lifeStatusChoice={view.kind === 'historical_claim' && view.teacherRecord?.lifeStatus === 'unknown' ? lifeStatusChoice(t) : undefined} identityOption={view.identity && !view.identity.reportedSuspended ? 'suspend' : undefined} /> : null}
+            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={decisions.reject} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} identityOption={view.identity ? 'unsettled' : undefined} /> : null}
             {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} text={decisions.needs_info} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
           </div>
           {!view.can.verify && !view.can.reject && !view.can.needsInfo && !view.can.assignSelf && !view.decideNote ? (

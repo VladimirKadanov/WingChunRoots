@@ -22,9 +22,9 @@ import { cx } from '@/lib/cx';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import type { ArchiveRecordView } from '@/server/services/review';
 import { discardEvidenceAction } from '../../dashboard/teachers/historical/actions';
-import { addNoteAction, arbitrateAction, askTeacherAction, archiveUpdateAction, assignCaseAction, decideCaseAction, removeGalleryPhotoAction, removePhotoAction, removeSchoolPhotoAction, restoreAction, takeDownAction } from './actions';
+import { addNoteAction, arbitrateAction, askTeacherAction, archiveUpdateAction, assignCaseAction, checkIdentityCodeAction, decideCaseAction, removeGalleryPhotoAction, removePhotoAction, removeSchoolPhotoAction, restoreAction, takeDownAction, triageIdentityAction } from './actions';
 import type { LifeStatusChoiceText } from './life-status-choice';
-import { ARBITRATE_FORM, ARCHIVE_FORM, askTeacherForm, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from './form-ids';
+import { ARBITRATE_FORM, ARCHIVE_FORM, askTeacherForm, assignForm, checkCodeForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM, triageForm } from './form-ids';
 
 function Button({ pending, label, pendingLabel, variant = 'secondary' }: { pending: boolean; label: string; pendingLabel: string; variant?: 'secondary' | 'ink' | 'danger' | 'primary' }) {
   return (
@@ -149,6 +149,7 @@ export function DecideForm({
   organizationVersion = null,
   takeDownOption = false,
   lifeStatusChoice,
+  identityOption,
 }: {
   caseId: string;
   decision: Decision;
@@ -168,6 +169,12 @@ export function DecideForm({
    * the server page (./life-status-choice.ts) so that they travel in the page, not in this bundle.
    */
   lifeStatusChoice?: LifeStatusChoiceText;
+  /**
+   * ADR 0088 (an impersonation report): on "Uphold", suspend the account that held the profile
+   * (decision 5: the administrator chooses, the box is ticked in advance); on "Do not uphold",
+   * "could not be settled" in place of "not upheld".
+   */
+  identityOption?: 'suspend' | 'unsettled';
 }) {
   const t = useAdminT();
   const [state, action, pending] = useActionState(decideCaseAction, initial ?? IDLE);
@@ -202,6 +209,25 @@ export function DecideForm({
             name="takeDown"
             label={t('Also take the profile down from the public pages')}
             hint={t('Not ticked unless you choose it. The note above is then required and is sent to the owner as the reason (never name the reporter). You can put the profile back from the record page.')}
+            state={state}
+          />
+        ) : null}
+        {identityOption === 'suspend' ? (
+          <CheckboxField
+            form={formId}
+            name="suspend"
+            defaultChecked
+            label={t('Also suspend the account that held the profile')}
+            hint={t('Suggested. Untick it when the account looks like a mistake rather than an impostor. You can lift a suspension from the account page.')}
+            state={state}
+          />
+        ) : null}
+        {identityOption === 'unsettled' ? (
+          <CheckboxField
+            form={formId}
+            name="unsettled"
+            label={t('The proof could not settle it either way')}
+            hint={t('Both sides read “could not be settled” rather than “not upheld”. The reporter may report the profile again later with new proof.')}
             state={state}
           />
         ) : null}
@@ -557,6 +583,69 @@ export function TakeDownForm({
       />
       <div>
         <Button pending={pending} label={held ? t('Restore record') : t('Take record down')} pendingLabel={held ? t('Restoring…') : t('Taking down…')} variant={held ? 'secondary' : 'danger'} />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * ADR 0088 (decision 1): the moderators' first check of an impersonation report. "Hold the
+ * profile" when the report is credible (its account is told what is claimed, never who reported);
+ * "Close the report" when it is not, with the reason the reporter reads.
+ */
+export function TriageForm({ caseId, outcome, idempotencyKey, initial }: { caseId: string; outcome: 'hold' | 'close'; idempotencyKey: string; initial?: FormState | null }) {
+  const t = useAdminT();
+  const [state, action, pending] = useActionState(triageIdentityAction, initial ?? IDLE);
+  const generatedId = useFormId(triageForm(outcome));
+  const formId = initial ? triageForm(outcome) : generatedId;
+  useFocusOnError(formId, state);
+  const hold = outcome === 'hold';
+  return (
+    <details open={state.status === 'error' || undefined} className="group rounded-sm border border-border-strong" data-testid={`triage-${outcome}`}>
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-sm px-4 py-2 font-semibold hover:bg-surface-3 [&::-webkit-details-marker]:hidden">
+        <span>{hold ? t('Hold the profile') : t('Close the report')}…</span>
+        <ChevronDownIcon size={18} className="shrink-0 text-fg-muted transition-transform duration-(--duration-fast) group-open:rotate-180" />
+      </summary>
+      <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-3 px-4 pt-1 pb-4">
+        <FormMessage form={formId} state={state} single />
+        <input type="hidden" name="caseId" value={caseId} />
+        <input type="hidden" name="outcome" value={outcome} />
+        <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+        <TextAreaField
+          form={formId}
+          name="reason"
+          label={hold ? t('Internal note') : t('Reason')}
+          optional={hold}
+          maxLength={2000}
+          hint={
+            hold
+              ? t('Optional. Only reviewers read it. The profile is held for 30 days: nobody can rename, hide, delete or hand it over. Both sides are told, and have 14 days to bring proof.')
+              : t('Required. The reporter reads it. Nothing changes for the profile, and its account is never told.')
+          }
+          state={state}
+        />
+        <div>
+          <Button pending={pending} label={hold ? t('Hold the profile') : t('Close the report')} pendingLabel={t('Saving…')} variant={hold ? 'ink' : 'danger'} />
+        </div>
+      </form>
+    </details>
+  );
+}
+
+/** ADR 0088: "I saw the code on the page" of a code a side posted on its school's page (an administrator). */
+export function CheckCodeForm({ caseId, codeId, initial }: { caseId: string; codeId: string; initial?: FormState | null }) {
+  const t = useAdminT();
+  const [state, action, pending] = useActionState(checkIdentityCodeAction, initial ?? IDLE);
+  const generatedId = useFormId(checkCodeForm(codeId));
+  const formId = initial ? checkCodeForm(codeId) : generatedId;
+  useFocusOnError(formId, state);
+  return (
+    <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-2" data-testid="check-code-form">
+      <FormMessage form={formId} state={state} single />
+      <input type="hidden" name="caseId" value={caseId} />
+      <input type="hidden" name="codeId" value={codeId} />
+      <div>
+        <Button pending={pending} label={t('I saw the code on the page')} pendingLabel={t('Saving…')} />
       </div>
     </form>
   );
